@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>DropLAN</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/common.css">
+<link rel="stylesheet" href="/static/browse.css">
+</head>
+<body>
+  <div class="container">
+    <a class="nav-back" href="/">← 返回首页</a>
+    <h1>📂 读取文件</h1>
+
+    <!-- 目录列表 -->
+    <div id="dirsView" class="active">
+      <div class="loading" id="dirsLoading">加载中...</div>
+      <div class="dirs-grid" id="dirsList"></div>
+      <div class="empty" id="dirsEmpty" style="display:none;"><span class="emoji">📭</span>暂无目录，先去上传一些文件吧</div>
+    </div>
+
+    <!-- 文件列表 -->
+    <div id="filesView">
+      <a class="nav-back" href="javascript:backToDirs()">← 返回目录列表</a>
+      <div class="card" style="padding:12px 16px;">
+        <div style="font-size:13px;color:var(--text-2);">当前目录</div>
+        <div id="currentDir" style="font-size:16px;font-weight:600;margin-top:2px;word-break:break-all;"></div>
+      </div>
+      <div class="loading" id="filesLoading">加载中...</div>
+      <div class="files-grid" id="filesList"></div>
+      <div class="empty" id="filesEmpty" style="display:none;"><span class="emoji">📂</span>该目录下暂无文件</div>
+    </div>
+
+    <div class="author-tip">💡 The Power From Ai! Directed by Yang Guangqing!</div>
+  </div>
+  <script src="/static/browse.js"></script>
+</body>
+</html>
