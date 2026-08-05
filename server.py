@@ -104,8 +104,8 @@ async def upload(
 # 路由：读取 API
 # ----------------------------------------------------------------------
 def _safe_subpath(base: Path, name: str) -> Optional[Path]:
-    """校验 name 合法并返回绝对路径，含路径穿越则返回 None。"""
-    if not name or "/" in name or "\\" in name:
+    """校验 name 合法并返回绝对路径，含路径穿越或隐藏项则返回 None。"""
+    if not name or name.startswith('.') or "/" in name or "\\" in name:
         return None
     target = (base / name).resolve()
     try:
@@ -120,8 +120,8 @@ async def list_dirs():
     SAVE_DIR.mkdir(parents=True, exist_ok=True)
     dirs = []
     for d in sorted(SAVE_DIR.iterdir(), key=lambda x: x.name):
-        if d.is_dir():
-            count = sum(1 for p in d.iterdir() if p.is_file())
+        if d.is_dir() and not d.name.startswith('.'):
+            count = sum(1 for p in d.iterdir() if p.is_file() and not p.name.startswith('.'))
             dirs.append({"name": d.name, "count": count})
     return {"dirs": dirs}
 
@@ -133,7 +133,7 @@ async def list_files(dir: str = Query(...)):
         return JSONResponse({"error": "目录不存在或非法"}, status_code=400)
     files = []
     for f in d.iterdir():
-        if f.is_file():
+        if f.is_file() and not f.name.startswith('.'):
             st = f.stat()
             files.append({"name": f.name, "size": st.st_size, "mtime": int(st.st_mtime)})
     files.sort(key=lambda x: x["mtime"], reverse=True)
