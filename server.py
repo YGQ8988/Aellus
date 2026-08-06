@@ -185,7 +185,7 @@ async def list_files(dir: str = Query(...)):
 
 
 @app.get("/api/download")
-async def download(dir: str = Query(...), file: str = Query(...)):
+async def download(dir: str = Query(...), file: str = Query(...), inline: bool = False):
     d = _safe_subpath(SAVE_DIR, dir)
     if d is None or not d.exists() or not d.is_dir():
         return JSONResponse({"error": "目录不存在或非法"}, status_code=400)
@@ -193,6 +193,9 @@ async def download(dir: str = Query(...), file: str = Query(...)):
     if f is None or not f.exists() or not f.is_file():
         return JSONResponse({"error": "文件不存在或非法"}, status_code=400)
     media_type = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+    # inline=1 预览模式：不传 filename，避免 Content-Disposition: attachment，浏览器内联渲染
+    if inline:
+        return FileResponse(f, media_type=media_type)
     return FileResponse(f, filename=f.name, media_type=media_type)
 
 

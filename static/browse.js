@@ -61,15 +61,16 @@ async function selectDir(name) {
 
 function renderFile(f) {
   const url = '/api/download?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name);
+  const previewUrl = url + '&inline=1';
   const meta = formatSize(f.size) + ' · ' + formatTime(f.mtime);
   const ext = f.name.split('.').pop().toLowerCase();
   let thumb, preview = '';
   if (['png','jpg','jpeg','gif','webp','bmp','heic'].includes(ext)) {
     thumb = `<img class="thumb" src="${url}" alt="" loading="lazy">`;
-    preview = `<a class="preview-link" href="${url}" target="_blank">预览</a>`;
+    preview = `<a class="preview-link" href="${previewUrl}" target="_blank">预览</a>`;
   } else if (['mp4','mov','m4v','webm'].includes(ext)) {
     thumb = `<video class="thumb-video" src="${url}" preload="metadata"></video>`;
-    preview = `<a class="preview-link" href="${url}" target="_blank">播放</a>`;
+    preview = `<a class="preview-link" href="${previewUrl}" target="_blank">播放</a>`;
   } else {
     thumb = `<div class="thumb-other">📄</div>`;
   }
