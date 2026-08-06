@@ -50,6 +50,10 @@ async function selectDir(name) {
     if (data.error) { $('filesList').innerHTML = '<div class="empty">' + data.error + '</div>'; return; }
     if (!data.files.length) { $('filesEmpty').style.display = 'block'; return; }
     $('filesList').innerHTML = data.files.map(renderFile).join('');
+    // 显示批量操作栏，重置选中状态
+    $('batchBar').style.display = 'flex';
+    $('selectAll').checked = false;
+    updateSelectedCount();
   } catch (e) {
     $('filesLoading').textContent = '加载失败: ' + e.message;
   }
@@ -71,6 +75,7 @@ function renderFile(f) {
   }
   return `
     <div class="file-item">
+      <input type="checkbox" class="file-check" data-name="${escapeAttr(f.name)}" onchange="updateSelectedCount()">
       ${thumb}
       <div class="info">
         <div class="fname">${escapeHtml(f.name)}</div>
@@ -80,6 +85,46 @@ function renderFile(f) {
       </div>
     </div>
   `;
+}
+
+// ---- 批量下载 ----
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.file-check').forEach(c => { c.checked = checked; });
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  const n = document.querySelectorAll('.file-check:checked').length;
+  $('selectedCount').textContent = n;
+  $('btnSelected').disabled = n === 0;
+}
+
+async function downloadAll() { await downloadBatch([]); }
+
+async function downloadSelected() {
+  const files = Array.from(document.querySelectorAll('.file-check:checked')).map(c => c.dataset.name);
+  if (!files.length) return;
+  await downloadBatch(files);
+}
+
+async function downloadBatch(files) {
+  const btn = $('btnSelected');
+  try {
+    const res = await fetch('/api/download-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: currentDir, files: files }),
+    });
+    if (!res.ok) { alert('下载失败: ' + res.status); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = currentDir + '.zip';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('下载失败: ' + e.message);
+  }
 }
 
 function backToDirs() { show('dirs'); }

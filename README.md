@@ -36,7 +36,9 @@ DropLAN 是一个轻量的局域网文件互传服务。在电脑（macOS / Wind
 - **自动加时间戳**：文件名带精确到毫秒的时间戳，永不覆盖
 - **响应式布局**：同时适配 PC 浏览器与手机浏览器，PC 端多列网格、手机端单列卡片
 - **图片/视频预览**：上传后即时预览；读取页支持缩略图与在线播放
-- **安全防护**：严格的路径穿越校验，禁止 `/`、`\` 注入，`..` 经 resolve 越界即拒绝
+- **批量下载**：读取页支持勾选多个文件打包 zip 下载，或一键打包整个目录
+- **访问日志**：自动记录每次访问的来源 IP、浏览器类型与请求路径，写入 `access.log`
+- **安全防护**：严格的路径穿越校验，禁止 `/`、`\` 注入，`..` 经 resolve 越界即拒绝；隐藏文件（`.` 开头）不展示且不可访问
 - **无需 App**：手机端无需安装任何应用，浏览器即可使用
 
 ---
@@ -99,7 +101,7 @@ run.bat start
 🌐 手机访问: http://192.168.1.111:8000
 ```
 
-> 也可不通过脚本直接运行 `python3 server.py`，会额外显示保存目录，按 `Ctrl+C` 停止。
+> 也可不通过脚本直接运行 `python3 -u server.py`（`-u` 关闭输出缓冲，使运行日志即时写入 `server.log`），会额外显示保存目录，按 `Ctrl+C` 停止。
 
 ### 3. 访问使用
 
@@ -117,7 +119,7 @@ run.bat start
 ```
 droplan/
 ├── server.py          # 主程序：路由 + API + 启动入口
-├── config.py          # 配置：保存目录 / 监听地址 / 端口
+├── config.py          # 配置：保存目录 / 监听地址 / 端口 / 日志
 ├── run.sh             # 启停脚本（macOS / Linux，start / stop / status）
 ├── run.bat            # 启停脚本（Windows，start / stop / status）
 ├── README.md          # 项目说明
@@ -136,7 +138,13 @@ droplan/
 └── screenshots/       # 三端页面截图（Android / iOS / PC）
 ```
 
-> 运行时会自动生成 `server.log`（运行日志）与 `server.pid`（进程记录）；停止服务后 `server.pid` 自动清除。
+> 运行时会自动生成 `server.log`（运行日志）、`access.log`（访问日志）与 `server.pid`（进程记录）；停止服务后 `server.pid` 自动清除。
+>
+> `access.log` 每行记录一次访问，各字段带中文标注，格式如下：
+> ```
+> 2026-08-06 16:21:21  访问来源IP: 192.168.1.99  请求方式: GET  请求URL路径: /browse  响应状态: 200  浏览器UA: "Mozilla/5.0 (iPhone...)"
+> ```
+> 实时查看来访记录：`tail -f ~/tools/droplan/access.log`
 
 ### 上传文件落盘位置
 
@@ -156,10 +164,29 @@ file-drops/
 所有配置集中在 `config.py`，按需修改后重启服务生效：
 
 ```python
-SAVE_DIR = Path.home() / "Desktop" / "file-drops"  # 文件保存根目录
-HOST = "0.0.0.0"                                     # 监听地址（0.0.0.0 允许局域网访问）
-PORT = 8000                                          # 服务端口
+# 文件保存根目录
+SAVE_DIR = Path.home() / "Desktop" / "file-drops"
+
+# 服务监听地址（0.0.0.0 允许局域网访问）与端口
+HOST = "0.0.0.0"
+PORT = 8000
+
+# 访问日志文件路径与时间格式
+ACCESS_LOG = BASE_DIR / "access.log"
+ACCESS_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+# 访问日志单条记录模板（各字段带中文标注，可按需调整）
+ACCESS_LOG_TEMPLATE = (
+    "访问来源IP: {ip}  "
+    "请求方式: {method}  "
+    "请求URL路径: {path}  "
+    "响应状态: {status}  "
+    '浏览器UA: "{ua}"'
+)
 ```
+
+> 调整 `ACCESS_LOG_TEMPLATE` 可自定义日志字段与格式，无需改动 `server.py`。
+> 静态资源请求（`/static/` 路径）不记录，避免每次页面加载刷屏。
 
 ---
 
@@ -220,3 +247,9 @@ run.bat status     查看运行状态与访问地址
 | 模板 | Jinja2 |
 | 前端 | 原生 HTML5 / CSS3 / JavaScript（无框架） |
 | 传输 | HTTP（局域网点对点，不走云端） |
+
+---
+
+## 💬 反馈与建议
+
+如果您有更好的功能想法或改进建议，欢迎提 [Issues](https://github.com/YGQ8988/droplan/issues)！

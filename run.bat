@@ -32,7 +32,7 @@ if exist "%PID_FILE%" (
 )
 REM 后台启动（合并 stdout/stderr 到日志）
 pushd "%DIR%"
-start "" /b python server.py > server.log 2>&1
+start "" /b python -u server.py > server.log 2>&1
 popd
 timeout /t 2 /nobreak >nul
 REM 查询 python 跑 server.py 的 PID

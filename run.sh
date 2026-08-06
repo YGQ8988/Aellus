@@ -19,7 +19,7 @@ case "${1:-start}" in
       echo "服务已在运行 (PID: $(cat "$PID_FILE"))"
       exit 0
     fi
-    nohup python3 "$DIR/server.py" > "$LOG_FILE" 2>&1 &
+    nohup python3 -u "$DIR/server.py" > "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     sleep 1.5
     if kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then

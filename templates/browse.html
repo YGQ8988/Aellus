@@ -27,6 +27,16 @@
         <div style="font-size:13px;color:var(--text-2);">当前目录</div>
         <div id="currentDir" style="font-size:16px;font-weight:600;margin-top:2px;word-break:break-all;"></div>
       </div>
+      <div class="batch-bar" id="batchBar" style="display:none;">
+        <label class="select-all">
+          <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)">
+          <span>全选</span>
+        </label>
+        <div class="batch-actions">
+          <button class="btn-batch btn-selected" id="btnSelected" onclick="downloadSelected()" disabled>下载选中 (<span id="selectedCount">0</span>)</button>
+          <button class="btn-batch btn-all" onclick="downloadAll()">全部下载</button>
+        </div>
+      </div>
       <div class="loading" id="filesLoading">加载中...</div>
       <div class="files-grid" id="filesList"></div>
       <div class="empty" id="filesEmpty" style="display:none;"><span class="emoji">📂</span>该目录下暂无文件</div>

@@ -16,8 +16,12 @@ DropLAN 文件互传服务
 
 from __future__ import annotations
 
+import logging
 import mimetypes
+import os
 import socket
+import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -27,14 +31,54 @@ from fastapi import FastAPI, UploadFile, File, Form, Query, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
 
-from config import SAVE_DIR, HOST, PORT
-
-BASE_DIR = Path(__file__).parent
+from config import (
+    BASE_DIR,
+    SAVE_DIR,
+    HOST,
+    PORT,
+    ACCESS_LOG,
+    ACCESS_LOG_DATEFMT,
+    ACCESS_LOG_TEMPLATE,
+)
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+# ----------------------------------------------------------------------
+# 访问日志：记录 来源IP / 请求方式 / 路径 / 响应状态 / 浏览器UA，写入 access.log
+# 配置见 config.py
+# ----------------------------------------------------------------------
+_access_logger = logging.getLogger("droplan.access")
+_access_logger.setLevel(logging.INFO)
+_h = logging.FileHandler(ACCESS_LOG, encoding="utf-8")
+_h.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt=ACCESS_LOG_DATEFMT))
+_access_logger.addHandler(_h)
+
+
+def _client_ip(request: Request) -> str:
+    """获取真实来源 IP：优先 X-Forwarded-For 首段（反代场景），否则直连 IP。"""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "-"
+
+
+@app.middleware("http")
+async def access_log_middleware(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    # 静态资源（CSS/JS/图标）不记录，避免每次页面加载刷屏
+    if not path.startswith("/static/"):
+        ip = _client_ip(request)
+        ua = request.headers.get("user-agent", "-")
+        _access_logger.info(ACCESS_LOG_TEMPLATE.format(
+            ip=ip, method=request.method, path=path,
+            status=response.status_code, ua=ua,
+        ))
+    return response
 
 
 # ----------------------------------------------------------------------
@@ -150,6 +194,56 @@ async def download(dir: str = Query(...), file: str = Query(...)):
         return JSONResponse({"error": "文件不存在或非法"}, status_code=400)
     media_type = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
     return FileResponse(f, filename=f.name, media_type=media_type)
+
+
+@app.post("/api/download-batch")
+async def download_batch(request: Request):
+    """批量打包下载：files 为空则打包目录下全部非隐藏文件。返回 zip。"""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "请求格式错误"}, status_code=400)
+    dir_name = data.get("dir", "") or ""
+    selected = data.get("files") or []
+
+    d = _safe_subpath(SAVE_DIR, dir_name)
+    if d is None or not d.exists() or not d.is_dir():
+        return JSONResponse({"error": "目录不存在或非法"}, status_code=400)
+
+    # 确定要打包的文件：selected 为空取全部非隐藏文件；否则逐个校验
+    if not selected:
+        files_to_zip = [f for f in d.iterdir() if f.is_file() and not f.name.startswith('.')]
+    else:
+        files_to_zip = []
+        for name in selected:
+            f = _safe_subpath(d, name)
+            if f and f.exists() and f.is_file():
+                files_to_zip.append(f)
+
+    if not files_to_zip:
+        return JSONResponse({"error": "没有可下载的文件"}, status_code=400)
+
+    # 写入临时 zip 文件，响应结束后由 BackgroundTask 自动删除
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp.close()
+    try:
+        with zipfile.ZipFile(tmp.name, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in files_to_zip:
+                zf.write(f, f.name)
+    except Exception:
+        os.unlink(tmp.name)
+        return JSONResponse({"error": "打包失败"}, status_code=500)
+
+    print(
+        f"[{datetime.now().strftime('%H:%M:%S')}] "
+        f"📦 打包下载 | {dir_name} | {len(files_to_zip)} 个文件"
+    )
+    return FileResponse(
+        tmp.name,
+        media_type="application/zip",
+        filename=f"{dir_name}.zip",
+        background=BackgroundTask(os.remove, tmp.name),
+    )
 
 
 # ----------------------------------------------------------------------
