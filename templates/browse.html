@@ -33,8 +33,8 @@
           <span>全选</span>
         </label>
         <div class="batch-actions">
-          <button class="btn-batch btn-selected" id="btnSelected" onclick="downloadSelected()" disabled>下载选中 (<span id="selectedCount">0</span>)</button>
-          <button class="btn-batch btn-all" onclick="downloadAll()">全部下载</button>
+          <button class="btn-batch btn-selected" id="btnSelected" onclick="downloadSelected(this)" disabled>下载选中 (<span id="selectedCount">0</span>)</button>
+          <button class="btn-batch btn-all" onclick="downloadAll(this)">全部下载</button>
         </div>
       </div>
       <div class="loading" id="filesLoading">加载中...</div>
@@ -43,6 +43,21 @@
     </div>
 
     <div class="author-tip">💡 The Power From Ai! Directed by Yang Guangqing!</div>
+  </div>
+
+  <!-- 灯箱预览 -->
+  <div id="lightbox" class="lightbox">
+    <div class="lb-backdrop" onclick="closeLightbox()"></div>
+    <img id="lbImg" class="lb-media" alt="">
+    <video id="lbVideo" class="lb-media" controls></video>
+    <button id="lbPrev" class="lb-nav lb-prev" onclick="lbNav(-1)">‹</button>
+    <button id="lbNext" class="lb-nav lb-next" onclick="lbNav(1)">›</button>
+    <button class="lb-close" onclick="closeLightbox()">✕</button>
+    <div class="lb-bar">
+      <span id="lbCounter"></span>
+      <span id="lbName"></span>
+      <button id="lbDownload" class="lb-download" onclick="lbDownload()">⬇ 下载</button>
+    </div>
   </div>
   <script src="/static/browse.js"></script>
 </body>

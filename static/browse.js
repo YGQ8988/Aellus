@@ -1,6 +1,11 @@
-// 读取页逻辑：选目录 → 列文件 → 下载
+// 读取页逻辑：选目录 → 列文件 → 下载 / 预览
 const $ = id => document.getElementById(id);
+const IMG_EXTS = ['png','jpg','jpeg','gif','webp','bmp','heic'];
+const VID_EXTS = ['mp4','mov','m4v','webm'];
+
 let currentDir = '';
+let previewFiles = []; // [{name, previewUrl, ext}, ...] 当前目录可预览文件
+let lbIndex = 0;       // 灯箱当前索引
 
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
@@ -49,6 +54,14 @@ async function selectDir(name) {
     $('filesLoading').style.display = 'none';
     if (data.error) { $('filesList').innerHTML = '<div class="empty">' + data.error + '</div>'; return; }
     if (!data.files.length) { $('filesEmpty').style.display = 'block'; return; }
+    // 构建可预览文件列表（图片 + 视频），供灯箱左右切换
+    previewFiles = data.files.filter(f => {
+      const ext = f.name.split('.').pop().toLowerCase();
+      return IMG_EXTS.includes(ext) || VID_EXTS.includes(ext);
+    }).map(f => {
+      const u = '/api/download?dir=' + encodeURIComponent(name) + '&file=' + encodeURIComponent(f.name);
+      return { name: f.name, previewUrl: u + '&inline=1', ext: f.name.split('.').pop().toLowerCase() };
+    });
     $('filesList').innerHTML = data.files.map(renderFile).join('');
     // 显示批量操作栏，重置选中状态
     $('batchBar').style.display = 'flex';
@@ -64,13 +77,17 @@ function renderFile(f) {
   const previewUrl = url + '&inline=1';
   const meta = formatSize(f.size) + ' · ' + formatTime(f.mtime);
   const ext = f.name.split('.').pop().toLowerCase();
+  const isImg = IMG_EXTS.includes(ext);
+  const isVid = VID_EXTS.includes(ext);
   let thumb, preview = '';
-  if (['png','jpg','jpeg','gif','webp','bmp','heic'].includes(ext)) {
-    thumb = `<img class="thumb" src="${url}" alt="" loading="lazy">`;
-    preview = `<a class="preview-link" href="${previewUrl}" target="_blank">预览</a>`;
-  } else if (['mp4','mov','m4v','webm'].includes(ext)) {
-    thumb = `<video class="thumb-video" src="${url}" preload="metadata"></video>`;
-    preview = `<a class="preview-link" href="${previewUrl}" target="_blank">播放</a>`;
+  if (isImg || isVid) {
+    const idx = previewFiles.findIndex(p => p.name === f.name);
+    if (isImg) {
+      thumb = `<img class="thumb" src="${url}" alt="" loading="lazy" style="cursor:pointer" onclick="openLightbox(${idx})">`;
+    } else {
+      thumb = `<video class="thumb-video" src="${url}" preload="metadata" style="cursor:pointer" onclick="openLightbox(${idx})"></video>`;
+    }
+    preview = `<a class="preview-link" onclick="openLightbox(${idx})">${isImg ? '预览' : '播放'}</a>`;
   } else {
     thumb = `<div class="thumb-other">📄</div>`;
   }
@@ -81,7 +98,7 @@ function renderFile(f) {
       <div class="info">
         <div class="fname">${escapeHtml(f.name)}</div>
         <div class="fmeta">${meta}</div>
-        <a class="dl-btn" href="${url}" download="${escapeAttr(f.name)}">下载</a>
+        <a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="onSingleDownload(this)">下载</a>
         ${preview}
       </div>
     </div>
@@ -100,16 +117,44 @@ function updateSelectedCount() {
   $('btnSelected').disabled = n === 0;
 }
 
-async function downloadAll() { await downloadBatch([]); }
+async function downloadAll(btn) { await downloadBatch([], btn); }
 
-async function downloadSelected() {
+async function downloadSelected(btn) {
   const files = Array.from(document.querySelectorAll('.file-check:checked')).map(c => c.dataset.name);
   if (!files.length) return;
-  await downloadBatch(files);
+  await downloadBatch(files, btn);
 }
 
-async function downloadBatch(files) {
-  const btn = $('btnSelected');
+// 单文件下载：fetch + blob，下载完成在 finally 立即恢复按钮，精确感知不靠定时器猜
+async function onSingleDownload(btn) {
+  if (btn.classList.contains('loading')) return;
+  btn.classList.add('loading');
+  btn.innerHTML = '<span class="spinner"></span>下载中';
+  try {
+    const res = await fetch(btn.dataset.url);
+    if (!res.ok) { alert('下载失败: ' + res.status); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = btn.dataset.name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('下载失败: ' + e.message);
+  } finally {
+    btn.classList.remove('loading');
+    btn.textContent = '下载';
+  }
+}
+
+async function downloadBatch(files, triggerBtn) {
+  const btns = document.querySelectorAll('.btn-batch');
+  const states = Array.from(btns).map(b => ({ el: b, html: b.innerHTML }));
+  btns.forEach(b => { b.disabled = true; });
+  if (triggerBtn) {
+    triggerBtn.classList.add('loading');
+    triggerBtn.innerHTML = '<span class="spinner"></span>下载中...';
+  }
   try {
     const res = await fetch('/api/download-batch', {
       method: 'POST',
@@ -125,7 +170,87 @@ async function downloadBatch(files) {
     URL.revokeObjectURL(a.href);
   } catch (e) {
     alert('下载失败: ' + e.message);
+  } finally {
+    btns.forEach(b => { b.classList.remove('loading'); b.innerHTML = states.find(s => s.el === b).html; });
+    updateSelectedCount();
   }
+}
+
+// ---- 灯箱预览：左右切换 + 键盘导航 ----
+function openLightbox(idx) {
+  if (idx < 0 || idx >= previewFiles.length) return;
+  lbIndex = idx;
+  showLbImage();
+  $('lightbox').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  document.addEventListener('keydown', lbKeyHandler);
+}
+
+function closeLightbox() {
+  $('lightbox').style.display = 'none';
+  $('lbVideo').pause();
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', lbKeyHandler);
+}
+
+function lbNav(delta) {
+  lbIndex = (lbIndex + delta + previewFiles.length) % previewFiles.length;
+  showLbImage();
+}
+
+function showLbImage() {
+  const f = previewFiles[lbIndex];
+  const isVid = VID_EXTS.includes(f.ext);
+  const lbImg = $('lbImg');
+  const lbVideo = $('lbVideo');
+  lbImg.style.display = isVid ? 'none' : 'block';
+  lbVideo.style.display = isVid ? 'block' : 'none';
+  if (isVid) { lbVideo.src = f.previewUrl; }
+  else { lbImg.src = f.previewUrl; }
+  $('lbCounter').textContent = `${lbIndex + 1} / ${previewFiles.length}`;
+  $('lbName').textContent = f.name;
+  // 仅 1 个文件时隐藏左右箭头
+  const showNav = previewFiles.length > 1;
+  $('lbPrev').style.display = showNav ? 'flex' : 'none';
+  $('lbNext').style.display = showNav ? 'flex' : 'none';
+  // 重置下载按钮状态
+  const dlBtn = $('lbDownload');
+  dlBtn.classList.remove('loading');
+  dlBtn.disabled = false;
+  dlBtn.innerHTML = '⬇ 下载';
+}
+
+// 灯箱内下载当前文件：fetch + blob，下载中禁用按钮显示 loading
+async function lbDownload() {
+  const btn = $('lbDownload');
+  if (btn.classList.contains('loading')) return;
+  const f = previewFiles[lbIndex];
+  const url = f.previewUrl.replace('&inline=1', '');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>下载中';
+  try {
+    const res = await fetch(url);
+    if (!res.ok) { alert('下载失败: ' + res.status); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = f.name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('下载失败: ' + e.message);
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.innerHTML = '⬇ 下载';
+  }
+}
+
+function lbKeyHandler(e) {
+  if (e.key === 'ArrowLeft') lbNav(-1);
+  else if (e.key === 'ArrowRight') lbNav(1);
+  else if (e.key === 'Escape') closeLightbox();
 }
 
 function backToDirs() { show('dirs'); }
