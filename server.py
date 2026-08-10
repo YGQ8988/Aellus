@@ -41,6 +41,8 @@ from config import (
     ACCESS_LOG,
     ACCESS_LOG_DATEFMT,
     ACCESS_LOG_TEMPLATE,
+    OPERATION_LOG,
+    OPERATION_LOG_DATEFMT,
 )
 
 app = FastAPI()
@@ -56,6 +58,16 @@ _access_logger.setLevel(logging.INFO)
 _h = logging.FileHandler(ACCESS_LOG, encoding="utf-8")
 _h.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt=ACCESS_LOG_DATEFMT))
 _access_logger.addHandler(_h)
+
+# ----------------------------------------------------------------------
+# 操作日志：记录 上传成功 / 批量打包下载，写入 operation.log
+# 配置见 config.py
+# ----------------------------------------------------------------------
+_op_logger = logging.getLogger("droplan.operation")
+_op_logger.setLevel(logging.INFO)
+_op_h = logging.FileHandler(OPERATION_LOG, encoding="utf-8")
+_op_h.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt=OPERATION_LOG_DATEFMT))
+_op_logger.addHandler(_op_h)
 
 
 def _client_ip(request: Request) -> str:
@@ -136,10 +148,7 @@ async def upload(
                 size += len(chunk)
 
         results.append({"name": filename, "size": size})
-        print(
-            f"[{datetime.now().strftime('%H:%M:%S')}] "
-            f"✅ {safe_device} | {filename} | {size / 1048576:.2f}MB"
-        )
+        _op_logger.info(f"✅ {safe_device} | {filename} | {size / 1048576:.2f}MB")
 
     return JSONResponse({"ok": True, "files": results, "dir": str(device_dir)})
 
@@ -237,10 +246,7 @@ async def download_batch(request: Request):
         os.unlink(tmp.name)
         return JSONResponse({"error": "打包失败"}, status_code=500)
 
-    print(
-        f"[{datetime.now().strftime('%H:%M:%S')}] "
-        f"📦 打包下载 | {dir_name} | {len(files_to_zip)} 个文件"
-    )
+    _op_logger.info(f"📦 打包下载 | {dir_name} | {len(files_to_zip)} 个文件")
     return FileResponse(
         tmp.name,
         media_type="application/zip",

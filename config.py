@@ -32,3 +32,9 @@ ACCESS_LOG_TEMPLATE = (
     "响应状态: {status}  "
     '浏览器UA: "{ua}"'
 )
+
+# 操作日志文件路径（记录 上传成功 / 批量打包下载）
+OPERATION_LOG = BASE_DIR / "operation.log"
+
+# 操作日志时间格式
+OPERATION_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
