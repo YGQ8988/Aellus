@@ -2,6 +2,12 @@
 #dirsView, #filesView { display: none; }
 #dirsView.active, #filesView.active { display: block; }
 
+/* 文件视图顶部导航：返回首页(左) + 返回目录列表(右) 两端对齐 */
+.files-nav { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.files-nav .nav-back { margin-bottom: 0; }
+.cur-dir { font-size: 13px; color: var(--text-2); margin-bottom: 14px; word-break: break-all; }
+.cur-dir #currentDir { color: var(--text); font-weight: 600; }
+
 .dirs-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .dir-card {
   background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
@@ -10,7 +16,8 @@
 }
 .dir-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
 .dir-card:active { background: #f0f0f5; transform: translateY(0); }
-.dir-card .dicon { font-size: 32px; }
+.dir-card .dicon { width: 34px; height: 34px; color: var(--blue); flex-shrink: 0; display: flex; }
+.dir-card .dicon svg { width: 100%; height: 100%; }
 .dir-card .dname { font-size: 16px; font-weight: 600; word-break: break-all; }
 .dir-card .dcount { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 .dir-card .arrow { margin-left: auto; color: #c7c7cc; font-size: 22px; }
@@ -24,13 +31,14 @@
 .file-item:hover { box-shadow: var(--shadow-pc); }
 .file-item .thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: #f2f2f7; flex-shrink: 0; }
 .file-item .thumb-video { width: 72px; height: 72px; border-radius: 8px; background: #000; flex-shrink: 0; object-fit: cover; }
-.file-item .thumb-other { width: 72px; height: 72px; border-radius: 8px; background: #f2f2f7; display: flex; align-items: center; justify-content: center; font-size: 32px; flex-shrink: 0; }
+.file-item .thumb-other { width: 72px; height: 72px; border-radius: 8px; background: #f2f2f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.file-item .thumb-other svg { width: 36px; height: 36px; color: var(--text-2); }
 .file-item .info { flex: 1; min-width: 0; }
 .file-item .fname { font-size: 14px; color: var(--text); word-break: break-all; line-height: 1.4; }
 .file-item .fmeta { font-size: 12px; color: var(--text-2); margin-top: 4px; }
-.file-item .dl-btn { display: inline-block; margin-top: 10px; padding: 7px 16px; background: var(--blue); color: #fff; border-radius: 7px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
+.file-item .dl-btn { display: inline-block; margin-top: 10px; padding: 7px 16px; background: var(--blue); color: #fff; border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
 .file-item .dl-btn:hover { opacity: .9; }
-.file-item .preview-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: #f2f2f7; color: var(--blue); border-radius: 7px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
+.file-item .preview-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: #f2f2f7; color: var(--blue); border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
 
 /* 灯箱预览 */
 .lightbox { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; }
@@ -43,7 +51,7 @@
 .lb-close { position: absolute; top: 16px; right: 16px; z-index: 2; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; border: none; font-size: 18px; cursor: pointer; transition: background .15s; }
 .lb-close:hover { background: rgba(255,255,255,.32); }
 .lb-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; gap: 16px; align-items: center; max-width: 92vw; padding: 8px 16px; background: rgba(0,0,0,.5); border-radius: 8px; color: #fff; font-size: 13px; }
-.lb-download { flex-shrink: 0; padding: 6px 14px; border-radius: 6px; background: var(--blue); color: #fff; border: none; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
+.lb-download { flex-shrink: 0; padding: 6px 14px; border-radius: 8px; background: var(--blue); color: #fff; border: none; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
 .lb-download:hover { opacity: .88; }
 .lb-download:disabled { opacity: .6; cursor: not-allowed; }
 .lb-download.loading { pointer-events: none; }

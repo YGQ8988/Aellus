@@ -8,11 +8,12 @@
 }
 .entry:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
 .entry:active { transform: translateY(-1px); }
-.entry .icon { font-size: 56px; margin-bottom: 14px; display: block; }
+.entry .icon { width: 56px; height: 56px; margin: 0 auto 14px; display: block; color: var(--blue); }
 .entry .title { font-size: 20px; font-weight: 700; }
 .entry .desc { font-size: 14px; color: var(--text-2); margin-top: 8px; }
 .entry.upload { border-top: 4px solid var(--blue); }
 .entry.browse { border-top: 4px solid var(--green); }
+.entry.browse .icon { color: var(--green); }
 .footer-info { margin-top: 28px; text-align: center; font-size: 12px; color: var(--text-2); line-height: 1.8; }
 
 @media (min-width: 768px) {
@@ -20,7 +21,7 @@
   .entry { padding: 56px 32px; border-top: none; }
   .entry.upload { border-left: 5px solid var(--blue); }
   .entry.browse { border-left: 5px solid var(--green); }
-  .entry .icon { font-size: 76px; margin-bottom: 20px; }
+  .entry .icon { width: 76px; height: 76px; margin-bottom: 20px; }
   .entry .title { font-size: 26px; }
   .entry .desc { font-size: 15px; margin-top: 12px; }
 }

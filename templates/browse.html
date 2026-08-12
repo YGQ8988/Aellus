@@ -10,23 +10,21 @@
 </head>
 <body>
   <div class="container">
-    <a class="nav-back" href="/">← 返回首页</a>
-    <h1>📂 读取文件</h1>
-
     <!-- 目录列表 -->
     <div id="dirsView" class="active">
+      <a class="nav-back" href="/">返回首页</a>
       <div class="loading" id="dirsLoading">加载中...</div>
       <div class="dirs-grid" id="dirsList"></div>
-      <div class="empty" id="dirsEmpty" style="display:none;"><span class="emoji">📭</span>暂无目录，先去上传一些文件吧</div>
+      <div class="empty" id="dirsEmpty" style="display:none;"><span class="emoji"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>暂无目录，先去上传一些文件吧</div>
     </div>
 
     <!-- 文件列表 -->
     <div id="filesView">
-      <a class="nav-back" href="javascript:backToDirs()">← 返回目录列表</a>
-      <div class="card" style="padding:12px 16px;">
-        <div style="font-size:13px;color:var(--text-2);">当前目录</div>
-        <div id="currentDir" style="font-size:16px;font-weight:600;margin-top:2px;word-break:break-all;"></div>
+      <div class="files-nav">
+        <a class="nav-back" href="/">返回首页</a>
+        <a class="nav-back" href="javascript:backToDirs()">返回目录列表</a>
       </div>
+      <div class="cur-dir">当前目录 · <span id="currentDir"></span></div>
       <div class="batch-bar" id="batchBar" style="display:none;">
         <label class="select-all">
           <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)">
@@ -39,7 +37,7 @@
       </div>
       <div class="loading" id="filesLoading">加载中...</div>
       <div class="files-grid" id="filesList"></div>
-      <div class="empty" id="filesEmpty" style="display:none;"><span class="emoji">📂</span>该目录下暂无文件</div>
+      <div class="empty" id="filesEmpty" style="display:none;"><span class="emoji"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>该目录下暂无文件</div>
     </div>
 
     <div class="author-tip">💡 The Power From Ai! Directed by Yang Guangqing!</div>
@@ -56,7 +54,7 @@
     <div class="lb-bar">
       <span id="lbCounter"></span>
       <span id="lbName"></span>
-      <button id="lbDownload" class="lb-download" onclick="lbDownload()">⬇ 下载</button>
+      <button id="lbDownload" class="lb-download" onclick="lbDownload()"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 下载</button>
     </div>
   </div>
   <script src="/static/browse.js"></script>

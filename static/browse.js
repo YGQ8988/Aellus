@@ -3,6 +3,11 @@ const $ = id => document.getElementById(id);
 const IMG_EXTS = ['png','jpg','jpeg','gif','webp','bmp','heic'];
 const VID_EXTS = ['mp4','mov','m4v','webm'];
 
+// 图标 SVG（跨平台渲染一致）
+const SVG_FOLDER  = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+const SVG_FILE    = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+const SVG_DOWNLOAD = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+
 let currentDir = '';
 let previewFiles = []; // [{name, previewUrl, ext}, ...] 当前目录可预览文件
 let lbIndex = 0;       // 灯箱当前索引
@@ -27,7 +32,7 @@ async function loadDirs() {
     }
     $('dirsList').innerHTML = data.dirs.map(d => `
       <div class="dir-card" onclick="selectDir('${escapeHtml(d.name)}')">
-        <div class="dicon">📁</div>
+        <div class="dicon">${SVG_FOLDER}</div>
         <div>
           <div class="dname">${escapeHtml(d.name)}</div>
           <div class="dcount">${d.count} 个文件</div>
@@ -89,7 +94,7 @@ function renderFile(f) {
     }
     preview = `<a class="preview-link" onclick="openLightbox(${idx})">${isImg ? '预览' : '播放'}</a>`;
   } else {
-    thumb = `<div class="thumb-other">📄</div>`;
+    thumb = `<div class="thumb-other">${SVG_FILE}</div>`;
   }
   return `
     <div class="file-item">
@@ -217,7 +222,7 @@ function showLbImage() {
   const dlBtn = $('lbDownload');
   dlBtn.classList.remove('loading');
   dlBtn.disabled = false;
-  dlBtn.innerHTML = '⬇ 下载';
+  dlBtn.innerHTML = SVG_DOWNLOAD + ' 下载';
 }
 
 // 灯箱内下载当前文件：fetch + blob，下载中禁用按钮显示 loading
@@ -243,7 +248,7 @@ async function lbDownload() {
   } finally {
     btn.classList.remove('loading');
     btn.disabled = false;
-    btn.innerHTML = '⬇ 下载';
+    btn.innerHTML = SVG_DOWNLOAD + ' 下载';
   }
 }
 
