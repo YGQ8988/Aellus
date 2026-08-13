@@ -1,11 +1,11 @@
 //go:build !darwin
 
 // isTerminal 的非 macOS 实现：判断 stdin 是否为终端（交互模式）。
-package main
+package platform
 
 import "os"
 
-func isTerminal() bool {
+func IsTerminal() bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil {
 		return false

@@ -1,5 +1,5 @@
 // 日志：访问日志中间件 + 操作日志。
-package main
+package app
 
 import (
 	"fmt"
@@ -19,11 +19,11 @@ var (
 // 日志时间格式。
 const logDateFmt = "2006-01-02 15:04:05"
 
-// initLoggers 打开日志文件（追加写），初始化两个 logger。
+// InitLoggers 打开日志文件（追加写），初始化两个 logger。
 //
 // logger 的 flags=0 表示不自动加时间前缀，时间由消息里手动拼，
 // 格式为「时间 + 两个空格 + 消息」。
-func initLoggers() {
+func InitLoggers() {
 	accessLogger = newFileLogger(AccessLog)
 	opLogger = newFileLogger(OpLog)
 }
@@ -95,9 +95,9 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
-// accessLogMiddleware 记录每个非静态资源请求的访问日志。
+// AccessLogMiddleware 记录每个非静态资源请求的访问日志。
 // 静态资源（/static/）不记录，避免每次页面加载刷屏。
-func accessLogMiddleware(next http.Handler) http.Handler {
+func AccessLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)

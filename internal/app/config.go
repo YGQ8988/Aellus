@@ -1,5 +1,5 @@
 // 配置：保存目录、监听地址、端口、日志路径。
-package main
+package app
 
 import (
 	"os"
@@ -22,10 +22,10 @@ var (
 	ExeDir    string // 可执行文件所在目录（日志写这里）
 )
 
-// initConfig 在 main 启动早期初始化路径配置。
+// InitConfig 在 main 启动早期初始化路径配置。
 //
 // 日志写在 exe 所在目录而非工作目录，这样双击运行时日志与程序在一起。
-func initConfig() {
+func InitConfig() {
 	if exe, err := os.Executable(); err == nil {
 		ExeDir = filepath.Dir(exe)
 	} else {

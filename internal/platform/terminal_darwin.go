@@ -5,7 +5,7 @@
 // 双击 .app 启动时 stdin 是 /dev/null——它是字符设备(char device)但不是 TTY，
 // 用 os.ModeCharDevice 判断会误判为终端，导致弹通知等逻辑失效。
 // ioctl(TIOCGETA) 只对真正的 TTY 成功，/dev/null 会返回错误，判断准确。
-package main
+package platform
 
 import (
 	"os"
@@ -13,7 +13,7 @@ import (
 	"unsafe"
 )
 
-func isTerminal() bool {
+func IsTerminal() bool {
 	var termios syscall.Termios
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_IOCTL,

@@ -146,27 +146,30 @@ nohup ./aellus --dir ~/Desktop/aellus-drops --port 8000 > server.log 2>&1 &
 ```
 aellus/
 ├── main.go              # 入口：参数解析 / 交互输入 / 获取IP / 启动服务
-├── config.go            # 配置：保存目录 / 监听地址 / 端口 / 日志路径
-├── handlers.go          # 路由与处理：页面 / 上传 / 列表 / 下载 / 批量打包 / 删除
-├── safepath.go          # 路径穿越校验 + 设备名过滤
-├── lanip.go             # 局域网 IP 获取（UDP socket 连接法，跨平台无系统命令）
-├── logmw.go             # 访问日志中间件 + 操作日志
-│
-├── console_windows.go   # Windows 控制台字体切换（解决中文显示方框）
-├── console_other.go     # 非 Windows 控制台（空实现）
-├── messages_other.go    # 控制台文案：中文（Windows / macOS）
-├── messages_linux.go    # 控制台文案：英文（Linux，路由器无中文字体）
-├── menubar_darwin.go    # macOS 菜单栏常驻（cgo：状态栏图标 + 菜单 + 通知）
-├── menubar_stub.go      # 菜单栏占位（非 cgo / 非 macOS）
-├── notify_darwin.go     # macOS 系统通知
-├── notify_other.go      # 通知占位（非 macOS）
-├── terminal_darwin.go   # TTY 判断（macOS，ioctl 精确识别终端）
-├── terminal_other.go    # TTY 判断（其他平台）
-│
 ├── go.mod               # Go 模块定义
 ├── build.sh             # 交叉编译脚本（9 架构三端命令行二进制）
 ├── build-mac-app.sh     # macOS .app 打包（通用二进制 + 图标 + 菜单栏）
 ├── Makefile             # make build / clean / run / vet
+│
+├── internal/            # 内部实现（按职责分包）
+│   ├── app/             # 核心业务逻辑
+│   │   ├── config.go    #   配置：保存目录 / 监听地址 / 端口 / 日志路径
+│   │   ├── handlers.go  #   路由与处理：页面 / 上传 / 列表 / 下载 / 批量打包 / 删除
+│   │   ├── safepath.go  #   路径穿越校验 + 设备名过滤
+│   │   ├── lanip.go     #   局域网 IP 获取（UDP socket 连接法）
+│   │   └── logmw.go     #   访问日志中间件 + 操作日志
+│   └── platform/        # 平台差异抽象（build tag 隔离）
+│       ├── console_windows.go   #   Windows 控制台字体切换（解决中文方框）
+│       ├── console_other.go     #   非 Windows 控制台（空实现）
+│       ├── messages_other.go    #   控制台文案：中文（Windows / macOS）
+│       ├── messages_linux.go    #   控制台文案：英文（Linux，路由器无中文字体）
+│       ├── menubar_darwin.go    #   macOS 菜单栏常驻（cgo：状态栏 + 菜单 + 通知）
+│       ├── menubar_stub.go      #   菜单栏占位（非 cgo / 非 macOS）
+│       ├── notify_darwin.go     #   macOS 系统通知
+│       ├── notify_other.go      #   通知占位（非 macOS）
+│       ├── terminal_darwin.go   #   TTY 判断（macOS，ioctl 精确识别终端）
+│       └── terminal_other.go    #   TTY 判断（其他平台）
+│
 ├── assets/              # 前端资源（//go:embed 编译进二进制）
 │   ├── embed.go         #   embed 指令：打包 templates/ + static/
 │   ├── templates/       #   HTML 模板（home / upload / browse）

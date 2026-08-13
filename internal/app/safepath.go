@@ -1,5 +1,5 @@
 // 路径安全：设备名过滤 + 子路径穿越校验。
-package main
+package app
 
 import (
 	"path/filepath"
