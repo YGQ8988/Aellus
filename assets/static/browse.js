@@ -176,7 +176,7 @@ async function downloadBatch(files, triggerBtn) {
   } catch (e) {
     alert('下载失败: ' + e.message);
   } finally {
-    btns.forEach(b => { b.classList.remove('loading'); b.innerHTML = states.find(s => s.el === b).html; });
+    btns.forEach(b => { b.disabled = false; b.classList.remove('loading'); b.innerHTML = states.find(s => s.el === b).html; });
     updateSelectedCount();
   }
 }
