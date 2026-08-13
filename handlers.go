@@ -117,6 +117,9 @@ func registerRoutes() http.Handler {
 	mux.HandleFunc("/api/download", handleDownload)
 	mux.HandleFunc("/api/download-batch", handleDownloadBatch)
 
+	// 删除 API
+	mux.HandleFunc("/api/delete", handleDelete)
+
 	return mux
 }
 
@@ -445,4 +448,44 @@ func handleDownloadBatch(w http.ResponseWriter, r *http.Request) {
 	if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("warn: 删除临时 zip 失败: %v", err)
 	}
+}
+
+// handleDelete POST /api/delete  JSON: {"dir":"","files":["a","b"]}}
+// 逐个删除文件，返回成功/失败列表。复用 safeSubpath 防路径穿越。
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "Method Not Allowed"})
+		return
+	}
+	var req struct {
+		Dir   string   `json:"dir"`
+		Files []string `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
+		return
+	}
+	d, ok := safeSubpath(SaveDir, req.Dir)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "目录不存在或非法"})
+		return
+	}
+	deleted := make([]string, 0, len(req.Files))
+	failed := make([]map[string]any, 0)
+	for _, name := range req.Files {
+		f, ok := safeSubpath(d, name)
+		if !ok {
+			failed = append(failed, map[string]any{"name": name, "error": "非法路径"})
+			continue
+		}
+		if err := os.Remove(f); err != nil {
+			failed = append(failed, map[string]any{"name": name, "error": err.Error()})
+			continue
+		}
+		deleted = append(deleted, name)
+	}
+	if len(deleted) > 0 {
+		logOp("🗑️ 删除 | %s | %d 个文件: %s", req.Dir, len(deleted), strings.Join(deleted, ", "))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted, "failed": failed})
 }

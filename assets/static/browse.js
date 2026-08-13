@@ -7,6 +7,7 @@ const VID_EXTS = ['mp4','mov','m4v','webm'];
 const SVG_FOLDER  = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
 const SVG_FILE    = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 const SVG_DOWNLOAD = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+const SVG_TRASH    = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
 let currentDir = '';
 let previewFiles = []; // [{name, previewUrl, ext}, ...] 当前目录可预览文件
@@ -105,6 +106,7 @@ function renderFile(f) {
         <div class="fmeta">${meta}</div>
         <a class="dl-btn" href="${url}" download="${escapeAttr(f.name)}">下载</a>
         ${preview}
+        <a class="del-link" data-name="${escapeAttr(f.name)}" onclick="deleteFile(this.dataset.name, this)">删除</a>
       </div>
     </div>
   `;
@@ -120,6 +122,7 @@ function updateSelectedCount() {
   const n = document.querySelectorAll('.file-check:checked').length;
   $('selectedCount').textContent = n;
   $('btnSelected').disabled = n === 0;
+  $('btnDeleteSelected').disabled = n === 0;
 }
 
 async function downloadAll(btn) { await downloadBatch([], btn); }
@@ -178,6 +181,64 @@ async function downloadBatch(files, triggerBtn) {
   }, 2000);
 }
 
+// ---- 删除 ----
+// 调用后端 /api/delete，成功后重新加载当前目录文件列表。
+async function deleteFiles(names) {
+  const res = await fetch('/api/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dir: currentDir, files: names })
+  });
+  const data = await res.json();
+  return data;
+}
+
+// 删除单个文件（文件列表页）
+async function deleteFile(name, btn) {
+  if (!confirm(`确认删除文件 “${name}” 吗？删除后不可恢复。`)) return;
+  if (btn) { btn.classList.add('loading'); btn.textContent = '删除中'; }
+  try {
+    const data = await deleteFiles([name]);
+    if (data.ok && data.deleted.includes(name)) {
+      selectDir(currentDir);  // 重新加载列表
+    } else {
+      alert('删除失败: ' + (data.failed && data.failed[0] ? data.failed[0].error : '未知错误'));
+      if (btn) { btn.classList.remove('loading'); btn.textContent = '删除'; }
+    }
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+    if (btn) { btn.classList.remove('loading'); btn.textContent = '删除'; }
+  }
+}
+
+// 删除选中的文件（批量操作栏）
+async function deleteSelected(btn) {
+  const files = Array.from(document.querySelectorAll('.file-check:checked')).map(c => c.dataset.name);
+  if (!files.length) return;
+  if (!confirm(`确认删除选中的 ${files.length} 个文件吗？删除后不可恢复。`)) return;
+  const origHtml = btn.innerHTML;
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>删除中...';
+  try {
+    const data = await deleteFiles(files);
+    const ok = data.deleted.length;
+    const fail = data.failed.length;
+    if (fail > 0) {
+      alert(`成功删除 ${ok} 个，失败 ${fail} 个: ` + data.failed.map(f => f.name + '(' + f.error + ')').join(', '));
+    }
+    await selectDir(currentDir);  // 重新加载列表（内部会 updateSelectedCount 重置按钮 disabled）
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+  } finally {
+    // 无论成功失败都恢复按钮视觉状态；loading class 含 pointer-events:none 会锁死按钮，必须清除。
+    // disabled 交由 updateSelectedCount 根据当前选中数决定。
+    btn.classList.remove('loading');
+    btn.innerHTML = origHtml;
+    updateSelectedCount();
+  }
+}
+
 // ---- 灯箱预览：左右切换 + 键盘导航 ----
 function openLightbox(idx) {
   if (idx < 0 || idx >= previewFiles.length) return;
@@ -220,6 +281,11 @@ function showLbImage() {
   dlBtn.classList.remove('loading');
   dlBtn.disabled = false;
   dlBtn.innerHTML = SVG_DOWNLOAD + ' 下载';
+  // 重置删除按钮状态
+  const delBtn = $('lbDelete');
+  delBtn.classList.remove('loading');
+  delBtn.disabled = false;
+  delBtn.innerHTML = SVG_TRASH + ' 删除';
 }
 
 // 灯箱内下载当前文件：直接导航到下载 URL，浏览器原生下载，兼容 Alook 等安卓浏览器
@@ -238,6 +304,42 @@ function lbDownload() {
     btn.disabled = false;
     btn.innerHTML = SVG_DOWNLOAD + ' 下载';
   }, 1500);
+}
+
+// 灯箱内删除当前文件：删除后从 previewFiles 移除，跳到下一张；若已无文件则关闭灯箱。
+async function lbDelete() {
+  const btn = $('lbDelete');
+  if (btn.classList.contains('loading')) return;
+  const f = previewFiles[lbIndex];
+  if (!confirm(`确认删除文件 “${f.name}” 吗？删除后不可恢复。`)) return;
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>删除中';
+  try {
+    const data = await deleteFiles([f.name]);
+    if (!(data.ok && data.deleted.includes(f.name))) {
+      alert('删除失败: ' + (data.failed && data.failed[0] ? data.failed[0].error : '未知错误'));
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      btn.innerHTML = SVG_TRASH + ' 删除';
+      return;
+    }
+    // 从预览列表移除已删文件
+    previewFiles.splice(lbIndex, 1);
+    if (previewFiles.length === 0) {
+      closeLightbox();
+    } else {
+      if (lbIndex >= previewFiles.length) lbIndex = previewFiles.length - 1;
+      showLbImage();
+    }
+    // 后台刷新文件列表
+    selectDir(currentDir);
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.innerHTML = SVG_TRASH + ' 删除';
+  }
 }
 
 function lbKeyHandler(e) {
