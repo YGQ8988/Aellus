@@ -18,16 +18,16 @@ import (
 var version = "dev"
 
 func main() {
+	initConsoleUTF8() // Windows 下将控制台切到 UTF-8，避免中文/emoji 乱码（其他平台空操作）
 	initConfig()
 
 	var dirFlag string
 	var portFlag int
-	flag.StringVar(&dirFlag, "dir", "", "文件保存根目录（不填则交互式输入）")
-	flag.IntVar(&portFlag, "port", DefaultPort, "服务端口（默认 8000）")
+	flag.StringVar(&dirFlag, "dir", "", flagDirUsage)
+	flag.IntVar(&portFlag, "port", DefaultPort, flagPortUsage)
 	flag.Parse()
 
 	// 确定保存目录：命令行参数 > 交互式输入 > 默认桌面/aellus-drops
-	// 与原 Python 版三段逻辑一致
 	var saveDir string
 	switch {
 	case dirFlag != "":
@@ -36,12 +36,12 @@ func main() {
 		home, _ := os.UserHomeDir()
 		defaultDir := filepath.Join(home, "Desktop", "aellus-drops")
 		fmt.Println()
-		fmt.Println("  ╔══════════════════════════════════════╗")
-		fmt.Println("  ║          Aellus 文件互传             ║")
-		fmt.Printf("  ║          版本: %-20s║\n", version)
-		fmt.Println("  ╚══════════════════════════════════════╝")
+		fmt.Println(bannerTop)
+		fmt.Println(bannerTitle)
+		fmt.Printf(bannerVerFmt, version)
+		fmt.Println(bannerBottom)
 		fmt.Println()
-		fmt.Printf("  📁 文件保存目录（回车默认 %s）: ", defaultDir)
+		fmt.Printf(promptSaveDir, defaultDir)
 		reader := bufio.NewReader(os.Stdin)
 		line, _ := reader.ReadString('\n')
 		line = strings.TrimSpace(line)
@@ -62,7 +62,7 @@ func main() {
 	}
 	SaveDir = saveDir
 	if err := os.MkdirAll(SaveDir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, "创建保存目录失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, msgMkdirFail, err)
 		os.Exit(1)
 	}
 	Port = portFlag
@@ -70,16 +70,16 @@ func main() {
 	// 初始化日志与模板
 	initLoggers()
 	if err := initTemplates(); err != nil {
-		fmt.Fprintf(os.Stderr, "模板初始化失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, msgTmplFail, err)
 		os.Exit(1)
 	}
 
 	ip := getLanIP()
 	fmt.Println()
-	fmt.Printf("  📁 保存目录: %s\n", SaveDir)
-	fmt.Printf("  🌐 访问地址: http://%s:%d\n", ip, Port)
-	fmt.Println("     (同局域网内，浏览器打开上面地址)")
-	fmt.Println("  🚀 启动中... 按 Ctrl+C 停止")
+	fmt.Printf(msgSaveDir, SaveDir)
+	fmt.Printf(msgAccessURL, ip, Port)
+	fmt.Println(msgLanHint)
+	fmt.Println(msgStarting)
 	fmt.Println()
 
 	handler := accessLogMiddleware(registerRoutes())
@@ -89,13 +89,12 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second, // 防止慢速攻击
 	}
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		fmt.Fprintf(os.Stderr, "服务启动失败: %v\n", err)
+		fmt.Fprintf(os.Stderr, msgServerFail, err)
 		os.Exit(1)
 	}
 }
 
 // isTerminal 判断 stdin 是否为终端（交互模式）。
-// 对应原 Python 版 sys.stdin.isatty()。
 func isTerminal() bool {
 	fi, err := os.Stdin.Stat()
 	if err != nil {

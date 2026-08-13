@@ -1,5 +1,4 @@
-// HTTP 路由与处理函数：页面、上传、列表、下载、批量打包。
-// 对应原 Python 版 server.py 的全部路由。
+// HTTP 路由与处理函数：页面、上传、列表、下载、批量打包、删除。
 package main
 
 import (
@@ -65,7 +64,6 @@ var mimeOverrides = map[string]string{
 }
 
 // contentTypeFor 推断文件的 Content-Type：先查内置表，再查系统 mime，最后回退 octet-stream。
-// 对应原 Python 版 mimetypes.guess_type(f.name)[0] or "application/octet-stream"。
 func contentTypeFor(name string) string {
 	ext := strings.ToLower(filepath.Ext(name))
 	if ct, ok := mimeOverrides[ext]; ok {
@@ -185,7 +183,7 @@ func handleUploadFiles(w http.ResponseWriter, r *http.Request) {
 	results := make([]map[string]any, 0, len(fhs))
 	for _, fh := range fhs {
 		now := time.Now()
-		// 时间戳：YYYYMMDD_HHMMSS + 毫秒3位，与原版一致
+		// 时间戳：YYYYMMDD_HHMMSS + 毫秒3位
 		ts := now.Format("20060102_150405") + fmt.Sprintf("%03d", now.Nanosecond()/1_000_000)
 		raw := basename(fh.Filename)
 		if raw == "" || raw == "." {
@@ -258,7 +256,7 @@ func handleListDirs(w http.ResponseWriter, r *http.Request) {
 		}
 		dirs = append(dirs, dirItem{Name: e.Name(), Count: count})
 	}
-	// 按名字升序，与原版 sorted(..., key=lambda x: x.name) 一致
+	// 按名字升序
 	sort.Slice(dirs, func(i, j int) bool { return dirs[i].Name < dirs[j].Name })
 	writeJSON(w, http.StatusOK, map[string]any{"dirs": dirs})
 }
@@ -298,7 +296,7 @@ func handleListFiles(w http.ResponseWriter, r *http.Request) {
 		}
 		files = append(files, fileItem{Name: e.Name(), Size: fi.Size(), Mtime: fi.ModTime().Unix()})
 	}
-	// 按 mtime 倒序，与原版 files.sort(key=lambda x: x["mtime"], reverse=True) 一致
+	// 按 mtime 倒序
 	sort.Slice(files, func(i, j int) bool { return files[i].Mtime > files[j].Mtime })
 	writeJSON(w, http.StatusOK, map[string]any{"dir": dirName, "files": files})
 }
@@ -400,7 +398,7 @@ func handleDownloadBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 写入临时 zip 文件，响应结束后删除（对应原版 BackgroundTask(os.remove, tmp.name)）
+	// 写入临时 zip 文件，响应结束后删除
 	tmp, err := os.CreateTemp("", "aellus-*.zip")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "打包失败"})

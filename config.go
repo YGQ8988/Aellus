@@ -1,5 +1,4 @@
 // 配置：保存目录、监听地址、端口、日志路径。
-// 对应原 Python 版 config.py。
 package main
 
 import (
@@ -20,13 +19,12 @@ var (
 	Port      = DefaultPort
 	AccessLog string // 访问日志文件路径
 	OpLog     string // 操作日志文件路径
-	ExeDir    string // 可执行文件所在目录（日志写这里，对应原 EXE_DIR）
+	ExeDir    string // 可执行文件所在目录（日志写这里）
 )
 
 // initConfig 在 main 启动早期初始化路径配置。
 //
-// 日志写在 exe 所在目录而非工作目录，这样双击运行时日志与程序在一起，
-// 与原 Python 版 PyInstaller 打包后的 EXE_DIR 行为一致。
+// 日志写在 exe 所在目录而非工作目录，这样双击运行时日志与程序在一起。
 func initConfig() {
 	if exe, err := os.Executable(); err == nil {
 		ExeDir = filepath.Dir(exe)

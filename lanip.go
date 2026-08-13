@@ -1,5 +1,4 @@
 // 局域网 IP 获取：UDP socket 连接法，不真正发包，跨平台无系统命令依赖。
-// 对应原 Python 版 server.get_lan_ip()。
 package main
 
 import "net"
