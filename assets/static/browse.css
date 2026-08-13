@@ -39,6 +39,8 @@
 .file-item .dl-btn { display: inline-block; margin-top: 10px; padding: 7px 16px; background: var(--blue); color: #fff; border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
 .file-item .dl-btn:hover { opacity: .9; }
 .file-item .preview-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: #f2f2f7; color: var(--blue); border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
+.file-item .del-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: #f2f2f7; color: var(--red); border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
+.file-item .del-link:hover { opacity: .8; }
 
 /* 灯箱预览 */
 .lightbox { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; }
@@ -55,6 +57,10 @@
 .lb-download:hover { opacity: .88; }
 .lb-download:disabled { opacity: .6; cursor: not-allowed; }
 .lb-download.loading { pointer-events: none; }
+.lb-delete { flex-shrink: 0; padding: 6px 14px; border-radius: 8px; background: var(--red); color: #fff; border: none; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
+.lb-delete:hover { opacity: .88; }
+.lb-delete:disabled { opacity: .6; cursor: not-allowed; }
+.lb-delete.loading { pointer-events: none; }
 #lbCounter { font-weight: 600; white-space: nowrap; }
 #lbName { opacity: .8; word-break: break-all; }
 @media (max-width: 480px) {
@@ -73,6 +79,7 @@
 .btn-batch:disabled { opacity: .4; cursor: not-allowed; }
 .btn-selected { background: var(--blue); color: #fff; }
 .btn-all { background: var(--green); color: #fff; }
+.btn-delete-selected { background: var(--red); color: #fff; }
 
 /* 文件项 checkbox */
 .file-check { width: 18px; height: 18px; margin-top: 27px; cursor: pointer; flex-shrink: 0; }

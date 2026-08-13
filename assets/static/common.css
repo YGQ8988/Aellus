@@ -69,11 +69,29 @@ button:active { transform: scale(.97); }
   .tip { font-size: 13px; margin-top: 28px; }
 }
 
-/* ===== 作者署名（三页通用，固定吸底）===== */
+/* ===== 作者署名（三页通用，固定吸底，单行居中轮播 + 彩虹流光）===== */
 .author-tip {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-  padding: 8px 16px; text-align: center; font-size: 12px; color: var(--blue); font-weight: 600;
-  line-height: 1.65;
+  padding: 10px 16px; text-align: center; font-size: 13px; font-weight: 700;
+  line-height: 1.5;
   background: rgba(255,255,255,.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+.author-text {
+  display: inline-block;
+  background: linear-gradient(90deg, #ff3b30, #ff9500, #ffcc00, #34c759, #007aff, #5856d6, #af52de, #ff2d92, #ff3b30);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  animation: rainbow-shimmer 3s linear infinite;
+}
+/* 切换时的淡入淡出 */
+.author-text.fade { animation: rainbow-shimmer 3s linear infinite, author-fade .4s ease; }
+@keyframes rainbow-shimmer {
+  to { background-position: 200% center; }
+}
+@keyframes author-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
