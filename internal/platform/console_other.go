@@ -1,6 +1,6 @@
 //go:build !windows
 
 // 非 Windows 平台：终端默认 UTF-8，无需任何处理。
-package main
+package platform
 
-func initConsoleUTF8() {}
+func InitConsoleUTF8() {}

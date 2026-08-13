@@ -1,5 +1,5 @@
 // HTTP 路由与处理函数：页面、上传、列表、下载、批量打包、删除。
-package main
+package app
 
 import (
 	"archive/zip"
@@ -24,9 +24,9 @@ import (
 // tmpl 解析后的 HTML 模板集合（从 embed FS 加载）。
 var tmpl *template.Template
 
-// initTemplates 从 embed FS 解析 templates/*.html。
+// InitTemplates 从 embed FS 解析 templates/*.html。
 // 模板内无变量，仅静态 HTML，ExecuteTemplate(nil) 即可。
-func initTemplates() error {
+func InitTemplates() error {
 	sub, err := fs.Sub(assets.TemplatesFS, "templates")
 	if err != nil {
 		return err
@@ -91,8 +91,8 @@ func disposition(filename string, inline bool) string {
 	return fmt.Sprintf("attachment; filename*=UTF-8''%s", encoded)
 }
 
-// registerRoutes 注册全部路由，返回 mux。
-func registerRoutes() http.Handler {
+// RegisterRoutes 注册全部路由，返回 mux。
+func RegisterRoutes() http.Handler {
 	mux := http.NewServeMux()
 
 	// 静态资源：从 embed FS 提供 /static/*

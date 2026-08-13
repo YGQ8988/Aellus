@@ -3,7 +3,7 @@
 // macOS 菜单栏常驻：状态栏图标 + 「打开页面 / 退出」菜单 + 启动 toast 通知。
 // 双击 .app 启动（非终端）时走此模式，HTTP 服务器在后台 goroutine 运行，
 // 本函数阻塞在 NSApplication run loop，直到用户点击「退出」。
-package main
+package platform
 
 /*
 #cgo CFLAGS: -x objective-c
@@ -111,11 +111,11 @@ import (
 	"unsafe"
 )
 
-// menuBarEnabled 标记状态栏能力是否可用（cgo 编译时可用）。
-func menuBarEnabled() bool { return true }
+// MenuBarEnabled 标记状态栏能力是否可用（cgo 编译时可用）。
+func MenuBarEnabled() bool { return true }
 
-// runMenuBar 发启动通知并阻塞运行菜单栏常驻，直到用户点击「退出」。
-func runMenuBar(saveDir, accessURL string) {
+// RunMenuBar 发启动通知并阻塞运行菜单栏常驻，直到用户点击「退出」。
+func RunMenuBar(saveDir, accessURL string) {
 	cSaveDir := C.CString(saveDir)
 	cURL := C.CString(accessURL)
 	defer C.free(unsafe.Pointer(cSaveDir))

@@ -8,7 +8,7 @@
 //
 // 方案：调用 SetCurrentConsoleFontEx 把控制台字体切换为支持中文的等宽字体
 // 新宋体(NSimSun)。同时设置代码页为 UTF-8 作为兜底。零第三方依赖。
-package main
+package platform
 
 import (
 	"syscall"
@@ -27,7 +27,7 @@ type consoleFontInfoEx struct {
 	faceName    [32]uint16 // WCHAR[LF_FACESIZE]
 }
 
-func initConsoleUTF8() {
+func InitConsoleUTF8() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 
 	// 1. 代码页设为 UTF-8（对输入中文目录名有帮助，无害）

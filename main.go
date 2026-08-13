@@ -12,23 +12,26 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"aellus/internal/app"
+	"aellus/internal/platform"
 )
 
 // version 由 build.sh 通过 -ldflags "-X main.version=..." 注入，默认 dev。
 var version = "dev"
 
 func main() {
-	initConsoleUTF8() // Windows 下将控制台切到 UTF-8，避免中文/emoji 乱码（其他平台空操作）
-	initConfig()
+	platform.InitConsoleUTF8() // Windows 下将控制台切到 UTF-8 + 中文字体（其他平台空操作）
+	app.InitConfig()
 
 	var dirFlag string
 	var portFlag int
-	flag.StringVar(&dirFlag, "dir", "", flagDirUsage)
-	flag.IntVar(&portFlag, "port", DefaultPort, flagPortUsage)
+	flag.StringVar(&dirFlag, "dir", "", platform.FlagDirUsage)
+	flag.IntVar(&portFlag, "port", app.DefaultPort, platform.FlagPortUsage)
 	flag.Parse()
 
 	// 是否交互式终端（决定是否提示输入目录、是否弹通知）
-	interactive := isTerminal()
+	interactive := platform.IsTerminal()
 
 	// 确定保存目录：命令行参数 > 交互式输入 > 默认桌面/aellus-drops
 	var saveDir string
@@ -39,12 +42,12 @@ func main() {
 		home, _ := os.UserHomeDir()
 		defaultDir := filepath.Join(home, "Desktop", "aellus-drops")
 		fmt.Println()
-		fmt.Println(bannerTop)
-		fmt.Println(bannerTitle)
-		fmt.Printf(bannerVerFmt, version)
-		fmt.Println(bannerBottom)
+		fmt.Println(platform.BannerTop)
+		fmt.Println(platform.BannerTitle)
+		fmt.Printf(platform.BannerVerFmt, version)
+		fmt.Println(platform.BannerBottom)
 		fmt.Println()
-		fmt.Printf(promptSaveDir, defaultDir)
+		fmt.Printf(platform.PromptSaveDir, defaultDir)
 		reader := bufio.NewReader(os.Stdin)
 		line, _ := reader.ReadString('\n')
 		line = strings.TrimSpace(line)
@@ -55,7 +58,7 @@ func main() {
 		}
 	default:
 		// 非交互模式（后台 / 管道启动）：用默认目录
-		saveDir = SaveDir
+		saveDir = app.SaveDir
 	}
 
 	// 转绝对路径并创建
@@ -63,56 +66,56 @@ func main() {
 	if err == nil {
 		saveDir = abs
 	}
-	SaveDir = saveDir
-	if err := os.MkdirAll(SaveDir, 0o755); err != nil {
-		fmt.Fprintf(os.Stderr, msgMkdirFail, err)
+	app.SaveDir = saveDir
+	if err := os.MkdirAll(app.SaveDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, platform.MsgMkdirFail, err)
 		os.Exit(1)
 	}
-	Port = portFlag
+	app.Port = portFlag
 
 	// 初始化日志与模板
-	initLoggers()
-	if err := initTemplates(); err != nil {
-		fmt.Fprintf(os.Stderr, msgTmplFail, err)
+	app.InitLoggers()
+	if err := app.InitTemplates(); err != nil {
+		fmt.Fprintf(os.Stderr, platform.MsgTmplFail, err)
 		os.Exit(1)
 	}
 
-	ip := getLanIP()
+	ip := app.GetLanIP()
 	fmt.Println()
-	fmt.Printf(msgSaveDir, SaveDir)
-	fmt.Printf(msgAccessURL, ip, Port)
-	fmt.Println(msgLanHint)
-	fmt.Println(msgStarting)
+	fmt.Printf(platform.MsgSaveDir, app.SaveDir)
+	fmt.Printf(platform.MsgAccessURL, ip, app.Port)
+	fmt.Println(platform.MsgLanHint)
+	fmt.Println(platform.MsgStarting)
 	fmt.Println()
 
-	accessURL := fmt.Sprintf("http://%s:%d", ip, Port)
+	accessURL := fmt.Sprintf("http://%s:%d", ip, app.Port)
 
-	handler := accessLogMiddleware(registerRoutes())
+	handler := app.AccessLogMiddleware(app.RegisterRoutes())
 	srv := &http.Server{
-		Addr:              fmt.Sprintf("%s:%d", Host, Port),
+		Addr:              fmt.Sprintf("%s:%d", app.Host, app.Port),
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second, // 防止慢速攻击
 	}
 
 	// macOS 双击 .app 启动（非终端）：菜单栏常驻模式，HTTP 服务放后台 goroutine
-	if !interactive && menuBarEnabled() {
+	if !interactive && platform.MenuBarEnabled() {
 		go func() {
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				fmt.Fprintf(os.Stderr, msgServerFail, err)
+				fmt.Fprintf(os.Stderr, platform.MsgServerFail, err)
 			}
 		}()
-		runMenuBar(SaveDir, accessURL) // 发启动通知 + 状态栏常驻，阻塞直到点击「退出」
+		platform.RunMenuBar(app.SaveDir, accessURL) // 发启动通知 + 状态栏常驻，阻塞直到点击「退出」
 		return
 	}
 
 	// 非终端但无状态栏（如交叉编译的命令行版）：弹通知告知访问地址
 	if !interactive {
-		notifyStartup(SaveDir, accessURL)
+		platform.NotifyStartup(app.SaveDir, accessURL)
 	}
 
 	// 常规模式：阻塞在 HTTP 服务器
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		fmt.Fprintf(os.Stderr, msgServerFail, err)
+		fmt.Fprintf(os.Stderr, platform.MsgServerFail, err)
 		os.Exit(1)
 	}
 }
