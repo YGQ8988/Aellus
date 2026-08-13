@@ -64,7 +64,12 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 | 平台 | 文件 |
 |------|------|
 | Windows (x86_64) | `aellus-windows-amd64.exe` |
+| Windows (ARM64) | `aellus-windows-arm64.exe` |
+| Windows (x86) | `aellus-windows-386.exe` |
 | Linux (x86_64) | `aellus-linux-amd64` |
+| Linux (ARM64) | `aellus-linux-arm64` |
+| Linux (x86) | `aellus-linux-386` |
+| Linux (ARM 32位) | `aellus-linux-arm` |
 | macOS (Intel) | `aellus-darwin-amd64` |
 | macOS (Apple Silicon) | `aellus-darwin-arm64` |
 
@@ -182,12 +187,12 @@ aellus-drops/
 
 需安装 [Go 1.21+](https://go.dev/dl/)。
 
-### 交叉编译三端二进制（推荐）
+### 交叉编译全平台全架构二进制（推荐）
 
-在任意平台（macOS / Linux / Windows）上执行，**一次性产出全部平台产物**：
+在任意平台（macOS / Linux / Windows）上执行，**一次性产出全部平台全架构产物**：
 
 ```bash
-./build.sh           # 编译三端到 dist/
+./build.sh           # 编译全平台全架构到 dist/
 ./build.sh clean     # 清理 dist/
 ```
 
@@ -195,7 +200,7 @@ aellus-drops/
 
 ```bash
 make                 # 等价于 ./build.sh
-make windows-amd64   # 单独编译某平台
+make windows-arm64   # 单独编译某平台架构
 make vet             # 静态检查
 make run             # 编译本机版本并运行
 ```
@@ -205,7 +210,12 @@ make run             # 编译本机版本并运行
 ```
 dist/
 ├── aellus-windows-amd64.exe    Windows x86_64
+├── aellus-windows-arm64.exe    Windows ARM64
+├── aellus-windows-386.exe      Windows x86
 ├── aellus-linux-amd64          Linux   x86_64  (静态链接)
+├── aellus-linux-arm64          Linux   ARM64   (静态链接)
+├── aellus-linux-386            Linux   x86     (静态链接)
+├── aellus-linux-arm            Linux   ARM 32  (静态链接)
 ├── aellus-darwin-amd64         macOS   Intel
 └── aellus-darwin-arm64         macOS   Apple Silicon
 ```

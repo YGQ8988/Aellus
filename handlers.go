@@ -334,16 +334,32 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 // handleDownloadBatch POST /api/download-batch  JSON: {"dir":"","files":[""]}}
 // files 为空则打包目录下全部非隐藏文件。返回 zip，filename = {dir}.zip。
 func handleDownloadBatch(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Dir   string   `json:"dir"`
-		Files []string `json:"files"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
-		return
+	var dirName string
+	var selected []string
+
+	// 兼容两种提交方式：
+	//   1. JSON body {"dir":"","files":[""]}  —— fetch 提交
+	//   2. form-urlencoded dir=&files=&files= —— 隐藏 form 提交，走浏览器原生下载（兼容 Alook 等安卓浏览器）
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		var req struct {
+			Dir   string   `json:"dir"`
+			Files []string `json:"files"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
+			return
+		}
+		dirName, selected = req.Dir, req.Files
+	} else {
+		if err := r.ParseForm(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
+			return
+		}
+		dirName = r.PostFormValue("dir")
+		selected = r.PostForm["files"]
 	}
 
-	d, ok := safeSubpath(SaveDir, req.Dir)
+	d, ok := safeSubpath(SaveDir, dirName)
 	if !ok {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "目录不存在或非法"})
 		return
@@ -356,7 +372,7 @@ func handleDownloadBatch(w http.ResponseWriter, r *http.Request) {
 
 	// 确定要打包的文件列表
 	var toZip []string
-	if len(req.Files) == 0 {
+	if len(selected) == 0 {
 		entries, _ := os.ReadDir(d)
 		for _, e := range entries {
 			if e.IsDir() || isHidden(e.Name()) {
@@ -365,7 +381,7 @@ func handleDownloadBatch(w http.ResponseWriter, r *http.Request) {
 			toZip = append(toZip, filepath.Join(d, e.Name()))
 		}
 	} else {
-		for _, name := range req.Files {
+		for _, name := range selected {
 			f, ok := safeSubpath(d, name)
 			if !ok {
 				continue
@@ -420,10 +436,10 @@ func handleDownloadBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = tmp.Close()
 
-	logOp("📦 打包下载 | %s | %d 个文件", req.Dir, len(toZip))
+	logOp("📦 打包下载 | %s | %d 个文件", dirName, len(toZip))
 
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", disposition(req.Dir+".zip", false))
+	w.Header().Set("Content-Disposition", disposition(dirName+".zip", false))
 	http.ServeFile(w, r, tmpPath)
 	// ServeFile 返回后文件已发完，安全删除
 	if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {

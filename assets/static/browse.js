@@ -103,7 +103,7 @@ function renderFile(f) {
       <div class="info">
         <div class="fname">${escapeHtml(f.name)}</div>
         <div class="fmeta">${meta}</div>
-        <a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="onSingleDownload(this)">下载</a>
+        <a class="dl-btn" href="${url}" download="${escapeAttr(f.name)}">下载</a>
         ${preview}
       </div>
     </div>
@@ -130,26 +130,23 @@ async function downloadSelected(btn) {
   await downloadBatch(files, btn);
 }
 
-// 单文件下载：fetch + blob，下载完成在 finally 立即恢复按钮，精确感知不靠定时器猜
-async function onSingleDownload(btn) {
+// 单文件下载：直接导航到下载 URL，后端 Content-Disposition: attachment 强制下载。
+// 同步触发保留用户手势上下文，兼容安卓 WebView；不 fetch blob 避免大文件 OOM。
+function onSingleDownload(btn) {
   if (btn.classList.contains('loading')) return;
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner"></span>下载中';
-  try {
-    const res = await fetch(btn.dataset.url);
-    if (!res.ok) { alert('下载失败: ' + res.status); return; }
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = btn.dataset.name;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } catch (e) {
-    alert('下载失败: ' + e.message);
-  } finally {
+  const a = document.createElement('a');
+  a.href = btn.dataset.url;
+  a.download = btn.dataset.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // 浏览器原生下载无法精确感知完成，延时恢复按钮
+  setTimeout(() => {
     btn.classList.remove('loading');
     btn.textContent = '下载';
-  }
+  }, 1500);
 }
 
 async function downloadBatch(files, triggerBtn) {
@@ -160,25 +157,25 @@ async function downloadBatch(files, triggerBtn) {
     triggerBtn.classList.add('loading');
     triggerBtn.innerHTML = '<span class="spinner"></span>下载中...';
   }
-  try {
-    const res = await fetch('/api/download-batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dir: currentDir, files: files }),
-    });
-    if (!res.ok) { alert('下载失败: ' + res.status); return; }
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = currentDir + '.zip';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } catch (e) {
-    alert('下载失败: ' + e.message);
-  } finally {
+  // 用隐藏 form POST 触发浏览器原生下载（非 blob），兼容 Alook 等安卓浏览器
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/api/download-batch';
+  const addField = (name, value) => {
+    const input = document.createElement('input');
+    input.type = 'hidden'; input.name = name; input.value = value;
+    form.appendChild(input);
+  };
+  addField('dir', currentDir);
+  files.forEach(f => addField('files', f));
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+  // 原生下载无法精确感知完成，短暂 loading 后恢复
+  setTimeout(() => {
     btns.forEach(b => { b.disabled = false; b.classList.remove('loading'); b.innerHTML = states.find(s => s.el === b).html; });
     updateSelectedCount();
-  }
+  }, 2000);
 }
 
 // ---- 灯箱预览：左右切换 + 键盘导航 ----
@@ -225,8 +222,8 @@ function showLbImage() {
   dlBtn.innerHTML = SVG_DOWNLOAD + ' 下载';
 }
 
-// 灯箱内下载当前文件：fetch + blob，下载中禁用按钮显示 loading
-async function lbDownload() {
+// 灯箱内下载当前文件：直接导航到下载 URL，浏览器原生下载，兼容 Alook 等安卓浏览器
+function lbDownload() {
   const btn = $('lbDownload');
   if (btn.classList.contains('loading')) return;
   const f = previewFiles[lbIndex];
@@ -234,22 +231,13 @@ async function lbDownload() {
   btn.classList.add('loading');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>下载中';
-  try {
-    const res = await fetch(url);
-    if (!res.ok) { alert('下载失败: ' + res.status); return; }
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = f.name;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } catch (e) {
-    alert('下载失败: ' + e.message);
-  } finally {
+  // 直接导航触发浏览器原生下载（不依赖 a.click()，兼容安卓浏览器）
+  window.location.href = url;
+  setTimeout(() => {
     btn.classList.remove('loading');
     btn.disabled = false;
     btn.innerHTML = SVG_DOWNLOAD + ' 下载';
-  }
+  }, 1500);
 }
 
 function lbKeyHandler(e) {
