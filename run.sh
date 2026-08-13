@@ -1,5 +1,5 @@
 #!/bin/bash
-# DropLAN 文件互传服务启动脚本
+# Aellus 文件互传服务启动脚本
 # 用法: ./run.sh          启动
 #       ./run.sh stop     停止
 #       ./run.sh status   查看状态

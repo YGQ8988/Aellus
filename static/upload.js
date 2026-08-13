@@ -1,6 +1,6 @@
 // 上传页逻辑
 const $ = id => document.getElementById(id);
-const deviceKey = 'droplan-device';
+const deviceKey = 'aellus-device';
 $('device').value = localStorage.getItem(deviceKey) || '';
 
 function getFiles(input) {

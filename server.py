@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DropLAN 文件互传服务
+Aellus 文件互传服务
 局域网内手机/PC 浏览器访问即可上传文件到电脑，或浏览/下载已上传文件。
 支持 PC + 手机响应式布局。
 
@@ -20,6 +20,7 @@ import logging
 import mimetypes
 import os
 import socket
+import sys
 import tempfile
 import zipfile
 from datetime import datetime
@@ -53,7 +54,7 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 # 访问日志：记录 来源IP / 请求方式 / 路径 / 响应状态 / 浏览器UA，写入 access.log
 # 配置见 config.py
 # ----------------------------------------------------------------------
-_access_logger = logging.getLogger("droplan.access")
+_access_logger = logging.getLogger("aellus.access")
 _access_logger.setLevel(logging.INFO)
 _h = logging.FileHandler(ACCESS_LOG, encoding="utf-8")
 _h.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt=ACCESS_LOG_DATEFMT))
@@ -63,7 +64,7 @@ _access_logger.addHandler(_h)
 # 操作日志：记录 上传成功 / 批量打包下载，写入 operation.log
 # 配置见 config.py
 # ----------------------------------------------------------------------
-_op_logger = logging.getLogger("droplan.operation")
+_op_logger = logging.getLogger("aellus.operation")
 _op_logger.setLevel(logging.INFO)
 _op_h = logging.FileHandler(OPERATION_LOG, encoding="utf-8")
 _op_h.setFormatter(logging.Formatter("%(asctime)s  %(message)s", datefmt=OPERATION_LOG_DATEFMT))
@@ -272,12 +273,43 @@ def get_lan_ip() -> str:
 
 
 if __name__ == "__main__":
-    SAVE_DIR.mkdir(parents=True, exist_ok=True)
+    import argparse
+    import config
+
+    parser = argparse.ArgumentParser(description="Aellus 局域网文件互传")
+    parser.add_argument("--dir", help="文件保存根目录（不填则交互式输入）")
+    parser.add_argument("--port", type=int, default=PORT, help="服务端口（默认 8000）")
+    args = parser.parse_args()
+
+    # 确定保存目录：命令行参数 > 交互式输入 > 默认桌面/aellus-drops
+    if args.dir:
+        save_dir = Path(args.dir)
+    elif sys.stdin.isatty():
+        # 交互模式（终端 / 双击 exe）：提示用户输入
+        default_dir = Path.home() / "Desktop" / "aellus-drops"
+        print()
+        print("  ╔══════════════════════════════════════╗")
+        print("  ║          Aellus 文件互传             ║")
+        print("  ╚══════════════════════════════════════╝")
+        print()
+        user_input = input(f"  📁 文件保存目录（回车默认 {default_dir}）: ").strip()
+        save_dir = Path(user_input) if user_input else default_dir
+    else:
+        # 非交互模式（nohup 后台 / run.sh 脚本启动 / 管道）：用默认目录
+        save_dir = SAVE_DIR
+
+    # 覆盖 config.SAVE_DIR 和本模块的 SAVE_DIR
+    # （路由函数运行时读取本模块全局变量，故两处都要更新）
+    config.SAVE_DIR = save_dir
+    SAVE_DIR = save_dir
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    port = args.port
     ip = get_lan_ip()
     print()
-    print(f"  📁 保存目录: {SAVE_DIR}")
-    print(f"  🌐 访问地址: http://{ip}:{PORT}")
+    print(f"  📁 保存目录: {save_dir}")
+    print(f"  🌐 访问地址: http://{ip}:{port}")
     print(f"     (同局域网内，浏览器打开上面地址)")
     print(f"  🚀 启动中... 按 Ctrl+C 停止")
     print()
-    uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
+    uvicorn.run(app, host=HOST, port=port, log_level="warning")

@@ -1,8 +1,13 @@
-# DropLAN · 局域网文件互传
+# Aellus · 局域网文件互传
 
-> 💡 The Power From Ai! Directed by Yang Guangqing!
+> Power comes from AI
+> The design comes from Yang Guangqing!
+> The style comes from Yang Junwen!
 
-DropLAN 是一个轻量的局域网文件互传服务。在电脑（macOS / Windows / Linux）本地启动后，同局域网内的手机或 PC 用浏览器访问，即可上传文件到电脑、或浏览/下载已上传的文件。专为测试工程师"测试机截图/录屏传到电脑"的高频场景设计，**零部署、免流量、跨平台**。
+> *Aello——希腊神话中哈耳皮埃（Harpyiai）之一，宙斯座下的风暴信使，振翅生风，迅捷无踪。*
+> *Aellus 取其「疾风传讯」之意：局域网内，文件如风而至。*
+
+Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windows / Linux）本地启动后，同局域网内的手机或 PC 用浏览器访问，即可上传文件到电脑、或浏览/下载已上传的文件。专为测试工程师"测试机截图/录屏传到电脑"的高频场景设计，**零部署、免流量、跨平台**——无需安装任何 App，浏览器即用。
 
 ---
 
@@ -32,7 +37,7 @@ DropLAN 是一个轻量的局域网文件互传服务。在电脑（macOS / Wind
 
 - **上传文件**：截图 / 录屏 / 拍照，一键发送到电脑
 - **读取文件**：浏览已上传的文件列表，支持在线预览与下载
-- **按设备分目录**：上传时填设备名，文件自动归档到 `file-drops/<设备名>/`
+- **按设备分目录**：上传时填设备名，文件自动归档到 `aellus-drops/<设备名>/`
 - **自动加时间戳**：文件名带精确到毫秒的时间戳，永不覆盖
 - **响应式布局**：同时适配 PC 浏览器与手机浏览器，PC 端多列网格、手机端单列卡片
 - **图片/视频预览**：上传后即时预览；读取页缩略图可在线播放
@@ -74,14 +79,8 @@ DropLAN 是一个轻量的局域网文件互传服务。在电脑（macOS / Wind
 
 **macOS / Linux：**
 ```bash
-cd ~/droplan
-python3 -m pip install --user fastapi uvicorn python-multipart jinja2
-```
-
-**Windows（CMD 或 PowerShell）：**
-```bat
-cd %USERPROFILE%\droplan
-python -m pip install --user fastapi uvicorn python-multipart jinja2
+cd ~/aellus
+python3 -m pip install --user -r requirements.txt
 ```
 
 ### 2. 启动服务
@@ -89,11 +88,6 @@ python -m pip install --user fastapi uvicorn python-multipart jinja2
 **macOS / Linux：**
 ```bash
 ./run.sh start
-```
-
-**Windows：**
-```bat
-run.bat start
 ```
 
 启动成功会输出访问地址，例如：
@@ -119,11 +113,11 @@ run.bat start
 ## 📂 目录结构
 
 ```
-droplan/
+aellus/
 ├── server.py          # 主程序：路由 + API + 启动入口
 ├── config.py          # 配置：保存目录 / 监听地址 / 端口 / 日志
 ├── run.sh             # 启停脚本（macOS / Linux，start / stop / status）
-├── run.bat            # 启停脚本（Windows，start / stop / status）
+├── requirements.txt   # Python 依赖清单（固定版本）
 ├── README.md          # 项目说明
 ├── static/            # 前端静态资源
 │   ├── common.css     # 公共样式 + CSS 设计变量 + 作者署名样式
@@ -144,9 +138,9 @@ droplan/
 >
 > | 日志文件 | 记录内容 | 实时查看 |
 > |---------|---------|---------|
-> | `server.log` | 启动信息与报错 | `tail -f ~/tools/droplan/server.log` |
-> | `access.log` | 每次访问的来源 IP / 浏览器 / 请求路径 | `tail -f ~/tools/droplan/access.log` |
-> | `operation.log` | 上传成功 / 批量打包下载 | `tail -f ~/tools/droplan/operation.log` |
+> | `server.log` | 启动信息与报错 | `tail -f ~/tools/aellus/server.log` |
+> | `access.log` | 每次访问的来源 IP / 浏览器 / 请求路径 | `tail -f ~/tools/aellus/access.log` |
+> | `operation.log` | 上传成功 / 批量打包下载 | `tail -f ~/tools/aellus/operation.log` |
 >
 > `access.log` 各字段带中文标注，格式示例：
 > ```
@@ -160,11 +154,10 @@ droplan/
 
 ### 上传文件落盘位置
 
-**macOS / Linux：** `~/Desktop/file-drops/`
-**Windows：** `C:\Users\<用户名>\Desktop\file-drops\`
+**macOS / Linux：** `~/Desktop/aellus-drops/`
 
 ```
-file-drops/
+aellus-drops/
 └── <设备名>/
     └── 20260804_112601079_截图.png   # 时间戳_原文件名
 ```
@@ -177,7 +170,7 @@ file-drops/
 
 ```python
 # 文件保存根目录
-SAVE_DIR = Path.home() / "Desktop" / "file-drops"
+SAVE_DIR = Path.home() / "Desktop" / "aellus-drops"
 
 # 服务监听地址（0.0.0.0 允许局域网访问）与端口
 HOST = "0.0.0.0"
@@ -215,13 +208,6 @@ OPERATION_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 ./run.sh status    # 查看运行状态与访问地址
 ```
 
-**Windows：**
-```bat
-run.bat start      启动
-run.bat stop       停止
-run.bat status     查看运行状态与访问地址
-```
-
 ---
 
 ## 🔒 安全说明
@@ -238,16 +224,13 @@ run.bat status     查看运行状态与访问地址
 **Q：手机/其他设备打不开页面？**
 - 确认电脑和设备在同一个局域网内
 - 公司网络可能开启了"客户端隔离"，用手机开热点测试验证
-- 首次启动若系统弹窗"是否允许 Python 接受入站连接"（macOS 防火墙 / Windows Defender 防火墙），点**允许**
+- 首次启动若系统弹窗"是否允许 Python 接受入站连接"（macOS 防火墙），点**允许**
 
 **Q：换网络后访问地址变了？**
-- 局域网 IP 会随网络变化，执行 `./run.sh status`（macOS/Linux）或 `run.bat status`（Windows）查看当前 IP
+- 局域网 IP 会随网络变化，执行 `./run.sh status` 查看当前 IP
 
 **Q：重启电脑后服务没自动启动？**
-- 本服务未配置开机自启，需手动启动。如需自启：macOS 可配置 launchd，Windows 可配置任务计划程序
-
-**Q：Windows 下 `python` 命令找不到？**
-- 确认安装 Python 时勾选了 "Add Python to PATH"；或改用 `py` 启动器，把 `run.bat` 中的 `python` 替换为 `py`
+- 本服务未配置开机自启，需手动启动。如需自启：macOS 可配置 launchd
 
 **Q：上传大文件（录屏几百 MB）失败？**
 - 当前未设上传大小限制，FastAPI / Uvicorn 默认支持大文件流式上传；若超时请检查网络稳定性
@@ -268,4 +251,4 @@ run.bat status     查看运行状态与访问地址
 
 ## 💬 反馈与建议
 
-如果您有更好的功能想法或改进建议，欢迎提 [Issues](https://github.com/YGQ8988/droplan/issues)！
+如果您有更好的功能想法或改进建议，欢迎提 [Issues](https://github.com/YGQ8988/aellus/issues)！
