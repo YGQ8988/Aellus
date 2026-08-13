@@ -27,12 +27,15 @@ func main() {
 	flag.IntVar(&portFlag, "port", DefaultPort, flagPortUsage)
 	flag.Parse()
 
+	// 是否交互式终端（决定是否提示输入目录、是否弹通知）
+	interactive := isTerminal()
+
 	// 确定保存目录：命令行参数 > 交互式输入 > 默认桌面/aellus-drops
 	var saveDir string
 	switch {
 	case dirFlag != "":
 		saveDir = dirFlag
-	case isTerminal():
+	case interactive:
 		home, _ := os.UserHomeDir()
 		defaultDir := filepath.Join(home, "Desktop", "aellus-drops")
 		fmt.Println()
@@ -82,23 +85,34 @@ func main() {
 	fmt.Println(msgStarting)
 	fmt.Println()
 
+	accessURL := fmt.Sprintf("http://%s:%d", ip, Port)
+
 	handler := accessLogMiddleware(registerRoutes())
 	srv := &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", Host, Port),
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second, // 防止慢速攻击
 	}
+
+	// macOS 双击 .app 启动（非终端）：菜单栏常驻模式，HTTP 服务放后台 goroutine
+	if !interactive && menuBarEnabled() {
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				fmt.Fprintf(os.Stderr, msgServerFail, err)
+			}
+		}()
+		runMenuBar(SaveDir, accessURL) // 发启动通知 + 状态栏常驻，阻塞直到点击「退出」
+		return
+	}
+
+	// 非终端但无状态栏（如交叉编译的命令行版）：弹通知告知访问地址
+	if !interactive {
+		notifyStartup(SaveDir, accessURL)
+	}
+
+	// 常规模式：阻塞在 HTTP 服务器
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(os.Stderr, msgServerFail, err)
 		os.Exit(1)
 	}
-}
-
-// isTerminal 判断 stdin 是否为终端（交互模式）。
-func isTerminal() bool {
-	fi, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
 }
