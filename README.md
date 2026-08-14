@@ -264,6 +264,8 @@ dist/
 
 > `.app` 版本通过 cgo 链接 Cocoa 实现菜单栏常驻；命令行版（`build.sh`）为纯静态编译（`CGO_ENABLED=0`），无此依赖。
 
+> ⚠️ 最低支持：Intel（amd64）为 macOS 10.15 Catalina；Apple Silicon（arm64）为 macOS 11.0 Big Sur（Apple Silicon 本身最早也只跑 Big Sur，由 Go 工具链强制）。构建脚本固定用 Go 1.22.12（最后一个支持 10.15 的 Go 版本，经 `GOTOOLCHAIN` 自动下载）并通过 `MACOSX_DEPLOYMENT_TARGET=10.15` 固定最低系统版本，否则在高版本 macOS 上构建会把最低版本写成构建机版本，导致低版本 macOS 报「此版本不能与此版本的 macOS 配合使用」。
+
 ### 仅编译本机版本
 
 ```bash

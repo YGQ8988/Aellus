@@ -10,6 +10,9 @@ APP      := aellus
 DIST     := dist
 LDFLAGS  := -s -w
 VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# 固定工具链 Go 1.22.12（与 .app 一致，macOS CLI 支持 10.15）；GOPROXY 默认国内镜像，可用环境变量覆盖
+GO_TOOLCHAIN := go1.22.12
+GOPROXY      ?= https://goproxy.cn,direct
 
 # 全架构目标列表: <os>-<arch>
 TARGETS  := \
@@ -28,7 +31,8 @@ define BUILD_RULE
 $(1):
 	@mkdir -p $(DIST)
 	@echo "→ $(word 1,$(subst -, ,$(1)))/$(word 2,$(subst -, ,$(1)))"
-	@GOARM=7 CGO_ENABLED=0 GOOS=$(word 1,$(subst -, ,$(1))) GOARCH=$(word 2,$(subst -, ,$(1))) \
+	@GOTOOLCHAIN=$(GO_TOOLCHAIN) GOPROXY="$(GOPROXY)" \
+		GOARM=7 CGO_ENABLED=0 GOOS=$(word 1,$(subst -, ,$(1))) GOARCH=$(word 2,$(subst -, ,$(1))) \
 		go build -trimpath -ldflags="$(LDFLAGS) -X main.version=$(VERSION)" \
 		-o $(DIST)/$(APP)-$(1)$(if $(filter windows-%,$(1)),.exe,) .
 endef

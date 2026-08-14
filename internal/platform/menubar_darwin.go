@@ -34,7 +34,8 @@ static NSObject     *g_target     = nil;
 - (void)userNotificationCenter:(UNUserNotificationCenter *)center
        willPresentNotification:(UNNotification *)notification
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler {
-    completionHandler(UNNotificationPresentationOptionBanner);
+    // Banner 常量需 macOS 11.0+，改用 Alert（10.14+，数值与 Banner 相同）以兼容 macOS 10.15
+    completionHandler(UNNotificationPresentationOptionAlert);
 }
 @end
 
