@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/static/favicon.svg" width="120" alt="Aellus">
+</p>
+
 # Aellus · 局域网文件互传
 
 > The Power From AI!
