@@ -6,4 +6,4 @@ package platform
 
 func MenuBarEnabled() bool { return false }
 
-func RunMenuBar(saveDir, accessURL string) {}
+func RunMenuBar(saveDir, accessURL string, getURL func() string) {}

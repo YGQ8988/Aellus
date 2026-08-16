@@ -2,7 +2,7 @@
 #dirsView, #filesView { display: none; }
 #dirsView.active, #filesView.active { display: block; }
 
-/* 文件视图顶部导航：返回首页(左) + 返回目录列表(右) 两端对齐 */
+/* 文件视图顶部导航：返回目录列表(左) + 返回首页(右) 两端对齐 */
 .files-nav { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .files-nav .nav-back { margin-bottom: 0; }
 .cur-dir { font-size: 13px; color: var(--text-2); margin-bottom: 14px; word-break: break-all; }
@@ -10,36 +10,49 @@
 
 .dirs-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .dir-card {
-  background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 16px; box-shadow: var(--glass-shadow);
   display: flex; align-items: center; gap: 14px; cursor: pointer;
   transition: transform .15s, box-shadow .15s, background .15s;
 }
-.dir-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
-.dir-card:active { background: #f0f0f5; transform: translateY(0); }
-.dir-card .dicon { width: 34px; height: 34px; color: var(--blue); flex-shrink: 0; display: flex; }
+.dir-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); background: var(--glass-bg-strong); }
+.dir-card:active { background: rgba(0,0,0,.04); transform: translateY(0); }
+.dir-card .dicon { width: 34px; height: 34px; flex-shrink: 0; display: flex; } /* 颜色由 JS 内联 style 多色分配 */
 .dir-card .dicon svg { width: 100%; height: 100%; }
 .dir-card .dname { font-size: 16px; font-weight: 600; word-break: break-all; }
 .dir-card .dcount { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 .dir-card .arrow { margin-left: auto; color: #c7c7cc; font-size: 22px; }
 
+/* 目录删除按钮 + checkbox（本机访问可见，远程隐藏）*/
+.dir-check { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+.dir-del-btn {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 8px; padding: 0;
+  background: var(--glass-bg-strong); color: var(--red); border: 1px solid var(--glass-border);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; transition: opacity .15s;
+}
+.dir-del-btn:hover { opacity: .8; }
+.dir-del-btn svg { width: 16px; height: 16px; }
+.btn-delete-selected-dirs { background: var(--red); color: #fff; }
+
 .files-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 .file-item {
-  background: var(--card); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow);
+  background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 12px; box-shadow: var(--glass-shadow);
   display: flex; gap: 12px; align-items: flex-start;
-  transition: box-shadow .15s;
+  transition: box-shadow .15s, background .15s;
 }
-.file-item:hover { box-shadow: var(--shadow-pc); }
-.file-item .thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: #f2f2f7; flex-shrink: 0; }
+.file-item:hover { box-shadow: var(--shadow-hover); background: var(--glass-bg-strong); }
+.file-item .thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,.4); flex-shrink: 0; }
 .file-item .thumb-video { width: 72px; height: 72px; border-radius: 8px; background: #000; flex-shrink: 0; object-fit: cover; }
-.file-item .thumb-other { width: 72px; height: 72px; border-radius: 8px; background: #f2f2f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.file-item .thumb-other { width: 72px; height: 72px; border-radius: 8px; background: rgba(255,255,255,.4); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .file-item .thumb-other svg { width: 36px; height: 36px; color: var(--text-2); }
 .file-item .info { flex: 1; min-width: 0; }
 .file-item .fname { font-size: 14px; color: var(--text); word-break: break-all; line-height: 1.4; }
 .file-item .fmeta { font-size: 12px; color: var(--text-2); margin-top: 4px; }
 .file-item .dl-btn { display: inline-block; margin-top: 10px; padding: 7px 16px; background: var(--blue); color: #fff; border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
 .file-item .dl-btn:hover { opacity: .9; }
-.file-item .preview-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: #f2f2f7; color: var(--blue); border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
-.file-item .del-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: #f2f2f7; color: var(--red); border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
+.file-item .preview-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: var(--glass-bg-strong); color: var(--blue); border: 1px solid var(--glass-border); border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
+.file-item .del-link { display: inline-block; margin-top: 10px; margin-left: 8px; padding: 7px 16px; background: var(--glass-bg-strong); color: var(--red); border: 1px solid var(--glass-border); border-radius: 8px; font-size: 13px; text-decoration: none; font-weight: 600; cursor: pointer; }
 .file-item .del-link:hover { opacity: .8; }
 
 /* 灯箱预览 */
@@ -52,7 +65,7 @@
 .lb-next { right: 16px; }
 .lb-close { position: absolute; top: 16px; right: 16px; z-index: 2; width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.15); color: #fff; border: none; font-size: 18px; cursor: pointer; transition: background .15s; }
 .lb-close:hover { background: rgba(255,255,255,.32); }
-.lb-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; gap: 16px; align-items: center; max-width: 92vw; padding: 8px 16px; background: rgba(0,0,0,.5); border-radius: 8px; color: #fff; font-size: 13px; }
+.lb-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; gap: 16px; align-items: center; max-width: 92vw; padding: 8px 16px; background: rgba(255,255,255,.14); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.22); border-radius: 12px; color: #fff; font-size: 13px; }
 .lb-download { flex-shrink: 0; padding: 6px 14px; border-radius: 8px; background: var(--blue); color: #fff; border: none; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
 .lb-download:hover { opacity: .88; }
 .lb-download:disabled { opacity: .6; cursor: not-allowed; }
@@ -61,8 +74,8 @@
 .lb-delete:hover { opacity: .88; }
 .lb-delete:disabled { opacity: .6; cursor: not-allowed; }
 .lb-delete.loading { pointer-events: none; }
-#lbCounter { font-weight: 600; white-space: nowrap; }
-#lbName { opacity: .8; word-break: break-all; }
+#lbCounter { font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+#lbName { opacity: .8; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 480px) {
   .lb-nav { width: 40px; height: 40px; font-size: 24px; }
   .lb-prev { left: 8px; }
@@ -70,7 +83,7 @@
 }
 
 /* 批量操作栏 */
-.batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 12px 16px; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); flex-wrap: wrap; }
+.batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 12px 16px; background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-radius: var(--radius); box-shadow: var(--glass-shadow); flex-wrap: wrap; }
 .select-all { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; user-select: none; }
 .select-all input { width: 18px; height: 18px; cursor: pointer; }
 .batch-actions { display: flex; gap: 8px; margin-left: auto; }
@@ -98,7 +111,24 @@
   .dirs-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
   .files-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 }
-@media (min-width: 768px) {
-  .dir-card { box-shadow: var(--shadow-pc); }
-  .file-item { box-shadow: var(--shadow-pc); }
+
+/* 旧设备降级：无 backdrop-filter 时卡片退回不透明白底，保证可读性 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dir-card, .file-item, .batch-bar { background: var(--card); }
+  .lb-bar { background: rgba(0,0,0,.55); }
 }
+
+/* ===== 删除入口可见性：默认隐藏，本机访问（body.local）时显示 =====
+   后端 /api/delete 与 browse.js 删除函数始终保留；远程访问仅 UI 隐藏。
+   isLocal 由后端 handleBrowsePage 注入（来源 IP 为 loopback 或等于 LAN IP）。 */
+.file-item .del-link,
+.lb-delete,
+.btn-delete-selected { display: none !important; }
+body.local .file-item .del-link { display: inline-block !important; }
+body.local .lb-delete { display: inline-block !important; }
+body.local .btn-delete-selected { display: inline-block !important; }
+
+/* 目录删除按钮 + checkbox：默认隐藏，本机访问（body.local）时显示 */
+.dir-check, .dir-del-btn { display: none !important; }
+body.local .dir-check { display: inline-block !important; }
+body.local .dir-del-btn { display: flex !important; }

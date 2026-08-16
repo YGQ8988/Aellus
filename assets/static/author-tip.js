@@ -20,4 +20,10 @@
     void span.offsetWidth;
     span.classList.add('fade');
   }, 3000);
+
+  // 常驻 Star 提示（不参与轮播）
+  var star = document.createElement('div');
+  star.className = 'star-tip';
+  star.innerHTML = '如果觉得项目对您有帮助，辛苦帮忙点个 <a href="https://github.com/YGQ8988/Aellus" target="_blank" rel="noopener">Star</a> ⭐';
+  el.appendChild(star);
 })();

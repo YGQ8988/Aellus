@@ -20,6 +20,10 @@ LDFLAGS="-s -w"
 VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 SRC_ICON="assets/static/favicon.svg"
 
+# Bundle ID 带版本号：每次构建版本变化即变，强制 macOS 通知中心按新 app 处理，
+# 避免图标更新后通知仍显示旧 bundle id 缓存的旧图标。
+BUNDLE_ID="com.tuhu.aellus.${VERSION}"
+
 # 最低支持的系统版本：Intel (amd64) 最低 macOS 10.15 Catalina。
 # Apple Silicon (arm64) 由 Go 工具链强制最低 macOS 11.0（Apple Silicon 本身最早也只跑 Big Sur），
 # 所以 arm64 slice 的 minos 会固定在 11.0，这是正常且无法再降低的。
@@ -92,7 +96,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>
     <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>
-    <string>com.tuhu.aellus</string>
+    <string>$BUNDLE_ID</string>
     <key>CFBundleExecutable</key>
     <string>aellus</string>
     <key>CFBundleIconFile</key>

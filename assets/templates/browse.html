@@ -8,11 +8,20 @@
 <link rel="stylesheet" href="/static/common.css">
 <link rel="stylesheet" href="/static/browse.css">
 </head>
-<body>
+<body{{if .isLocal}} class="local"{{end}}>
   <div class="container">
     <!-- 目录列表 -->
     <div id="dirsView" class="active">
       <a class="nav-back" href="/">返回首页</a>
+      <div class="batch-bar dirs-batch-bar" id="dirsBatchBar" style="display:none;">
+        <label class="select-all">
+          <input type="checkbox" id="selectAllDirs" onchange="toggleSelectAllDirs(this.checked)">
+          <span>全选</span>
+        </label>
+        <div class="batch-actions">
+          <button class="btn-batch btn-delete-selected-dirs" id="btnDeleteSelectedDirs" onclick="deleteSelectedDirs(this)" disabled>删除选中 (<span id="selectedDirCount">0</span>)</button>
+        </div>
+      </div>
       <div class="loading" id="dirsLoading">加载中...</div>
       <div class="dirs-grid" id="dirsList"></div>
       <div class="empty" id="dirsEmpty" style="display:none;"><span class="emoji"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>暂无目录，先去上传一些文件吧</div>
@@ -21,8 +30,8 @@
     <!-- 文件列表 -->
     <div id="filesView">
       <div class="files-nav">
-        <a class="nav-back" href="/">返回首页</a>
         <a class="nav-back" href="javascript:backToDirs()">返回目录列表</a>
+        <a class="nav-back" href="/">返回首页</a>
       </div>
       <div class="cur-dir">当前目录 · <span id="currentDir"></span></div>
       <div class="batch-bar" id="batchBar" style="display:none;">

@@ -104,7 +104,14 @@ func main() {
 				fmt.Fprintf(os.Stderr, platform.MsgServerFail, err)
 			}
 		}()
-		platform.RunMenuBar(app.SaveDir, accessURL) // 发启动通知 + 状态栏常驻，阻塞直到点击「退出」
+		platform.RunMenuBar(app.SaveDir, accessURL, func() string {
+			// 重新探测当前局域网 IP，离线/失败返回空串（后台探测据此跳过更新）
+			ip := app.GetLanIP()
+			if ip == "" || ip == "<本机IP>" {
+				return ""
+			}
+			return fmt.Sprintf("http://%s:%d", ip, app.Port)
+		}) // 发启动通知 + 状态栏常驻，阻塞直到点击「退出」
 		return
 	}
 

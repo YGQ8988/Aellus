@@ -11,15 +11,41 @@
 <body>
   <div class="container">
     <h1>Aellus</h1>
+    <img class="app-icon" src="/static/favicon.svg" alt="Aellus" width="72" height="72">
     <div class="subtitle"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg> ↔ <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="20" x2="22" y2="20"/></svg> 局域网文件互传 · 上传 / 读取 / 下载</div>
+    <div class="access-bar">
+      <svg class="icon link-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      <span class="access-url" id="accessUrl">加载中…</span>
+      <button class="copy-btn" id="copyBtn" type="button">
+        <svg class="icon ico-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <svg class="icon ico-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="20 6 9 17 4 12"/></svg>
+      </button>
+      <button class="qr-btn" id="qrBtn" type="button" title="扫码访问">
+        <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14"/><line x1="17" y1="14" x2="21" y2="14"/><line x1="14" y1="17" x2="14" y2="21"/><line x1="17" y1="17" x2="17" y2="17"/><line x1="21" y1="17" x2="21" y2="21"/><line x1="17" y1="21" x2="17" y2="21"/></svg>
+      </button>
+    </div>
     <div class="home-grid">
       <a class="entry upload" href="/upload">
-        <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <div class="folder">
+          <div class="folder-back"></div>
+          <div class="folder-front">
+            <div class="folder-badge">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+          </div>
+        </div>
         <div class="title">上传文件</div>
         <div class="desc">截图 / 录屏 / 拍照，发送到电脑</div>
       </a>
       <a class="entry browse" href="/browse">
-        <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <div class="folder">
+          <div class="folder-back"></div>
+          <div class="folder-front">
+            <div class="folder-badge">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+          </div>
+        </div>
         <div class="title">读取文件</div>
         <div class="desc">浏览已上传的文件，支持下载</div>
       </a>
@@ -31,6 +57,20 @@
       <span class="author-text">The Power From AI!</span>
     </div>
   </div>
+
+  <!-- 二维码弹窗 -->
+  <div class="qr-modal" id="qrModal">
+    <div class="qr-backdrop" id="qrBackdrop"></div>
+    <div class="qr-card">
+      <button class="qr-close" id="qrClose" type="button">✕</button>
+      <div class="qr-title">扫码访问</div>
+      <div class="qr-img" id="qrImg"></div>
+      <div class="qr-url" id="qrUrlText"></div>
+      <div class="qr-hint">用手机相机或扫码 App 扫描上方二维码</div>
+    </div>
+  </div>
+  <script src="/static/qrcode.min.js"></script>
+  <script src="/static/home.js"></script>
   <script src="/static/author-tip.js"></script>
 </body>
 </html>

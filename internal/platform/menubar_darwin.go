@@ -14,6 +14,7 @@ package platform
 // 全局引用，防止状态栏与菜单 target 被提前释放
 static NSStatusItem *g_statusItem = nil;
 static NSObject     *g_target     = nil;
+static NSMenuItem   *g_openItem   = nil; // 「打开页面」项，后台刷新 IP 时更新其 URL
 
 @interface AellusMenuTarget : NSObject <UNUserNotificationCenterDelegate>
 - (void)openURL:(id)sender;
@@ -91,6 +92,7 @@ static void aellusRunMenuBar(const char *saveDirCStr, const char *urlCStr) {
         openItem.target = target;
         openItem.representedObject = [NSString stringWithUTF8String:urlCStr];
         [menu addItem:openItem];
+        g_openItem = openItem;
 
         [menu addItem:[NSMenuItem separatorItem]];
 
@@ -105,18 +107,78 @@ static void aellusRunMenuBar(const char *saveDirCStr, const char *urlCStr) {
         [NSApp run];
     }
 }
+
+// 更新菜单「打开页面」项的 URL（dispatch 到主线程：NSMenuItem 非线程安全）。
+// 入参 urlCStr 由 Go 侧 C.CString 分配；本函数内立即 copy 成 NSString，故 Go 侧可安全 free。
+static void aellusUpdateMenuURL(const char *urlCStr) {
+    NSString *url = [NSString stringWithUTF8String:urlCStr];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (g_openItem) {
+            g_openItem.representedObject = url;
+        }
+    });
+}
+
+// IP 变化时发通知告知新地址（dispatch 到主线程：UNUserNotificationCenter 非线程安全）。
+static void aellusNotifyURLChanged(const char *urlCStr) {
+    NSString *url = [NSString stringWithUTF8String:urlCStr];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+        UNMutableNotificationContent *content = [[UNMutableNotificationContent alloc] init];
+        content.title = @"Aellus 访问地址已更新";
+        content.body = [NSString stringWithFormat:@"检测到网络变化，新地址: %@", url];
+        UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:@"aellus-url-change"
+                                                                             content:content
+                                                                             trigger:nil];
+        [center addNotificationRequest:request withCompletionHandler:nil];
+    });
+}
 */
 import "C"
 
 import (
+	"os"
+	"strings"
+	"time"
 	"unsafe"
 )
 
-// MenuBarEnabled 标记状态栏能力是否可用（cgo 编译时可用）。
-func MenuBarEnabled() bool { return true }
+// MenuBarEnabled 判断是否可启用菜单栏常驻模式。
+// macOS 菜单栏依赖 UNUserNotificationCenter，要求进程在合法 .app bundle 内运行；
+// 裸二进制（如 /tmp/aellus、./aellus）无 bundle，强行走菜单栏会触发
+// NSInternalInconsistencyException 崩溃。故用可执行路径是否位于
+// .app/Contents/MacOS/ 下作为 bundle 合法性判据。
+func MenuBarEnabled() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(exe, ".app/Contents/MacOS/")
+}
 
 // RunMenuBar 发启动通知并阻塞运行菜单栏常驻，直到用户点击「退出」。
-func RunMenuBar(saveDir, accessURL string) {
+//
+// getURL 用于后台自动探测：每 60s 调用一次重新获取当前访问 URL，与上次不同则
+// 更新菜单「打开页面」项的地址并发通知。HTTP 服务监听 0.0.0.0 不依赖具体 IP，
+// 无需重启；getURL 返回空串表示当前离线/探测失败，跳过更新。
+func RunMenuBar(saveDir, accessURL string, getURL func() string) {
+	// 后台探测须先于阻塞的 NSApp run loop 启动，否则 goroutine 永不执行
+	go func(current string) {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			newURL := getURL()
+			if newURL == "" || newURL == current {
+				continue
+			}
+			current = newURL
+			c := C.CString(newURL)
+			C.aellusUpdateMenuURL(c)
+			C.aellusNotifyURLChanged(c)
+			C.free(unsafe.Pointer(c))
+		}
+	}(accessURL)
+
 	cSaveDir := C.CString(saveDir)
 	cURL := C.CString(accessURL)
 	defer C.free(unsafe.Pointer(cSaveDir))
