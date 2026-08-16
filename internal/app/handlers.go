@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -117,6 +118,7 @@ func RegisterRoutes() http.Handler {
 
 	// 删除 API
 	mux.HandleFunc("/api/delete", handleDelete)
+	mux.HandleFunc("/api/deletedir", handleDeleteDir)
 
 	return mux
 }
@@ -134,7 +136,28 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleBrowsePage(w http.ResponseWriter, r *http.Request) {
-	_ = tmpl.ExecuteTemplate(w, "browse.html", nil)
+	_ = tmpl.ExecuteTemplate(w, "browse.html", map[string]bool{"isLocal": isLocalRequest(r)})
+}
+
+// isLocalRequest 判断请求是否来自本机：loopback（127.0.0.1/::1）或来源 IP 等于本机 LAN IP。
+// 用于 browse 页：本机访问显示删除按钮，远程（手机等）访问隐藏。
+func isLocalRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	lanIP := GetLanIP()
+	if lanIP == "" || lanIP == "<本机IP>" {
+		return false
+	}
+	return host == lanIP
 }
 
 func handleFavicon(w http.ResponseWriter, r *http.Request) {
@@ -484,6 +507,40 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(deleted) > 0 {
 		logOp("🗑️ 删除 | %s | %d 个文件: %s", req.Dir, len(deleted), strings.Join(deleted, ", "))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted, "failed": failed})
+}
+
+// handleDeleteDir POST /api/deletedir JSON: {"dirs":["a","b"]}
+// 逐个删除整个目录（含其下所有文件），返回成功/失败列表。复用 safeSubpath 防路径穿越。
+func handleDeleteDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "Method Not Allowed"})
+		return
+	}
+	var req struct {
+		Dirs []string `json:"dirs"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
+		return
+	}
+	deleted := make([]string, 0, len(req.Dirs))
+	failed := make([]map[string]any, 0)
+	for _, name := range req.Dirs {
+		d, ok := safeSubpath(SaveDir, name)
+		if !ok {
+			failed = append(failed, map[string]any{"name": name, "error": "非法路径"})
+			continue
+		}
+		if err := os.RemoveAll(d); err != nil {
+			failed = append(failed, map[string]any{"name": name, "error": err.Error()})
+			continue
+		}
+		deleted = append(deleted, name)
+	}
+	if len(deleted) > 0 {
+		logOp("🗑️ 删除目录 | %d 个: %s", len(deleted), strings.Join(deleted, ", "))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted, "failed": failed})
 }

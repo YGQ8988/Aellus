@@ -13,25 +13,39 @@
   --shadow-hover: 0 8px 24px rgba(0,0,0,.12);
   --radius: 12px;
   --radius-lg: 18px;
+
+  /* ===== 毛玻璃材质 ===== */
+  --glass-bg: rgba(255,255,255,.55);      /* 玻璃卡片底色：半透明白 */
+  --glass-bg-strong: rgba(255,255,255,.72);/* 玻璃强底色：导航/栏等需更高对比处 */
+  --glass-border: rgba(255,255,255,.65);  /* 玻璃边缘高光：1px 内边框 */
+  --glass-blur: 18px;                     /* 背景模糊半径 */
+  --glass-shadow: 0 8px 32px rgba(31,38,135,.15); /* 玻璃投影：偏冷调 */
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, sans-serif;
-  background: var(--bg);
   color: var(--text);
   padding: 16px;
   padding-bottom: 84px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 毛玻璃必须有层次背景才显效：浅灰渐变 + 三处彩色光斑（蓝/紫/粉）*/
+  background:
+    radial-gradient(circle at 12% 18%, rgba(0,122,255,.20), transparent 42%),
+    radial-gradient(circle at 88% 12%, rgba(175,82,222,.18), transparent 40%),
+    radial-gradient(circle at 78% 88%, rgba(255,45,146,.16), transparent 45%),
+    linear-gradient(180deg, #e9eef6 0%, #f2f2f7 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 .container { max-width: 1120px; margin: 0 auto; }
 h1 { font-size: 22px; text-align: center; margin: 16px 0 24px; font-weight: 700; letter-spacing: .2px; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .subtitle { text-align: center; font-size: 14px; color: var(--text-2); margin-top: -16px; margin-bottom: 24px; display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
-.nav-back { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--blue); background: rgba(0,122,255,.08); padding: 7px 14px; border-radius: 8px; margin-bottom: 14px; text-decoration: none; transition: background .15s, transform .1s; }
-.nav-back:hover { background: rgba(0,122,255,.16); }
-.nav-back:active { background: rgba(0,122,255,.24); }
+.nav-back { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--blue); background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); padding: 7px 14px; border-radius: 8px; margin-bottom: 14px; text-decoration: none; transition: background .15s, transform .1s; }
+.nav-back:hover { background: var(--glass-bg-strong); }
+.nav-back:active { background: rgba(0,122,255,.18); }
 
 /* ===== 图标（inline SVG，跨平台渲染一致）===== */
 .icon {
@@ -39,14 +53,15 @@ h1 { font-size: 22px; text-align: center; margin: 16px 0 24px; font-weight: 700;
   fill: none; stroke: currentColor; stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
 }
-.card { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow); }
+.card { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; box-shadow: var(--glass-shadow); }
 label { display: block; font-size: 13px; color: var(--text-2); margin-bottom: 6px; font-weight: 600; }
 input[type=text] {
-  width: 100%; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px;
-  font-size: 15px; background: #f9f9f9; transition: border-color .15s, background .15s;
+  width: 100%; padding: 11px 14px; border: 1px solid var(--glass-border); border-radius: 10px;
+  font-size: 15px; background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  transition: border-color .15s, background .15s;
 }
-input[type=text]:focus { outline: none; border-color: var(--blue); background: #fff; box-shadow: 0 0 0 3px rgba(0,122,255,.12); }
-button { border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity .15s, transform .1s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+input[type=text]:focus { outline: none; border-color: var(--blue); background: var(--glass-bg-strong); box-shadow: 0 0 0 3px rgba(0,122,255,.18); }
+button { border: 1px solid transparent; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity .15s, transform .1s, background .15s; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 button:hover { opacity: .9; }
 button:active { transform: scale(.97); }
 .tip { font-size: 12px; color: var(--text-2); text-align: center; margin-top: 18px; line-height: 1.6; }
@@ -55,16 +70,20 @@ button:active { transform: scale(.97); }
 .empty .emoji svg { width: 100%; height: 100%; }
 .loading { text-align: center; color: var(--text-2); padding: 40px 0; font-size: 14px; }
 
+/* ===== 不支持 backdrop-filter 的旧设备降级：玻璃元素退回不透明，保证可读性 ===== */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .card, .nav-back, input[type=text] { background: var(--card); }
+}
+
 /* ===== PC 端 (>=768px) ===== */
 @media (min-width: 768px) {
   body {
     padding: 40px 24px 84px;
-    background: linear-gradient(180deg, #eaeef5 0%, #f2f2f7 100%);
     min-height: 100vh;
   }
   h1 { font-size: 30px; margin: 8px 0 12px; }
   .subtitle { font-size: 15px; margin-top: 0; margin-bottom: 36px; }
-  .card { border-radius: 14px; padding: 22px; box-shadow: var(--shadow-pc); }
+  .card { border-radius: 14px; padding: 22px; }
   .nav-back { font-size: 15px; margin-bottom: 20px; }
   .tip { font-size: 13px; margin-top: 28px; }
 }
@@ -72,12 +91,16 @@ button:active { transform: scale(.97); }
 /* ===== 作者署名（三页通用，固定吸底，单行居中轮播 + 彩虹流光）===== */
 .author-tip {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
-  padding: 10px 16px; text-align: center; font-size: 13px; font-weight: 700;
+  padding: 8px 16px 10px; text-align: center; font-size: 13px; font-weight: 700;
   line-height: 1.5;
   background: rgba(255,255,255,.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
   overflow: hidden;
 }
+/* Star 提示（常驻第二行，不参与轮播）*/
+.star-tip { font-size: 12px; font-weight: 400; color: var(--text-2); margin-top: 3px; }
+.star-tip a { color: var(--blue); text-decoration: none; font-weight: 600; }
+.star-tip a:hover { text-decoration: underline; }
 .author-text {
   display: inline-block;
   background: linear-gradient(90deg, #ff3b30, #ff9500, #ffcc00, #34c759, #007aff, #5856d6, #af52de, #ff2d92, #ff3b30);

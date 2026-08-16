@@ -9,6 +9,9 @@ const SVG_FILE    = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24
 const SVG_DOWNLOAD = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 const SVG_TRASH    = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
+// 目录图标多色：按列表索引循环（蓝 绿 橙 紫 粉），相邻目录必不同色
+const DIR_COLORS = ['#0a84ff', '#30b24e', '#ff9500', '#af52de', '#ff2d55'];
+
 let currentDir = '';
 let previewFiles = []; // [{name, previewUrl, ext}, ...] 当前目录可预览文件
 let lbIndex = 0;       // 灯箱当前索引
@@ -31,16 +34,22 @@ async function loadDirs() {
       $('dirsEmpty').style.display = 'block';
       return;
     }
-    $('dirsList').innerHTML = data.dirs.map(d => `
+    $('dirsList').innerHTML = data.dirs.map((d, i) => `
       <div class="dir-card" onclick="selectDir('${escapeHtml(d.name)}')">
-        <div class="dicon">${SVG_FOLDER}</div>
+        <input type="checkbox" class="dir-check" data-name="${escapeAttr(d.name)}" onclick="event.stopPropagation()" onchange="updateSelectedDirCount()">
+        <div class="dicon" style="color:${DIR_COLORS[i % DIR_COLORS.length]}">${SVG_FOLDER}</div>
         <div>
           <div class="dname">${escapeHtml(d.name)}</div>
           <div class="dcount">${d.count} 个文件</div>
         </div>
+        <button class="dir-del-btn" onclick="event.stopPropagation();deleteDir('${escapeHtml(d.name)}',this)">${SVG_TRASH}</button>
         <div class="arrow">›</div>
       </div>
     `).join('');
+    // 本机访问才显示目录批量操作栏
+    $('dirsBatchBar').style.display = document.body.classList.contains('local') ? 'flex' : 'none';
+    $('selectAllDirs').checked = false;
+    updateSelectedDirCount();
   } catch (e) {
     $('dirsLoading').textContent = '加载失败: ' + e.message;
   }
@@ -239,6 +248,80 @@ async function deleteSelected(btn) {
   }
 }
 
+// ---- 目录删除（本机访问可见）----
+// 删除单个目录（目录列表页）
+async function deleteDir(name, btn) {
+  if (!confirm(`确认删除目录 “${name}” 及其所有文件吗？删除后不可恢复。`)) return;
+  const origHtml = btn.innerHTML;
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  try {
+    const res = await fetch('/api/deletedir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dirs: [name] })
+    });
+    const data = await res.json();
+    if (data.ok && data.deleted.includes(name)) {
+      await loadDirs();  // 重新加载目录列表（内部重置批量栏 + 选中状态）
+    } else {
+      alert('删除失败: ' + (data.failed && data.failed[0] ? data.failed[0].error : '未知错误'));
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+  }
+}
+
+function toggleSelectAllDirs(checked) {
+  document.querySelectorAll('.dir-check').forEach(c => { c.checked = checked; });
+  updateSelectedDirCount();
+}
+
+function updateSelectedDirCount() {
+  const n = document.querySelectorAll('.dir-check:checked').length;
+  $('selectedDirCount').textContent = n;
+  $('btnDeleteSelectedDirs').disabled = n === 0;
+}
+
+// 删除选中的目录（批量操作栏）
+async function deleteSelectedDirs(btn) {
+  const dirs = Array.from(document.querySelectorAll('.dir-check:checked')).map(c => c.dataset.name);
+  if (!dirs.length) return;
+  if (!confirm(`确认删除选中的 ${dirs.length} 个目录及其所有文件吗？删除后不可恢复。`)) return;
+  const origHtml = btn.innerHTML;
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>删除中...';
+  try {
+    const res = await fetch('/api/deletedir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dirs })
+    });
+    const data = await res.json();
+    const fail = data.failed.length;
+    if (fail > 0) {
+      alert(`成功删除 ${data.deleted.length} 个，失败 ${fail} 个: ` + data.failed.map(f => f.name + '(' + f.error + ')').join(', '));
+    }
+    await loadDirs();  // 重新加载目录列表
+  } catch (e) {
+    alert('删除失败: ' + e.message);
+  } finally {
+    // 恢复按钮：清 loading + 恢复文案；disabled 交由 updateSelectedDirCount 按选中数决定。
+    // loadDirs 已重置选中（全空），按钮会 disabled=true，用户勾选新目录后即可再次删除。
+    btn.classList.remove('loading');
+    btn.innerHTML = origHtml;
+    updateSelectedDirCount();
+  }
+}
+
 // ---- 灯箱预览：左右切换 + 键盘导航 ----
 function openLightbox(idx) {
   if (idx < 0 || idx >= previewFiles.length) return;
@@ -272,6 +355,7 @@ function showLbImage() {
   else { lbImg.src = f.previewUrl; }
   $('lbCounter').textContent = `${lbIndex + 1} / ${previewFiles.length}`;
   $('lbName').textContent = f.name;
+  $('lbName').title = f.name;
   // 仅 1 个文件时隐藏左右箭头
   const showNav = previewFiles.length > 1;
   $('lbPrev').style.display = showNav ? 'flex' : 'none';

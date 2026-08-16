@@ -1,0 +1,22 @@
+# 构建产物
+/dist/
+
+# 运行时日志（运行时自动生成）
+*.log
+server.pid
+
+# 上传文件落盘目录（运行时生成）
+aellus-drops/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Go
+*.exe
+*.test
+*.out

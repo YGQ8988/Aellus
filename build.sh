@@ -19,6 +19,11 @@ cd "$(dirname "$0")"
 DIST=dist
 LDFLAGS="-s -w"   # 去除调试符号与 DWARF, 减小体积
 
+# 固定构建工具链为 Go 1.22.12：与 .app 保持一致，让 macOS CLI 二进制同样支持 macOS 10.15
+#（Intel amd64；arm64 由 Go 强制最低 11.0）。GOTOOLCHAIN 自动下载/切换，GOPROXY 默认国内镜像。
+GO_TOOLCHAIN="go1.22.12"
+GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+
 # 架构矩阵: "GOOS:GOARCH:文件后缀"
 # 后缀为空表示无后缀；Windows 用 .exe
 TARGETS=(
@@ -63,7 +68,8 @@ for t in "${TARGETS[@]}"; do
   out="$DIST/aellus-${goos}-${goarch}${ext}"
   printf "→ 编译 %-8s %-6s ... " "$goos" "$goarch"
   # GOARM=7 兼容大多数 32 位 ARM 设备 (ARMv7)，对 arm 架构生效，其他架构忽略此变量
-  if GOARM=7 CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
+  if GOTOOLCHAIN="$GO_TOOLCHAIN" GOPROXY="$GOPROXY" \
+    GOARM=7 CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" \
     go build -trimpath -ldflags="$LDFLAGS -X main.version=$VERSION" \
     -o "$out" . 2>/tmp/aellus-build-err; then
     echo "✅ $(ls -lh "$out" | awk '{print $5}')"

@@ -1,27 +1,140 @@
 /* 首页样式 */
-.home-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.home-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+
+/* 项目图标（标题下方）*/
+.app-icon { display: block; margin: 0 auto 16px; width: 72px; height: 72px; border-radius: 18px; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+/* 覆盖全局 .subtitle 的 margin-top:-16px（该负边距是加图标前拉近 h1 与 subtitle 用的，现在图标在中间需重置）*/
+.subtitle { margin-top: 8px; }
+
 .entry {
-  display: block; background: var(--card); border-radius: var(--radius-lg);
-  padding: 32px 24px; text-align: center; text-decoration: none; color: var(--text);
-  box-shadow: var(--shadow); transition: transform .18s ease, box-shadow .18s ease;
-  position: relative; overflow: hidden;
+  display: block; text-align: center; text-decoration: none; color: var(--text);
+  padding: 28px 20px; position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border); border-radius: var(--radius); box-shadow: var(--glass-shadow);
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
-.entry:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+.entry:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); background: var(--glass-bg-strong); }
 .entry:active { transform: translateY(-1px); }
-.entry .icon { width: 56px; height: 56px; margin: 0 auto 14px; display: block; color: var(--blue); }
-.entry .title { font-size: 20px; font-weight: 700; }
-.entry .desc { font-size: 14px; color: var(--text-2); margin-top: 8px; }
-.entry.upload { border-top: 4px solid var(--blue); }
-.entry.browse { border-top: 4px solid var(--green); }
-.entry.browse .icon { color: var(--green); }
+
+/* ===== 文件夹拟物图标（macOS 风格：后盖板 tab + 前面板 + 中央 badge）===== */
+.folder {
+  position: relative; width: 132px; height: 102px; margin: 0 auto 18px;
+  perspective: 700px;
+}
+.folder-back {
+  position: absolute; top: 0; left: 6px; width: 56%; height: 24px;
+  border-radius: 12px 12px 4px 4px; z-index: 1;
+}
+.folder-front {
+  position: absolute; top: 14px; left: 0; width: 100%; height: 88px;
+  border-radius: 6px 12px 12px 12px; z-index: 2;
+  transform-origin: top center;
+  transition: transform .28s cubic-bezier(.34,1.3,.64,1);
+  display: flex; align-items: center; justify-content: center;
+}
+/* 前面板顶部高光：拟物质感关键 */
+.folder-front::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 42%;
+  border-radius: 6px 12px 0 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.38), transparent);
+  pointer-events: none;
+}
+.folder-badge {
+  position: relative; z-index: 3;
+  width: 50px; height: 50px; border-radius: 14px;
+  background: rgba(255,255,255,.95);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+.folder-badge svg { width: 26px; height: 26px; }
+
+/* hover：前面板翻开，露出后盖板 */
+.entry:hover .folder-front { transform: rotateX(-16deg); }
+
+/* 上传：蓝色文件夹 */
+.entry.upload .folder-back { background: linear-gradient(180deg, #5ac8fa, #2196f3); }
+.entry.upload .folder-front { background: linear-gradient(180deg, #4a9eff 0%, #0a84ff 100%); box-shadow: 0 6px 16px rgba(0,122,255,.35); }
+.entry.upload .folder-badge svg { color: #0a84ff; }
+/* 读取：绿色文件夹 */
+.entry.browse .folder-back { background: linear-gradient(180deg, #5ad878, #30c158); }
+.entry.browse .folder-front { background: linear-gradient(180deg, #4ad868 0%, #30b24e 100%); box-shadow: 0 6px 16px rgba(52,199,89,.35); }
+.entry.browse .folder-badge svg { color: #30b24e; }
+
+.entry .title { font-size: 19px; font-weight: 700; }
+.entry .desc { font-size: 13px; color: var(--text-2); margin-top: 6px; }
 .footer-info { margin-top: 28px; text-align: center; font-size: 12px; color: var(--text-2); line-height: 1.8; }
 
+/* ===== 访问地址栏 ===== */
+.access-bar {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border); border-radius: var(--radius);
+  padding: 10px 14px; box-shadow: var(--glass-shadow); margin-bottom: 24px;
+}
+.access-bar .link-ico { color: var(--blue); flex-shrink: 0; }
+.access-url {
+  flex: 1; min-width: 0; font-size: 13px; color: var(--text);
+  white-space: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.access-url::-webkit-scrollbar { display: none; }
+.copy-btn {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--glass-bg-strong); color: var(--blue);
+  border: 1px solid var(--glass-border); padding: 7px 10px; border-radius: 8px;
+  cursor: pointer; transition: opacity .15s, border-color .15s;
+}
+.copy-btn:hover { opacity: .85; }
+.copy-btn.copied { border-color: var(--blue); color: var(--blue); }
+.copy-btn .icon { width: 18px; height: 18px; }
+
+/* 二维码按钮：玻璃风格，区别于实色复制按钮 */
+.qr-btn {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--glass-bg-strong); color: var(--blue);
+  border: 1px solid var(--glass-border); padding: 7px 10px; border-radius: 8px;
+  cursor: pointer; transition: opacity .15s;
+}
+.qr-btn:hover { opacity: .85; }
+.qr-btn .icon { width: 18px; height: 18px; }
+
+/* 二维码弹窗 */
+.qr-modal { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; }
+.qr-modal.open { display: flex; }
+.qr-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.qr-card {
+  position: relative; z-index: 1; background: var(--card); border-radius: 16px;
+  padding: 28px 28px 24px; text-align: center; max-width: 90vw; max-height: 90vh;
+  box-shadow: 0 8px 40px rgba(0,0,0,.25); animation: qrPop .2s ease;
+}
+@keyframes qrPop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.qr-close { position: absolute; top: 12px; right: 14px; background: none; border: none; font-size: 18px; color: var(--text-2); cursor: pointer; padding: 4px; line-height: 1; }
+.qr-close:hover { color: var(--text); }
+.qr-title { font-size: 17px; font-weight: 700; margin-bottom: 16px; }
+.qr-img { display: flex; align-items: center; justify-content: center; margin-bottom: 14px; }
+.qr-img svg { width: 220px; height: 220px; }
+.qr-url { font-size: 13px; color: var(--text-2); word-break: break-all; margin-bottom: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.qr-hint { font-size: 12px; color: var(--text-2); }
+
 @media (min-width: 768px) {
-  .home-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
-  .entry { padding: 56px 32px; border-top: none; }
-  .entry.upload { border-left: 5px solid var(--blue); }
-  .entry.browse { border-left: 5px solid var(--green); }
-  .entry .icon { width: 76px; height: 76px; margin-bottom: 20px; }
-  .entry .title { font-size: 26px; }
-  .entry .desc { font-size: 15px; margin-top: 12px; }
+  .home-grid { grid-template-columns: 1fr 1fr; gap: 36px; }
+  .folder { width: 160px; height: 124px; margin-bottom: 24px; }
+  .folder-back { height: 28px; }
+  .folder-front { top: 16px; height: 108px; }
+  .folder-badge { width: 60px; height: 60px; border-radius: 16px; }
+  .folder-badge svg { width: 32px; height: 32px; }
+  .entry .title { font-size: 24px; }
+  .entry .desc { font-size: 14px; margin-top: 8px; }
+  .access-bar { padding: 12px 18px; margin-bottom: 32px; }
+  .access-url { font-size: 14px; }
+  .copy-btn { padding: 8px 11px; }
+  .qr-btn { padding: 8px 11px; }
+  .qr-img svg { width: 260px; height: 260px; }
+}
+
+/* 旧设备降级：无 backdrop-filter 时卡片退回不透明白底，保证可读性 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .access-bar, .entry { background: var(--card); }
 }

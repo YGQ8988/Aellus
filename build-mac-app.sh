@@ -20,17 +20,37 @@ LDFLAGS="-s -w"
 VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 SRC_ICON="assets/static/favicon.svg"
 
+# Bundle ID 带版本号：每次构建版本变化即变，强制 macOS 通知中心按新 app 处理，
+# 避免图标更新后通知仍显示旧 bundle id 缓存的旧图标。
+BUNDLE_ID="com.tuhu.aellus.${VERSION}"
+
+# 最低支持的系统版本：Intel (amd64) 最低 macOS 10.15 Catalina。
+# Apple Silicon (arm64) 由 Go 工具链强制最低 macOS 11.0（Apple Silicon 本身最早也只跑 Big Sur），
+# 所以 arm64 slice 的 minos 会固定在 11.0，这是正常且无法再降低的。
+MIN_MACOS="10.15"
+
+# 构建工具链固定用 Go 1.22.x：它是最后一个支持 macOS 10.15 的 Go 版本（Go 1.23 起最低 11、1.25 起最低 12）。
+# 通过 GOTOOLCHAIN 自动下载/切换，无需手动安装。GOPROXY 默认走 goproxy.cn（国内镜像），可自行覆盖。
+GO_TOOLCHAIN="go1.22.12"
+GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
+
 echo "编译版本: $VERSION"
+echo "工具链:   $GO_TOOLCHAIN"
+echo "最低支持: macOS $MIN_MACOS (Intel) / macOS 11.0 (Apple Silicon)"
 echo
 
 # 1. 分别编译 Intel 与 Apple Silicon 两个架构（cgo 链接 Cocoa，用于菜单栏常驻）
 echo "→ 编译 darwin/amd64 ..."
-CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
-  CGO_CFLAGS="-arch x86_64" CGO_LDFLAGS="-arch x86_64" \
+GOTOOLCHAIN="$GO_TOOLCHAIN" GOPROXY="$GOPROXY" \
+  MACOSX_DEPLOYMENT_TARGET="$MIN_MACOS" CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
+  CGO_CFLAGS="-arch x86_64 -mmacosx-version-min=$MIN_MACOS" \
+  CGO_LDFLAGS="-arch x86_64 -mmacosx-version-min=$MIN_MACOS" \
   go build -trimpath -ldflags="$LDFLAGS -X main.version=$VERSION" -o /tmp/aellus-amd64 .
 echo "→ 编译 darwin/arm64 ..."
-CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
-  CGO_CFLAGS="-arch arm64" CGO_LDFLAGS="-arch arm64" \
+GOTOOLCHAIN="$GO_TOOLCHAIN" GOPROXY="$GOPROXY" \
+  MACOSX_DEPLOYMENT_TARGET="$MIN_MACOS" CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
+  CGO_CFLAGS="-arch arm64 -mmacosx-version-min=$MIN_MACOS" \
+  CGO_LDFLAGS="-arch arm64 -mmacosx-version-min=$MIN_MACOS" \
   go build -trimpath -ldflags="$LDFLAGS -X main.version=$VERSION" -o /tmp/aellus-arm64 .
 
 # 2. 合并为通用二进制
@@ -76,7 +96,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key>
     <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>
-    <string>com.tuhu.aellus</string>
+    <string>$BUNDLE_ID</string>
     <key>CFBundleExecutable</key>
     <string>aellus</string>
     <key>CFBundleIconFile</key>
@@ -88,7 +108,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
-    <string>10.15</string>
+    <string>$MIN_MACOS</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
