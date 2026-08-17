@@ -65,6 +65,9 @@ func main() {
 		fmt.Println(platform.BannerBottom)
 	}
 	fmt.Println()
+	if interactive && dirFlag == "" {
+		fmt.Print(platform.MsgDefaultDirHint)
+	}
 	fmt.Printf(platform.MsgSaveDir, app.SaveDir)
 	fmt.Printf(platform.MsgAccessURL, ip, app.Port)
 	fmt.Println(platform.MsgLanHint)

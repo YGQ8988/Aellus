@@ -21,19 +21,19 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 | 首页 | 上传 | 读取 |
 |:---:|:---:|:---:|
-| <img src="screenshots/android_home.jpg" width="260"> | <img src="screenshots/android_upload.jpg" width="260"> | <img src="screenshots/android_browse.jpg" width="260"> |
+| <img src="screenshots/android_home.jpg?v=2" width="260"> | <img src="screenshots/android_upload.jpg?v=2" width="260"> | <img src="screenshots/android_browse.jpg?v=2" width="260"> |
 
 ### iOS
 
 | 首页 | 上传 | 读取 |
 |:---:|:---:|:---:|
-| <img src="screenshots/ios_home.png" width="260"> | <img src="screenshots/ios_upload.png" width="260"> | <img src="screenshots/ios_browse.png" width="260"> |
+| <img src="screenshots/ios_home.png?v=2" width="260"> | <img src="screenshots/ios_upload.png?v=2" width="260"> | <img src="screenshots/ios_browse.png?v=2" width="260"> |
 
 ### PC
 
 | 首页 | 上传 | 读取 |
 |:---:|:---:|:---:|
-| <img src="screenshots/pc_home.png" width="270"> | <img src="screenshots/pc_upload.png" width="270"> | <img src="screenshots/pc_browse.png" width="270"> |
+| <img src="screenshots/pc_home.png?v=2" width="270"> | <img src="screenshots/pc_upload.png?v=2" width="270"> | <img src="screenshots/pc_browse.png?v=2" width="270"> |
 
 ---
 
@@ -113,6 +113,7 @@ aellus-windows-amd64.exe
   |              版本: dev                       |
   +==============================================+
 
+  默认保存到桌面 aellus-drops/ 目录（可用 --dir 自定义）
   保存目录: /Users/you/Desktop/aellus-drops
   访问地址: http://192.168.1.111:8000
      (同局域网内，浏览器打开上面地址)
