@@ -1,8 +1,24 @@
 /* 首页样式 */
 .home-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
 
-/* 项目图标（标题下方）*/
-.app-icon { display: block; margin: 0 auto 16px; width: 72px; height: 72px; border-radius: 18px; box-shadow: 0 4px 16px rgba(0,0,0,.18); }
+/* 项目图标（标题下方，可点击）——外层包裹，含提示文字 */
+.app-icon-wrap { display: flex; flex-direction: column; align-items: center; margin: 0 auto 16px; width: fit-content; }
+.app-icon {
+  width: 72px; height: 72px; border-radius: 18px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18), 0 0 0 2px rgba(0,122,255,.35);
+  cursor: pointer; transition: transform .18s ease, box-shadow .18s ease;
+}
+.app-icon:hover { transform: scale(1.06); box-shadow: 0 6px 22px rgba(0,0,0,.24), 0 0 0 3px rgba(0,122,255,.5); }
+.app-icon:active { transform: scale(.98); }
+/* icon 下方提示气泡：hover 时淡入 */
+.app-icon-hint {
+  margin-top: 10px; font-size: 12px; color: #fff; font-weight: 600;
+  background: var(--blue); padding: 5px 14px; border-radius: 14px;
+  white-space: nowrap; box-shadow: 0 2px 8px rgba(0,122,255,.3);
+  opacity: 0; transform: translateY(-6px); transition: opacity .2s ease, transform .2s ease;
+  pointer-events: none;
+}
+.app-icon-wrap:hover .app-icon-hint { opacity: 1; transform: translateY(0); }
 /* 覆盖全局 .subtitle 的 margin-top:-16px（该负边距是加图标前拉近 h1 与 subtitle 用的，现在图标在中间需重置）*/
 .subtitle { margin-top: 8px; }
 
@@ -63,7 +79,6 @@
 
 .entry .title { font-size: 19px; font-weight: 700; }
 .entry .desc { font-size: 13px; color: var(--text-2); margin-top: 6px; }
-.footer-info { margin-top: 28px; text-align: center; font-size: 12px; color: var(--text-2); line-height: 1.8; }
 
 /* ===== 访问地址栏 ===== */
 .access-bar {
@@ -137,4 +152,62 @@
 /* 旧设备降级：无 backdrop-filter 时卡片退回不透明白底，保证可读性 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .access-bar, .entry { background: var(--card); }
+}
+
+/* ===== 信息弹窗（点击图标）===== */
+.info-modal { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; }
+.info-modal.open { display: flex; }
+.info-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.info-card {
+  position: relative; z-index: 1; background: var(--card); border-radius: 16px;
+  padding: 28px 24px 24px; max-width: 92vw; width: 460px; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,.25); animation: infoPop .2s ease;
+}
+@keyframes infoPop { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.info-close { position: absolute; top: 12px; right: 14px; background: none; border: none; font-size: 18px; color: var(--text-2); cursor: pointer; padding: 4px; line-height: 1; }
+.info-close:hover { color: var(--text); }
+.info-title { font-size: 17px; font-weight: 700; margin-bottom: 18px; text-align: center; }
+
+.info-section { padding: 14px 0; border-top: 1px solid var(--border); }
+.info-section:first-of-type { border-top: none; padding-top: 0; }
+.info-section-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+
+/* 存储目录区块 */
+.savedir-current { font-size: 12px; color: var(--text-2); word-break: break-all; margin-bottom: 10px; line-height: 1.6; }
+.savedir-current span { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.savedir-edit { display: flex; gap: 8px; margin-bottom: 8px; }
+.savedir-edit input[type=text] {
+  flex: 1; min-width: 0; font-size: 13px; padding: 11px 14px;
+  background: var(--card); border: 1.5px solid var(--border); border-radius: 10px;
+  color: var(--text); transition: border-color .15s, box-shadow .15s;
+}
+.savedir-edit input[type=text]::placeholder { color: var(--text-2); }
+.savedir-edit input[type=text]:focus {
+  outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,122,255,.18);
+}
+.savedir-edit button { flex-shrink: 0; padding: 11px 18px; background: var(--blue); color: #fff; border: none; font-size: 13px; }
+.savedir-reset { width: 100%; background: var(--glass-bg-strong); color: var(--text-2); border: 1px solid var(--glass-border); padding: 11px 20px; font-size: 14px; border-radius: 10px; }
+.savedir-reset:hover { color: var(--text); }
+.savedir-msg { font-size: 12px; margin-top: 8px; min-height: 16px; }
+.savedir-msg.ok { color: var(--green); }
+.savedir-msg.err { color: var(--red); }
+
+/* 赏赏区块 */
+.tip-text { font-size: 13px; color: var(--text-2); line-height: 1.7; margin-bottom: 16px; text-align: center; }
+.qr-row { display: flex; gap: 16px; justify-content: center; }
+.qr-item { text-align: center; flex: 1; min-width: 0; }
+.qr-item img { width: 100%; max-width: 150px; height: auto; border-radius: 10px; border: 1px solid var(--border); }
+.qr-label { font-size: 12px; color: var(--text-2); margin-top: 8px; }
+
+@media (min-width: 768px) {
+  .info-card { width: 520px; padding: 32px 28px 28px; }
+  .qr-item img { max-width: 170px; }
+}
+
+/* ===== 暗黑模式：文件夹拟物图标微调，避免亮色刺眼 ===== */
+@media (prefers-color-scheme: dark) {
+  .folder-badge { background: rgba(60,60,65,.95); box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+  /* 上传/读取文件夹保留品牌色，但降低饱和度 */
+  .entry.upload .folder-front { background: linear-gradient(180deg, #0a6fd8 0%, #0860c0 100%); box-shadow: 0 6px 16px rgba(10,132,255,.3); }
+  .entry.browse .folder-front { background: linear-gradient(180deg, #1f9e44 0%, #187d35 100%); box-shadow: 0 6px 16px rgba(48,209,88,.3); }
 }

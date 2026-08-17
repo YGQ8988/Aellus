@@ -98,3 +98,94 @@
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideQR(); });
   }
 })();
+
+// ---- 信息弹窗（点击图标）：本机显示存储目录，所有人显示赞赏 ----
+(function () {
+  var icon = document.getElementById('appIcon');
+  var modal = document.getElementById('infoModal');
+  if (!icon || !modal) return;
+  var backdrop = document.getElementById('infoBackdrop');
+  var closeBtn = document.getElementById('infoClose');
+  var dirSection = document.getElementById('saveDirSection');
+  var dirCurrent = document.getElementById('saveDirCurrent');
+  var dirInput = document.getElementById('saveDirInput');
+  var dirApply = document.getElementById('saveDirApply');
+  var dirReset = document.getElementById('saveDirReset');
+  var dirMsg = document.getElementById('saveDirMsg');
+  var defaultDir = '';
+
+  function showMsg(text, ok) {
+    dirMsg.textContent = text;
+    dirMsg.className = 'savedir-msg ' + (ok ? 'ok' : 'err');
+  }
+
+  function setDir(dir) {
+    dirCurrent.textContent = dir;
+    dirInput.value = '';
+    dirInput.placeholder = dir;
+  }
+
+  function openInfo() {
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    dirSection.style.display = 'none'; // 先隐藏，本机 fetch 成功才展开
+    // 尝试获取存储目录：本机返回数据则显示目录区块，非本机 403 则保持隐藏（只显示赞赏）
+    fetch('/api/savedir').then(function (res) { return res.json(); }).then(function (data) {
+      if (data && data.dir) {
+        setDir(data.dir);
+        defaultDir = data.default || '';
+        dirSection.style.display = '';
+      }
+    }).catch(function () {});
+  }
+
+  function closeInfo() {
+    modal.classList.remove('open');
+    document.body.style.overflow = '';
+    showMsg('', true);
+  }
+
+  icon.addEventListener('click', openInfo);
+  icon.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openInfo(); } });
+  closeBtn.addEventListener('click', closeInfo);
+  backdrop.addEventListener('click', closeInfo);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeInfo(); });
+
+  // 底部署名栏也可点击打开信息弹窗（不影响 Star 链接）
+  var authorTip = document.getElementById('authorTip');
+  if (authorTip) {
+    authorTip.style.cursor = 'pointer';
+    authorTip.addEventListener('click', function (e) {
+      if (e.target.closest('.star-tip')) return; // 点 Star 区域不弹窗，让链接正常跳转
+      openInfo();
+    });
+  }
+
+  // 修改存储目录
+  function submitDir(dir, done) {
+    fetch('/api/setsavedir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dir: dir })
+    }).then(function (res) { return res.json(); }).then(function (data) {
+      if (data && data.ok) { setDir(data.dir); showMsg(done || '已修改', true); }
+      else { showMsg((data && data.error) || '修改失败', false); }
+    }).catch(function () { showMsg('网络错误', false); });
+  }
+
+  dirApply.addEventListener('click', function () {
+    var dir = dirInput.value.trim();
+    if (!dir) { showMsg('请输入目录路径', false); return; }
+    dirApply.disabled = true;
+    submitDir(dir, '已修改');
+    dirApply.disabled = false;
+  });
+
+  // 恢复默认：直接提交默认目录
+  dirReset.addEventListener('click', function () {
+    if (!defaultDir) { showMsg('未获取到默认目录', false); return; }
+    dirReset.disabled = true;
+    submitDir(defaultDir, '已恢复默认目录');
+    dirReset.disabled = false;
+  });
+})();

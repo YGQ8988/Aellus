@@ -22,6 +22,13 @@ var (
 	ExeDir    string // 可执行文件所在目录（日志写这里）
 )
 
+// DefaultSaveDir 返回默认保存目录 ~/Desktop/aellus-drops。
+// 供 InitConfig 初始化与前端「恢复默认」共用同一来源。
+func DefaultSaveDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Desktop", "aellus-drops")
+}
+
 // InitConfig 在 main 启动早期初始化路径配置。
 //
 // 日志写在 exe 所在目录而非工作目录，这样双击运行时日志与程序在一起。
@@ -34,7 +41,5 @@ func InitConfig() {
 	AccessLog = filepath.Join(ExeDir, "access.log")
 	OpLog = filepath.Join(ExeDir, "operation.log")
 
-	// 默认保存目录：~/Desktop/aellus-drops
-	home, _ := os.UserHomeDir()
-	SaveDir = filepath.Join(home, "Desktop", "aellus-drops")
+	SaveDir = DefaultSaveDir()
 }

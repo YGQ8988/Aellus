@@ -120,6 +120,10 @@ func RegisterRoutes() http.Handler {
 	mux.HandleFunc("/api/delete", handleDelete)
 	mux.HandleFunc("/api/deletedir", handleDeleteDir)
 
+	// 存储目录 API（仅本机可访问，isLocalRequest 守卫）
+	mux.HandleFunc("/api/savedir", handleGetSaveDir)
+	mux.HandleFunc("/api/setsavedir", handleSetSaveDir)
+
 	return mux
 }
 
@@ -543,4 +547,59 @@ func handleDeleteDir(w http.ResponseWriter, r *http.Request) {
 		logOp("🗑️ 删除目录 | %d 个: %s", len(deleted), strings.Join(deleted, ", "))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": deleted, "failed": failed})
+}
+
+// ----------------------------------------------------------------------
+// 存储目录 API（仅本机访问）
+// ----------------------------------------------------------------------
+
+// handleGetSaveDir GET /api/savedir → {"dir":"...","default":"..."}
+// 仅本机可查；非本机返回 403，前端据此隐藏存储目录区块，只显示赞赏信息。
+func handleGetSaveDir(w http.ResponseWriter, r *http.Request) {
+	if !isLocalRequest(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "仅本机可查看"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"dir": SaveDir, "default": DefaultSaveDir()})
+}
+
+// handleSetSaveDir POST /api/setsavedir {"dir":"..."} → {"ok":true,"dir":"..."}
+// 修改运行时存储目录。仅本机可改；先 MkdirAll 验证可写，再赋值全局 SaveDir。
+//
+// 并发说明：SaveDir 是全局 string，修改为低频手动操作（用户点「修改」），
+// 读取为高频（每个请求）。此处直接赋值——string 赋值不会撕裂成乱码，
+// 读到旧值或新值均为有效目录，实际安全。
+func handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
+	if !isLocalRequest(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "仅本机可修改"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "Method Not Allowed"})
+		return
+	}
+	var req struct {
+		Dir string `json:"dir"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
+		return
+	}
+	dir := strings.TrimSpace(req.Dir)
+	if dir == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "目录不能为空"})
+		return
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "路径无效"})
+		return
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "创建目录失败: " + err.Error()})
+		return
+	}
+	SaveDir = abs
+	logOp("📁 存储目录已修改 | %s", abs)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dir": abs})
 }

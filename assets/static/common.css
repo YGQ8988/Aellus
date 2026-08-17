@@ -1,6 +1,11 @@
 /* 公共样式：设计变量 + 通用组件 + 响应式断点 */
 :root {
+  color-scheme: light; /* 浅色明确声明，阻止 WebView forceDark 反转 */
   --bg: #f2f2f7;
+  --bg-grad-top: #e9eef6;
+  --bg-spot-blue: rgba(0,122,255,.20);
+  --bg-spot-purple: rgba(175,82,222,.18);
+  --bg-spot-pink: rgba(255,45,146,.16);
   --card: #ffffff;
   --text: #1c1c1e;
   --text-2: #8e8e93;
@@ -20,6 +25,35 @@
   --glass-border: rgba(255,255,255,.65);  /* 玻璃边缘高光：1px 内边框 */
   --glass-blur: 18px;                     /* 背景模糊半径 */
   --glass-shadow: 0 8px 32px rgba(31,38,135,.15); /* 玻璃投影：偏冷调 */
+
+  /* 署名栏底色（固定吸底，需较高对比）*/
+  --tip-bg: rgba(255,255,255,.92);
+}
+
+/* ===== 暗黑模式：跟随系统 prefers-color-scheme ===== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --bg-grad-top: #0f0f12;
+    --bg-spot-blue: rgba(0,122,255,.22);
+    --bg-spot-purple: rgba(175,82,222,.20);
+    --bg-spot-pink: rgba(255,45,146,.16);
+    --card: #2c2c2e;
+    --text: #f2f2f7;
+    --text-2: #98989d;
+    --border: #48484a;
+    --blue: #0a84ff;
+    --green: #30d158;
+    --red: #ff453a;
+    --shadow: 0 1px 3px rgba(0,0,0,.3);
+    --shadow-pc: 0 4px 16px rgba(0,0,0,.35);
+    --shadow-hover: 0 8px 24px rgba(0,0,0,.4);
+    --glass-bg: rgba(44,44,46,.55);
+    --glass-bg-strong: rgba(58,58,60,.72);
+    --glass-border: rgba(84,84,88,.5);
+    --glass-shadow: 0 8px 32px rgba(0,0,0,.4);
+    --tip-bg: rgba(28,28,30,.92);
+  }
 }
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; }
@@ -33,12 +67,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
   /* 毛玻璃必须有层次背景才显效：浅灰渐变 + 三处彩色光斑（蓝/紫/粉）*/
   background:
-    radial-gradient(circle at 12% 18%, rgba(0,122,255,.20), transparent 42%),
-    radial-gradient(circle at 88% 12%, rgba(175,82,222,.18), transparent 40%),
-    radial-gradient(circle at 78% 88%, rgba(255,45,146,.16), transparent 45%),
-    linear-gradient(180deg, #e9eef6 0%, #f2f2f7 100%);
+    radial-gradient(circle at 12% 18%, var(--bg-spot-blue), transparent 42%),
+    radial-gradient(circle at 88% 12%, var(--bg-spot-purple), transparent 40%),
+    radial-gradient(circle at 78% 88%, var(--bg-spot-pink), transparent 45%),
+    linear-gradient(180deg, var(--bg-grad-top) 0%, var(--bg) 100%);
   background-attachment: fixed;
   min-height: 100vh;
+  /* 暗黑模式关闭背景固定（部分安卓浏览器 fixed 背景闪烁），浅色保持固定 */
+}
+@media (prefers-color-scheme: dark) {
+  body { background-attachment: scroll; }
 }
 .container { max-width: 1120px; margin: 0 auto; }
 h1 { font-size: 22px; text-align: center; margin: 16px 0 24px; font-weight: 700; letter-spacing: .2px; display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -93,7 +131,7 @@ button:active { transform: scale(.97); }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
   padding: 8px 16px 10px; text-align: center; font-size: 13px; font-weight: 700;
   line-height: 1.5;
-  background: rgba(255,255,255,.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: var(--tip-bg); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
   overflow: hidden;
 }
@@ -103,11 +141,19 @@ button:active { transform: scale(.97); }
 .star-tip a:hover { text-decoration: underline; }
 .author-text {
   display: inline-block;
-  background: linear-gradient(90deg, #ff3b30, #ff9500, #ffcc00, #34c759, #007aff, #5856d6, #af52de, #ff2d92, #ff3b30);
-  background-size: 200% auto;
-  -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent; color: transparent;
-  animation: rainbow-shimmer 3s linear infinite;
+  color: var(--text); /* 兜底纯色，确保任何情况下文字可见 */
+  isolation: isolate; /* 创建独立合成层，隔离父级 backdrop-filter 对 background-clip:text 的破坏 */
+  animation: author-fade .4s ease;
+}
+/* 支持 background-clip:text 时启用彩虹流光 */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .author-text {
+    background: linear-gradient(90deg, #ff3b30, #ff9500, #ffcc00, #34c759, #007aff, #5856d6, #af52de, #ff2d92, #ff3b30);
+    background-size: 200% auto;
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: rainbow-shimmer 3s linear infinite;
+  }
 }
 /* 切换时的淡入淡出 */
 .author-text.fade { animation: rainbow-shimmer 3s linear infinite, author-fade .4s ease; }

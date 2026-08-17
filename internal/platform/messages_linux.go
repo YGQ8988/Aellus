@@ -10,7 +10,6 @@ const (
 	BannerTitle   = "  |             Aellus File Transfer             |"
 	BannerVerFmt  = "  |              Version: %-24s|\n"
 	BannerBottom  = "  +==============================================+"
-	PromptSaveDir = "  Save directory (Enter for default %s): "
 	MsgSaveDir    = "  Save directory: %s\n"
 	MsgAccessURL  = "  Access URL: http://%s:%d\n"
 	MsgLanHint    = "     (Open the URL above in a browser on the same LAN)"
@@ -18,6 +17,6 @@ const (
 	MsgMkdirFail  = "Failed to create save directory: %v\n"
 	MsgTmplFail   = "Failed to init templates: %v\n"
 	MsgServerFail = "Failed to start server: %v\n"
-	FlagDirUsage  = "Save root directory (interactive if empty)"
+	FlagDirUsage  = "Save root directory (default if empty)"
 	FlagPortUsage = "Server port (default 8000)"
 )
