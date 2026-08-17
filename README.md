@@ -113,6 +113,7 @@ aellus-windows-amd64.exe
   |              版本: dev                       |
   +==============================================+
 
+  默认保存到桌面 aellus-drops/ 目录（可用 --dir 自定义）
   保存目录: /Users/you/Desktop/aellus-drops
   访问地址: http://192.168.1.111:8000
      (同局域网内，浏览器打开上面地址)
