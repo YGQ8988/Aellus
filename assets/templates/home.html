@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="color-scheme" content="light">
 <title>Aellus</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/common.css">
@@ -11,8 +12,11 @@
 <body>
   <div class="container">
     <h1>Aellus</h1>
-    <img class="app-icon" src="/static/favicon.svg" alt="Aellus" width="72" height="72">
-    <div class="subtitle"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg> ↔ <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="20" x2="22" y2="20"/></svg> 局域网文件互传 · 上传 / 读取 / 下载</div>
+    <div class="app-icon-wrap">
+      <img class="app-icon" id="appIcon" src="/static/favicon.svg" alt="Aellus" width="72" height="72" role="button" tabindex="0" aria-label="点击查看关于与赞赏">
+      <div class="app-icon-hint">点我点我～～～</div>
+    </div>
+    <div class="subtitle"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg> ↔ <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="2" y1="20" x2="22" y2="20"/></svg> 局域网文件互传 · 上传 / 读取 / 下载 · 更安全</div>
     <div class="access-bar">
       <svg class="icon link-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
       <span class="access-url" id="accessUrl">加载中…</span>
@@ -50,9 +54,6 @@
         <div class="desc">浏览已上传的文件，支持下载</div>
       </a>
     </div>
-    <div class="footer-info">
-      电脑桌面 <b>aellus-drops/</b> 目录 · 同一局域网内使用
-    </div>
     <div class="author-tip" id="authorTip">
       <span class="author-text">The Power From AI!</span>
     </div>
@@ -67,6 +68,43 @@
       <div class="qr-img" id="qrImg"></div>
       <div class="qr-url" id="qrUrlText"></div>
       <div class="qr-hint">用手机相机或扫码 App 扫描上方二维码</div>
+    </div>
+  </div>
+
+  <!-- 信息弹窗（点击图标）：本机显示存储目录，所有人显示赞赏 -->
+  <div class="info-modal" id="infoModal">
+    <div class="info-backdrop" id="infoBackdrop"></div>
+    <div class="info-card">
+      <button class="info-close" id="infoClose" type="button">✕</button>
+      <div class="info-title">关于 Aellus</div>
+
+      <!-- 存储目录（仅本机访问显示，JS fetch 成功才展开）-->
+      <div class="info-section savedir-section" id="saveDirSection" style="display:none">
+        <div class="info-section-title">存储目录</div>
+        <div class="savedir-current">当前：<span id="saveDirCurrent"></span></div>
+        <div class="savedir-edit">
+          <input type="text" id="saveDirInput" placeholder="输入新的存储目录路径">
+          <button id="saveDirApply" type="button">修改</button>
+        </div>
+        <button id="saveDirReset" class="savedir-reset" type="button">恢复默认</button>
+        <div class="savedir-msg" id="saveDirMsg"></div>
+      </div>
+
+      <!-- 赏赏（所有人可见）-->
+      <div class="info-section">
+        <div class="info-section-title">请喝一杯咖啡</div>
+        <div class="tip-text">如果觉得工具对您有帮助的话，可以请我们喝一杯咖啡吗？</div>
+        <div class="qr-row">
+          <div class="qr-item">
+            <img src="/static/appreciation/dev_alipay.jpg" alt="开发者支付宝">
+            <div class="qr-label">开发者 · 染洛凉</div>
+          </div>
+          <div class="qr-item">
+            <img src="/static/appreciation/designer_alipay.jpg" alt="设计者支付宝">
+            <div class="qr-label">设计者 · 一西啊</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <script src="/static/qrcode.min.js"></script>

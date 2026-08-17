@@ -105,15 +105,13 @@ chmod +x aellus-darwin-arm64    # 首次赋予执行权限
 aellus-windows-amd64.exe
 ```
 
-启动后会提示输入文件保存目录（回车即用默认 `~/Desktop/aellus-drops/`），随后输出访问地址，例如：
+启动后默认使用 `~/Desktop/aellus-drops/` 作为保存目录，并输出访问地址，例如：
 
 ```
   +==============================================+
   |              Aellus 文件互传                 |
   |              版本: dev                       |
   +==============================================+
-
-  文件保存目录（回车默认 /Users/you/Desktop/aellus-drops）: ↵
 
   保存目录: /Users/you/Desktop/aellus-drops
   访问地址: http://192.168.1.111:8000
@@ -135,7 +133,7 @@ aellus-windows-amd64.exe
 ### 命令行参数
 
 ```bash
-./aellus --dir <保存目录>     # 指定保存目录（跳过交互输入，适合后台运行）
+./aellus --dir <保存目录>     # 指定保存目录（默认 ~/Desktop/aellus-drops）
 ./aellus --port 9000         # 指定端口（默认 8000）
 ./aellus --dir ~/drops --port 9000   # 组合使用
 ```
@@ -349,3 +347,13 @@ go build -o aellus .
 ## 💬 反馈与建议
 
 如果您有更好的功能想法或改进建议，欢迎提 [Issues](https://github.com/YGQ8988/Aellus/issues)！
+
+---
+
+## 💖 赞赏
+
+如果 Aellus 对你有帮助，欢迎请开发者 / 设计者喝杯咖啡 ☕
+
+| 开发者 · 染洛凉 | 设计者 · 一西啊 |
+|:---:|:---:|
+| <img src="assets/static/appreciation/dev_alipay.jpg" width="200"> | <img src="assets/static/appreciation/designer_alipay.jpg" width="200"> |

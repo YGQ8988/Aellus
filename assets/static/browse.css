@@ -16,7 +16,7 @@
   transition: transform .15s, box-shadow .15s, background .15s;
 }
 .dir-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); background: var(--glass-bg-strong); }
-.dir-card:active { background: rgba(0,0,0,.04); transform: translateY(0); }
+.dir-card:active { background: var(--glass-bg-strong); transform: translateY(0); }
 .dir-card .dicon { width: 34px; height: 34px; flex-shrink: 0; display: flex; } /* 颜色由 JS 内联 style 多色分配 */
 .dir-card .dicon svg { width: 100%; height: 100%; }
 .dir-card .dname { font-size: 16px; font-weight: 600; word-break: break-all; }
@@ -42,9 +42,9 @@
   transition: box-shadow .15s, background .15s;
 }
 .file-item:hover { box-shadow: var(--shadow-hover); background: var(--glass-bg-strong); }
-.file-item .thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: rgba(255,255,255,.4); flex-shrink: 0; }
+.file-item .thumb { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; background: var(--glass-bg); flex-shrink: 0; }
 .file-item .thumb-video { width: 72px; height: 72px; border-radius: 8px; background: #000; flex-shrink: 0; object-fit: cover; }
-.file-item .thumb-other { width: 72px; height: 72px; border-radius: 8px; background: rgba(255,255,255,.4); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.file-item .thumb-other { width: 72px; height: 72px; border-radius: 8px; background: var(--glass-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .file-item .thumb-other svg { width: 36px; height: 36px; color: var(--text-2); }
 .file-item .info { flex: 1; min-width: 0; }
 .file-item .fname { font-size: 14px; color: var(--text); word-break: break-all; line-height: 1.4; }

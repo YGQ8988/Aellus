@@ -4,13 +4,11 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"aellus/internal/app"
@@ -30,35 +28,13 @@ func main() {
 	flag.IntVar(&portFlag, "port", app.DefaultPort, platform.FlagPortUsage)
 	flag.Parse()
 
-	// 是否交互式终端（决定是否提示输入目录、是否弹通知）
+	// 是否交互式终端（决定是否显示 banner、是否弹通知、是否进菜单栏模式）
 	interactive := platform.IsTerminal()
 
-	// 确定保存目录：命令行参数 > 交互式输入 > 默认桌面/aellus-drops
-	var saveDir string
-	switch {
-	case dirFlag != "":
-		saveDir = dirFlag
-	case interactive:
-		home, _ := os.UserHomeDir()
-		defaultDir := filepath.Join(home, "Desktop", "aellus-drops")
-		fmt.Println()
-		fmt.Println(platform.BannerTop)
-		fmt.Println(platform.BannerTitle)
-		fmt.Printf(platform.BannerVerFmt, version)
-		fmt.Println(platform.BannerBottom)
-		fmt.Println()
-		fmt.Printf(platform.PromptSaveDir, defaultDir)
-		reader := bufio.NewReader(os.Stdin)
-		line, _ := reader.ReadString('\n')
-		line = strings.TrimSpace(line)
-		if line != "" {
-			saveDir = line
-		} else {
-			saveDir = defaultDir
-		}
-	default:
-		// 非交互模式（后台 / 管道启动）：用默认目录
-		saveDir = app.SaveDir
+	// 确定保存目录：命令行参数 > 默认桌面/aellus-drops
+	saveDir := dirFlag
+	if saveDir == "" {
+		saveDir = app.SaveDir // InitConfig 设置的默认 ~/Desktop/aellus-drops
 	}
 
 	// 转绝对路径并创建
@@ -81,6 +57,13 @@ func main() {
 	}
 
 	ip := app.GetLanIP()
+	if interactive {
+		fmt.Println()
+		fmt.Println(platform.BannerTop)
+		fmt.Println(platform.BannerTitle)
+		fmt.Printf(platform.BannerVerFmt, version)
+		fmt.Println(platform.BannerBottom)
+	}
 	fmt.Println()
 	fmt.Printf(platform.MsgSaveDir, app.SaveDir)
 	fmt.Printf(platform.MsgAccessURL, ip, app.Port)
