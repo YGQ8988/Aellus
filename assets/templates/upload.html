@@ -29,7 +29,7 @@
           <button class="btn-cam" onclick="document.getElementById('camInput').click()"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> 拍照</button>
           <button class="btn-rec" onclick="document.getElementById('recInput').click()"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg> 录像</button>
         </div>
-        <input type="file" id="fileInput" multiple accept="image/*,video/*">
+        <input type="file" id="fileInput" multiple>
         <input type="file" id="camInput" accept="image/*" capture="environment">
         <input type="file" id="recInput" accept="video/*" capture="environment">
         <div id="progress"><div></div></div>
