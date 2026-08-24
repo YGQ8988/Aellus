@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "Aellus.Application": {
+            "title": "Aellus",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "http",
+            "port": "${wizard_port}",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

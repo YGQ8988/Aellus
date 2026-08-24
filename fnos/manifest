@@ -1,0 +1,17 @@
+appname               = Aellus
+version               = 1.0.0
+display_name          = Aellus
+desc                  = 局域网文件互传 — 手机/电脑秒传，无需联网，即开即用
+source                = thirdparty
+platform              = all
+maintainer            = 染洛凉
+maintainer_url        = https://github.com/YGQ8988/Aellus
+distributor           = 染洛凉
+os_min_version        = 1.2.0
+desktop_uidir         = ui
+desktop_applaunchname = Aellus.Application
+service_port          = 8000
+checkport             = false
+ctl_stop              = true
+disable_authorization_path = true
+changelog             = 首发版本：局域网文件互传
