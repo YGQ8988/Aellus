@@ -1,0 +1,191 @@
+/* ============================================================
+   Aellus · shadcn/ui (zinc light) 设计令牌 + 基础组件
+   说明：仅替换组件样式，页面背景（html 灰底 / body 透明 /
+        首页与非首页的 ::before·::after 光晕点阵）一律保持原样不动。
+   ============================================================ */
+:root {
+  /* —— shadcn 令牌（HSL 三元组，配合 hsl(var(--x)) 使用）—— */
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 240 5.9% 10%;
+  --radius: 0.75rem;       /* 12px */
+  --radius-lg: 1rem;       /* 16px */
+  /* 卡片悬浮阴影（替代边框高亮）：分层柔和投影，带主色微色调 */
+  --shadow-card-hover: 0 10px 28px -8px hsl(var(--primary) / .16), 0 3px 8px -2px hsl(var(--foreground) / .05);
+  --shadow-card-active: 0 4px 12px -4px hsl(var(--primary) / .12), 0 1px 4px -1px hsl(var(--foreground) / .05);
+
+  /* 页面外边距（替代原 body padding：body 不能加 padding，否则会顶偏 sticky 顶吸附）。
+     移动端 16px、桌面端 24px；作用到 .container 与 .top-bar-inner，保证内容/面包屑对齐且留边。 */
+  --page-gutter: 16px;
+  --page-top: 16px;     /* 顶栏 / 首屏内容与上传页 .container 顶部对齐（移动 16px / 桌面 40px） */
+
+  /* 成功态绿色：完整 hsl 值，用 var(--green) 取用（勿再套 hsl()） */
+  --green: hsl(142 71% 45%);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+/* —— 背景：保持原样（不动）—— */
+/* 注意：用 overflow-x: clip 而非 hidden。hidden 会让 overflow-y 被强制算成 auto，
+   使 <html> 变成滚动容器，导致 sticky top:0 吸附基准错位（叠上 body 16px padding
+   顶部留出未模糊的缝 = 露馅）。clip 只裁剪、不创建滚动容器，sticky 正常。 */
+html { -webkit-text-size-adjust: 100%; background: #f7f7f7; min-height: 100%; overflow-x: clip; }
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+  color: hsl(var(--foreground));
+  /* 注意：body 不加 padding（原 16px/24px 已移除）。body 有 padding 会让 sticky
+     顶吸附被顶偏（叠上满宽吸顶栏时顶部留未模糊缝）。外边距改由 .container /
+     .top-bar-inner 的 --page-gutter 提供，详见下方 .container 规则。 */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  /* 关键：body 必须透明，否则不透明白底会把 z-index:-1 的伪元素（光晕/网格）盖住。
+     真实底色由 html 的 #f7f7f7 提供，光晕和网格由下面的 ::before / ::after 承载。 */
+  background: transparent;
+}
+/* 首页 hero 背景（沿用原设计不变）：角落光晕 + 细线网格 */
+body.home::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(135deg, rgb(37 99 235 / .09), transparent 42%),
+    linear-gradient(45deg, transparent 48%, rgb(20 184 166 / .08), transparent 76%);
+}
+body.home::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgb(15 23 42 / .05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(15 23 42 / .05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 65%, transparent 98%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 65%, transparent 98%);
+  opacity: .5;
+}
+/* 非首页背景（沿用原设计不变）：右上角淡蓝晕 + 蓝点阵 */
+body:not(.home)::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(circle at 80% 18%, rgb(49 87 200 / 7%), transparent 22%),
+    radial-gradient(circle, rgb(49 87 200 / 12%) 1px, transparent 1.5px);
+  background-size: auto, 24px 24px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 88%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 88%);
+}
+
+/* —— 布局 / 排版 —— */
+/* .container 承接原 body 的左右/上下外边距（用 --page-gutter，移动端16/桌面端24）。
+   注意：吸顶栏 .top-bar 是满宽出血、不在 .container 内，它用 .top-bar-inner 吃同样的
+   --page-gutter，因此面包屑与下方网格内容左右对齐。 */
+.container { max-width: 1120px; margin: 0 auto; padding: 16px var(--page-gutter) 24px; }
+h1 { font-size: clamp(2.25rem, 8.5vw, 3.75rem); text-align: center; margin: 20px 0 14px; font-weight: 800; letter-spacing: -.4px; color: hsl(var(--foreground)); }
+.subtitle { text-align: center; font-size: clamp(0.95rem, 4.2vw, 1.125rem); font-weight: 500; color: hsl(var(--muted-foreground)); margin-top: -6px; margin-bottom: 30px; display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+/* 渐变文字（用于「更安全」等强调词）：蓝(#2563eb) → 紫(#7c3aed) */
+.grad {
+  background: linear-gradient(120deg, #2563eb 0%, #7c3aed 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.nav-back { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; color: hsl(var(--muted-foreground)); padding: 6px 10px; border-radius: calc(var(--radius) - 2px); margin-bottom: 14px; text-decoration: none; transition: background .15s, color .15s; }
+@media (hover: hover) and (pointer: fine) {
+  .nav-back:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+}
+
+/* —— 图标（inline SVG，跨平台渲染一致）—— */
+.icon {
+  display: inline-block; vertical-align: -.125em; width: 1em; height: 1em;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* —— shadcn Card —— */
+.card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-lg);
+  padding: 16px; margin-bottom: 14px;
+  
+}
+
+label { display: block; font-size: 13px; color: hsl(var(--muted-foreground)); margin-bottom: 6px; font-weight: 500; }
+
+/* —— shadcn Input —— */
+input[type=text], input:not([type]) {
+  width: 100%; padding: 8px 12px; border: 1px solid hsl(var(--input));
+  border-radius: calc(var(--radius) - 4px); color: hsl(var(--foreground));
+  font-size: 14px; background: hsl(var(--background));
+  transition: border-color .15s;
+}
+input[type=text]:focus, input:not([type]):focus {
+  outline: none; border-color: hsl(var(--ring));
+  
+}
+
+/* —— shadcn Button（基础 + 变体）—— */
+button {
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 14px; font-weight: 500; line-height: 1;
+  min-height: 40px; padding: 0 16px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  transition: background .15s, color .15s, border-color .15s, opacity .15s, transform .1s;
+}
+button:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) {
+  button:hover { opacity: .9; }
+}
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.btn-outline { background: hsl(var(--background)); color: hsl(var(--foreground)); border-color: hsl(var(--input)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-outline:hover { background: hsl(var(--accent)); }
+}
+.btn-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-secondary:hover { background: hsl(var(--secondary) / 0.8); }
+}
+.btn-ghost { background: transparent; color: hsl(var(--foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-ghost:hover { background: hsl(var(--accent)); }
+}
+.btn-destructive { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-destructive:hover { background: hsl(var(--destructive) / 0.9); }
+}
+
+.tip { font-size: 12px; color: hsl(var(--muted-foreground)); text-align: center; margin-top: 18px; line-height: 1.6; }
+.empty { text-align: center; color: hsl(var(--muted-foreground)); padding: 60px 20px; font-size: 14px; }
+.empty .emoji { width: 48px; height: 48px; display: block; margin: 0 auto 12px; opacity: .4; color: hsl(var(--muted-foreground)); }
+.empty .emoji svg { width: 100%; height: 100%; }
+.loading { text-align: center; color: hsl(var(--muted-foreground)); padding: 40px 0; font-size: 14px; }
+
+/* —— PC 端 (>=768px) —— */
+@media (min-width: 768px) {
+  :root { --page-gutter: 24px; --page-top: 40px; }
+  body { min-height: 100vh; }
+  /* 桌面端恢复原 body 的上下间距（40/48），由容器承接而非 body */
+  .container { padding-top: 40px; padding-bottom: 48px; }
+  h1 { margin: 14px 0 16px; letter-spacing: -1px; }
+  .subtitle { margin-top: 0; margin-bottom: 24px; }
+  .card { border-radius: var(--radius-lg); padding: 22px; }
+  .nav-back { font-size: 15px; margin-bottom: 14px; }
+  .tip { font-size: 13px; margin-top: 28px; }
+}

@@ -1,0 +1,108 @@
+/* ============================================================
+   Aellus · shadcn/ui 组件层（zinc light）
+   令牌来自 common.css。本文件只保留当前实际使用的组件样式：
+   Badge / Separator / Checkbox / Alert / Alert Dialog / Toast。
+   其余 shadcn 组件基类（Dropdown / Switch / Tabs / Accordion /
+   Avatar / Popover / Sheet / Table / Toggle / Textarea / Select /
+   Input Group / Button Group / Skeleton / Kbd / Tooltip / Slider /
+   Pagination / Field / Hover Card 等）尚无对应界面，已移除，
+   需要时再按 shadcn 规范补回。
+   ============================================================ */
+
+/* ---------- Badge ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 8px; border-radius: 9999px;
+  font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.badge-outline { background: hsl(var(--background)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
+
+/* ---------- Separator ---------- */
+.separator { height: 1px; width: 100%; background: hsl(var(--border)); margin: 16px 0; }
+
+/* ---------- Checkbox（shadcn 风格原生实现） ---------- */
+.checkbox {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; flex-shrink: 0; margin: 0; padding: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 4px); /* rounded-sm */
+  background: transparent;
+  transition: background-color .15s, border-color .15s;
+}
+.checkbox:checked { background: hsl(var(--primary)); border-color: hsl(var(--primary)); }
+.checkbox:checked::after {
+  content: ""; display: block;
+  width: 6px; height: 3px;
+  border: solid hsl(var(--primary-foreground));
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+}
+.checkbox:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.checkbox:disabled, .checkbox[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+
+/* ---------- Alert ---------- */
+.alert {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 12px 14px; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); background: hsl(var(--background));
+  font-size: 13px;
+}
+.alert-destructive {
+  border-color: hsl(var(--destructive) / .4);
+  background: hsl(var(--destructive) / .06);
+  color: hsl(var(--destructive));
+}
+.alert-title { font-weight: 600; }
+.alert-desc { color: hsl(var(--muted-foreground)); }
+.alert-destructive .alert-desc { color: hsl(var(--destructive) / .85); }
+
+/* ---------- Alert Dialog ---------- */
+.alert-dialog-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgb(0 0 0 / .45); backdrop-filter: blur(2px);
+  display: none; align-items: center; justify-content: center; padding: 16px;
+}
+.alert-dialog-overlay[data-open="true"] { display: flex; animation: fadeIn .15s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.alert-dialog {
+  width: 100%; max-width: 420px;
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg);
+  overflow: hidden;
+  animation: dialogIn .18s ease;
+}
+@keyframes dialogIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.alert-dialog-header { padding: 20px 20px 0; }
+.alert-dialog-title { font-size: 16px; font-weight: 600; }
+.alert-dialog-desc { font-size: 13px; color: hsl(var(--muted-foreground)); margin-top: 6px; line-height: 1.5; }
+.alert-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 20px 20px; }
+
+/* ---------- Toast / Sonner ---------- */
+.toast-viewport {
+  position: fixed; bottom: 20px; right: 20px; z-index: 200;
+  display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 32px));
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  animation: toastIn .2s ease;
+}
+.toast.leaving { animation: toastOut .18s ease forwards; }
+@keyframes toastIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { to { opacity: 0; transform: translateX(16px); } }
+.toast.destructive { border-color: hsl(var(--destructive) / .4); background: hsl(var(--destructive) / .06); }
+.toast-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.toast-desc { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; line-height: 1.4; }
+.toast-ico { flex-shrink: 0; margin-top: 1px; }
+.toast.destructive .toast-ico { color: hsl(var(--destructive)); }
+.toast-close {
+  margin-left: auto; flex-shrink: 0; border: none; background: transparent; cursor: pointer;
+  color: hsl(var(--muted-foreground)); padding: 2px; border-radius: calc(var(--radius) - 4px); min-height: auto; font-size: 14px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .toast-close:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+}

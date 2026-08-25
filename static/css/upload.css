@@ -1,0 +1,161 @@
+/* ============================================================
+   上传页样式（shadcn / zinc light）
+   ============================================================ */
+.upload-wrap { max-width: 1120px; margin: 0 auto; }
+
+/* 大上传卡片（拖放区）→ shadcn Card */
+.upload-zone {
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg);
+  padding: 16px; margin-top: 16px;
+  transition: border-color .2s;
+}
+/* 拖入高亮：仅内层虚线框变 2px 深色 + accent 背景，外层卡片不变色 */
+.upload-zone--active .upload-zone-inner { border-color: hsl(var(--foreground)); background: hsl(var(--accent)); }
+.upload-zone-inner {
+  border: 2px dashed hsl(var(--border)); border-radius: var(--radius);
+  padding: 48px 20px; cursor: pointer; text-align: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 180px;
+  transition: border-color .2s, background .2s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .upload-zone-inner:hover { border-color: hsl(var(--foreground)); background: hsl(var(--accent)); }
+}
+.upload-zone-icon { width: 48px; height: 48px; margin: 0 auto 14px; display: block; color: hsl(var(--foreground)); }
+.upload-zone-text { font-size: 16px; font-weight: 600; color: hsl(var(--foreground)); margin: 0 0 6px; }
+.upload-zone-hint { font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0; }
+
+/* 子操作按钮（与上传区同一卡片内，等宽）→ shadcn outline 变体 */
+.upload-actions { display: flex; gap: 12px; margin-top: 18px; }
+.upload-action-btn {
+  flex: 1; justify-content: center;
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 46px; padding: 0 14px; line-height: 1;
+  -webkit-appearance: none; appearance: none; font-family: inherit;
+  border: 1px solid hsl(var(--input)); border-radius: calc(var(--radius) - 2px);
+  background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+  min-width: 0; box-sizing: border-box;
+}
+.upload-action-btn:active { background: hsl(var(--accent)); }
+@media (hover: hover) and (pointer: fine) {
+  .upload-action-btn:hover { background: hsl(var(--accent)); }
+}
+.upload-action-btn svg { flex-shrink: 0; color: hsl(var(--foreground)); transition: color .15s; }
+
+/* 进度容器：被新卡片列表接管，去掉旧的 6px 条带高度与 overflow:hidden 限制，让卡片自然撑高 */
+#progress { display: none; margin-top: 14px; }
+/* 旧的单条进度选择器只在没用到 .up-progress 列表时兜底（保留以防遗漏）。 */
+#progress > div:not(.up-prog-item) { height: 6px; background: hsl(var(--primary)); transition: width .2s; }
+
+/* 结果卡片 → shadcn Card */
+.result { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg); padding: 16px; margin-top: 14px; display: none; }
+.result-head { font-size: 13px; color: hsl(var(--muted-foreground)); margin-bottom: 12px; word-break: break-all; }
+
+/* 上传成功后的卡片网格：扁平式，仅缩略图 + 文字（无边框/无 padding/无 hover） */
+.up-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+.up-card {
+  display: grid; grid-template-columns: 72px 1fr; column-gap: 12px; align-items: stretch;
+}
+.up-thumb { width: 72px; height: 72px; border-radius: calc(var(--radius) - 2px); background: hsl(var(--muted)); flex-shrink: 0; overflow: hidden; }
+.up-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.up-thumb-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; letter-spacing: .5px; color: hsl(var(--muted-foreground)); }
+/* 文字块与 72px 缩略图等高：文件名顶对齐、大小·时间底对齐 */
+.up-meta { min-width: 0; min-height: 72px; display: flex; flex-direction: column; justify-content: space-between; }
+.up-name { font-size: 14px; color: hsl(var(--foreground)); word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.up-size { font-size: 12px; color: hsl(var(--muted-foreground)); }
+@media (min-width: 640px) {
+  .up-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; }
+}
+
+/* 语义按钮色：拍摄(中性) / 录像(危险) / 取消(次级) */
+.btn-cam { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-cam:hover { background: hsl(var(--secondary) / 0.8); }
+}
+.btn-rec { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-rec:hover { background: hsl(var(--destructive) / 0.9); }
+}
+.btn-cancel { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-cancel:hover { background: hsl(var(--secondary) / 0.8); }
+}
+
+input[type=file] { display: none; }
+
+/* 网页内相机弹窗 → shadcn Dialog */
+.cam-modal { position: fixed; inset: 0; background: rgb(0 0 0 / 0.8); display: none; align-items: center; justify-content: center; z-index: 9999; padding: 12px; }
+.cam-inner { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; align-items: center; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg); padding: 16px;  }
+.cam-inner video, .cam-preview { width: 100%; max-height: 70vh; border-radius: calc(var(--radius) - 2px); background: #000; object-fit: contain; overflow: hidden; }
+.cam-preview img, .cam-preview video { width: 100%; border-radius: calc(var(--radius) - 2px); display: block; }
+.cam-bar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.cam-bar button { padding: 12px 18px; border-radius: calc(var(--radius) - 2px); font-size: 15px; border: 1px solid transparent; }
+.cam-status { color: hsl(var(--muted-foreground)); font-size: 13px; min-height: 18px; }
+
+@media (min-width: 768px) {
+  .upload-wrap { max-width: 1120px; }
+  .upload-zone { padding: 22px; }
+  .upload-zone-inner { padding: 60px 24px; min-height: 220px; }
+  .upload-zone-icon { width: 56px; height: 56px; margin-bottom: 20px; }
+  .upload-zone-text { font-size: 18px; }
+  .upload-zone-hint { font-size: 14px; }
+  /* PC 端隐藏 upload-actions（手机端默认 display:flex 展示） */
+  .upload-actions { display: none; }
+  .upload-action-btn { padding: 0 26px; font-size: 15px; }
+}
+
+/* ============================================================
+   上传进度列表（逐文件卡片：上排缩略图/文件名/速度 + 取消叉号，下排独立进度条）
+   ============================================================ */
+.up-progress { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.up-prog-item {
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+/* 上排：缩略图 + 文件名/速度 + 取消按钮 */
+.up-prog-item .up-prog-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
+/* 缩略图 / 文件图标（48px，比读取页的 72px 更紧凑以贴近"卡片"比例） */
+.up-prog-item .thumb,
+.up-prog-item .thumb-video,
+.up-prog-item .thumb-other {
+  width: 48px; height: 48px; border-radius: calc(var(--radius) - 2px); flex-shrink: 0; object-fit: cover; background: hsl(var(--muted));
+}
+.up-prog-item .thumb { opacity: 0; transition: opacity .25s ease; }
+.up-prog-item .thumb.loaded { opacity: 1; }
+.up-prog-item .thumb-video { background: #000; }
+.up-prog-item .thumb-other { display: flex; align-items: center; justify-content: center; }
+.up-prog-item .thumb-other svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
+/* 后缀名文字占位（无后缀时才用 SVG 图标）：与读取页 .up-thumb-ph 风格一致 */
+.up-prog-item .thumb-other.thumb-ext {
+  font-size: 14px; font-weight: 600; letter-spacing: .5px; color: hsl(var(--muted-foreground));
+}
+/* 文件名 + 速度 纵向组合块 */
+.up-prog-item .file-main { display: flex; gap: 12px; align-items: center; min-width: 0; flex: 1; }
+.up-prog-item .file-meta-col { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.up-prog-item .fname { font-size: 14px; color: hsl(var(--foreground)); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up-prog-item .fmeta { font-size: 12px; color: hsl(var(--muted-foreground)); }
+/* 取消按钮：圆角方框 + 描边 + 叉号（hover 变红） */
+.up-prog-item .up-prog-cancel {
+  flex-shrink: 0; width: 28px; height: 28px; min-height: 0; border-radius: 9999px;
+  border: 1px solid hsl(var(--border)); background: transparent; color: hsl(var(--muted-foreground));
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  padding: 0; -webkit-appearance: none; appearance: none;
+  transition: background .15s, color .15s, border-color .15s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .up-prog-item .up-prog-cancel:hover { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); border-color: hsl(var(--destructive)); }
+}
+.up-prog-item .up-prog-cancel:disabled { opacity: .35; cursor: default; }
+.up-prog-item .up-prog-cancel svg { width: 14px; height: 14px; }
+/* 进度条：紧贴卡片内容下方，独立一行，5px 圆角胶囊 */
+.up-prog-item .up-prog-bar {
+  height: 5px; background: hsl(var(--muted)); border-radius: 9999px; overflow: hidden;
+}
+.up-prog-item .up-prog-bar-fill {
+  height: 100%; width: 0; background: hsl(var(--primary)); transition: width .15s linear;
+}
+/* 取消后整张卡片淡出 + 进度条灰掉 */
+.up-prog-item.is-cancelled { opacity: .55; }
+.up-prog-item.is-cancelled .up-prog-bar-fill { background: hsl(var(--muted-foreground)); }

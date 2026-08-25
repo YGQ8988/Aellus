@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>授权回调</title>
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; background: #f1f5f9; color: #334155; }
+  .box { text-align: center; }
+  p { margin: 8px 0; }
+  .sub { color: #94a3b8; font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <p>授权处理中…</p>
+    <p class="sub">本窗口会自动关闭，请回到 Aellus 页面刷新授权状态</p>
+  </div>
+  <script type="module">
+    import { TrimApp } from '/static/js/trim-web-app.js';
+    // 飞牛开放 API 授权路由回调：解析回调结果并通知原应用页面（严格按《调用方式》文档）
+    try {
+      const sdk = new TrimApp();
+      const result = sdk.parseAppAuthCallback(window.location.href);
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'aellus:auth-result', result: result }, window.location.origin);
+      }
+    } catch (e) {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'aellus:auth-result', result: null, error: String(e) }, window.location.origin);
+      }
+    }
+    try { window.close(); } catch (e) {}
+  </script>
+</body>
+</html>
