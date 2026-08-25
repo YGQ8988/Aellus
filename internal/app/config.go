@@ -22,11 +22,11 @@ var (
 	ExeDir    string // 可执行文件所在目录（日志写这里）
 )
 
-// DefaultSaveDir 返回默认保存目录 ~/Desktop/aellus-drops。
+// DefaultSaveDir 返回默认保存目录 ~/Desktop/file-drops。
 // 供 InitConfig 初始化与前端「恢复默认」共用同一来源。
 func DefaultSaveDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Desktop", "aellus-drops")
+	return filepath.Join(home, "Desktop", "file-drops")
 }
 
 // InitConfig 在 main 启动早期初始化路径配置。

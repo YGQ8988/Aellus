@@ -31,10 +31,10 @@ func main() {
 	// 是否交互式终端（决定是否显示 banner、是否弹通知、是否进菜单栏模式）
 	interactive := platform.IsTerminal()
 
-	// 确定保存目录：命令行参数 > 默认桌面/aellus-drops
+	// 确定保存目录：命令行参数 > 默认桌面/file-drops
 	saveDir := dirFlag
 	if saveDir == "" {
-		saveDir = app.SaveDir // InitConfig 设置的默认 ~/Desktop/aellus-drops
+		saveDir = app.SaveDir // InitConfig 设置的默认 ~/Desktop/file-drops
 	}
 
 	// 转绝对路径并创建

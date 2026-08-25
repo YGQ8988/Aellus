@@ -9,7 +9,7 @@ const (
 	BannerTitle   = "  |              Aellus 文件互传                 |"
 	BannerVerFmt  = "  |              版本: %-24s|\n"
 	BannerBottom  = "  +==============================================+"
-	MsgDefaultDirHint = "  默认保存到桌面 aellus-drops/ 目录（可用 --dir 自定义）\n"
+	MsgDefaultDirHint = "  默认保存到桌面 file-drops/ 目录（可用 --dir 自定义）\n"
 	MsgSaveDir    = "  保存目录: %s\n"
 	MsgAccessURL  = "  访问地址: http://%s:%d\n"
 	MsgLanHint    = "     (同局域网内，浏览器打开上面地址)"

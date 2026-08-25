@@ -3,15 +3,8 @@
 LOG_FILE="${TRIM_PKGVAR}/info.log"
 PID_FILE="${TRIM_PKGVAR}/app.pid"
 
-# 按架构选择二进制
-case "$(uname -m)" in
-  x86_64|amd64)   BIN="${TRIM_APPDEST}/aellus-linux-amd64" ;;
-  aarch64|arm64)  BIN="${TRIM_APPDEST}/aellus-linux-arm64" ;;
-  *)
-    echo "不支持的架构: $(uname -m)" > "${TRIM_TEMP_LOGFILE}"
-    exit 1
-    ;;
-esac
+# 每个 fpk 包只含对应架构的二进制（manifest 的 platform 字段限制安装目标），统一用 aellus
+BIN="${TRIM_APPDEST}/aellus"
 
 if [ ! -x "${BIN}" ]; then
   echo "二进制不存在或不可执行: ${BIN}" > "${TRIM_TEMP_LOGFILE}"

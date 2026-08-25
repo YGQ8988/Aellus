@@ -10,7 +10,7 @@ const (
 	BannerTitle   = "  |             Aellus File Transfer             |"
 	BannerVerFmt  = "  |              Version: %-24s|\n"
 	BannerBottom  = "  +==============================================+"
-	MsgDefaultDirHint = "  Default save dir: ~/Desktop/aellus-drops/ (customize via --dir)\n"
+	MsgDefaultDirHint = "  Default save dir: ~/Desktop/file-drops/ (customize via --dir)\n"
 	MsgSaveDir    = "  Save directory: %s\n"
 	MsgAccessURL  = "  Access URL: http://%s:%d\n"
 	MsgLanHint    = "     (Open the URL above in a browser on the same LAN)"

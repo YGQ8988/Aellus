@@ -42,7 +42,7 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 - **上传文件**：截图 / 录屏 / 拍照，一键发送到电脑
 - **读取文件**：浏览已上传的文件列表，支持在线预览与下载
 - **二维码扫码访问**：首页访问地址旁提供二维码，本机点击弹窗展示，其他设备扫码即达，免手输地址
-- **按设备分目录**：上传时填设备名，文件自动归档到 `aellus-drops/<设备名>/`
+- **按设备分目录**：上传时填设备名，文件自动归档到 `file-drops/<设备名>/`
 - **自动加时间戳**：文件名带精确到毫秒的时间戳，永不覆盖
 - **响应式布局**：同时适配 PC 浏览器与手机浏览器，PC 端多列网格、手机端单列卡片
 - **图片/视频预览**：上传后即时预览；读取页缩略图可在线播放
@@ -105,7 +105,7 @@ chmod +x aellus-darwin-arm64    # 首次赋予执行权限
 aellus-windows-amd64.exe
 ```
 
-启动后默认使用 `~/Desktop/aellus-drops/` 作为保存目录，并输出访问地址，例如：
+启动后默认使用 `~/Desktop/file-drops/` 作为保存目录，并输出访问地址，例如：
 
 ```
   +==============================================+
@@ -113,8 +113,8 @@ aellus-windows-amd64.exe
   |              版本: dev                       |
   +==============================================+
 
-  默认保存到桌面 aellus-drops/ 目录（可用 --dir 自定义）
-  保存目录: /Users/you/Desktop/aellus-drops
+  默认保存到桌面 file-drops/ 目录（可用 --dir 自定义）
+  保存目录: /Users/you/Desktop/file-drops
   访问地址: http://192.168.1.111:8000
      (同局域网内，浏览器打开上面地址)
   启动中... 按 Ctrl+C 停止
@@ -134,14 +134,14 @@ aellus-windows-amd64.exe
 ### 命令行参数
 
 ```bash
-./aellus --dir <保存目录>     # 指定保存目录（默认 ~/Desktop/aellus-drops）
+./aellus --dir <保存目录>     # 指定保存目录（默认 ~/Desktop/file-drops）
 ./aellus --port 9000         # 指定端口（默认 8000）
 ./aellus --dir ~/drops --port 9000   # 组合使用
 ```
 
 非交互启动（指定 `--dir`）适合用 `nohup` / 系统服务后台运行：
 ```bash
-nohup ./aellus --dir ~/Desktop/aellus-drops --port 8000 > server.log 2>&1 &
+nohup ./aellus --dir ~/Desktop/file-drops --port 8000 > server.log 2>&1 &
 ```
 
 ---
@@ -204,10 +204,10 @@ aellus/
 
 ### 上传文件落盘位置
 
-默认 `~/Desktop/aellus-drops/`（启动时可自定义）：
+默认 `~/Desktop/file-drops/`（启动时可自定义）：
 
 ```
-aellus-drops/
+file-drops/
 └── <设备名>/
     └── 20260804_112601079_截图.png   # 时间戳_原文件名
 ```
