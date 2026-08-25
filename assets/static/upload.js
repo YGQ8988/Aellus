@@ -17,8 +17,8 @@ function getFiles(input) {
 
 function upload(files, inputEl) {
   const fd = new FormData();
-  files.forEach(f => fd.append('files', f, f.name));
-  fd.append('device', $('device').value);
+  fd.append('device', $('device').value);             // 先 device：后端流式读取需在读到文件前确定目录
+  files.forEach(f => fd.append('files', f, f.name));  // 后 files
 
   const xhr = new XMLHttpRequest();
   const prog = $('progress'), bar = prog.firstElementChild;

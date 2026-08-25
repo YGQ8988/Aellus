@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"aellus/assets"
@@ -188,58 +189,98 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // ----------------------------------------------------------------------
-// 上传 API：POST /upload  (multipart: files[] + device)
+// 上传 API：POST /upload  (multipart: device + files[])
 // ----------------------------------------------------------------------
 
+// uploadBufPool 复用 1MB 缓冲区供大文件流式拷贝，减少 GC 压力与系统调用次数。
+// 1MB 是千兆局域网下的经验最优值：足够摊薄系统调用开销，又不至于浪费内存。
+var uploadBufPool = sync.Pool{
+	New: func() any { return make([]byte, 1<<20) },
+}
+
 func handleUploadFiles(w http.ResponseWriter, r *http.Request) {
-	// ParseMultipartForm 把超过 32MB 的部分写临时文件，支持大文件上传。
-	// 表单字段（device）进内存，文件字段按上述阈值落盘或留内存。
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	// 流式解析 multipart：用 MultipartReader 逐 part 读取，文件直接落目标目录，
+	// 不经 ParseMultipartForm 的临时文件中转——避免大文件双写磁盘 + 撑爆 temp 目录。
+	// 约定：前端 FormData 先 append device 再 append files，以便读到文件前确定目录。
+	mr, err := r.MultipartReader()
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
 		return
 	}
 
-	device := safeDevice(r.FormValue("device"))
-	deviceDir := filepath.Join(SaveDir, device)
-	if err := os.MkdirAll(deviceDir, 0o755); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "创建目录失败"})
-		return
+	buf := uploadBufPool.Get().([]byte)
+	defer uploadBufPool.Put(buf)
+
+	var device string
+	var deviceDir string
+	results := make([]map[string]any, 0)
+
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
+			return
+		}
+
+		switch part.FormName() {
+		case "device":
+			// device 字段很短，直接读完
+			b, err := io.ReadAll(part)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "请求格式错误"})
+				return
+			}
+			device = safeDevice(string(b))
+			deviceDir = filepath.Join(SaveDir, device)
+			if err := os.MkdirAll(deviceDir, 0o755); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "创建目录失败"})
+				return
+			}
+		case "files":
+			// 兜底：若 device 在 files 之后（非预期顺序），用 default
+			if deviceDir == "" {
+				device = "default"
+				deviceDir = filepath.Join(SaveDir, device)
+				if err := os.MkdirAll(deviceDir, 0o755); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "创建目录失败"})
+					return
+				}
+			}
+
+			now := time.Now()
+			// 时间戳：YYYYMMDD_HHMMSS + 毫秒3位
+			ts := now.Format("20060102_150405") + fmt.Sprintf("%03d", now.Nanosecond()/1_000_000)
+			raw := basename(part.FileName())
+			if raw == "" || raw == "." {
+				raw = "file"
+			}
+			saveName := ts + "_" + raw
+			dstPath := filepath.Join(deviceDir, saveName)
+
+			dst, err := os.Create(dstPath)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "创建文件失败"})
+				return
+			}
+			size, err := io.CopyBuffer(dst, part, buf)
+			_ = dst.Close()
+			if err != nil {
+				_ = os.Remove(dstPath) // 写入失败删半成品，避免残留空壳文件
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "写入文件失败"})
+				return
+			}
+
+			results = append(results, map[string]any{"name": saveName, "size": size})
+			logOp("✅ %s | %s | %.2fMB", device, saveName, float64(size)/1_048_576.0)
+		}
 	}
 
-	fhs := r.MultipartForm.File["files"]
-	results := make([]map[string]any, 0, len(fhs))
-	for _, fh := range fhs {
-		now := time.Now()
-		// 时间戳：YYYYMMDD_HHMMSS + 毫秒3位
-		ts := now.Format("20060102_150405") + fmt.Sprintf("%03d", now.Nanosecond()/1_000_000)
-		raw := basename(fh.Filename)
-		if raw == "" || raw == "." {
-			raw = "file"
-		}
-		saveName := ts + "_" + raw
-		dstPath := filepath.Join(deviceDir, saveName)
-
-		src, err := fh.Open()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "打开上传文件失败"})
-			return
-		}
-		dst, err := os.Create(dstPath)
-		if err != nil {
-			_ = src.Close()
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "创建文件失败"})
-			return
-		}
-		size, err := io.Copy(dst, src)
-		_ = src.Close()
-		_ = dst.Close()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "写入文件失败"})
-			return
-		}
-
-		results = append(results, map[string]any{"name": saveName, "size": size})
-		logOp("✅ %s | %s | %.2fMB", device, saveName, float64(size)/1_048_576.0)
+	if len(results) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "未收到文件"})
+		return
 	}
 
 	// dir 返回绝对路径，前端显示 "已保存到：{dir}"
