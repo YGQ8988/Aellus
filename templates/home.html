@@ -146,6 +146,9 @@
     msg.className='settings-msg'; msg.textContent='';
     closeDirPopup();
     fetch('/api/settings').then(r=>r.json()).then(d=>{
+      // 标题：本机访问为「设置」，远程访问为「关于Aellus」（移动端标题「打赏」不变）
+      var titlePc=document.querySelector('.set-title-pc');
+      if(titlePc){ titlePc.textContent = d.isLocal ? '设置' : '关于Aellus'; }
       var pathSec=document.querySelector('.settings-sec--path');
       var sep=document.querySelector('.separator');
       // 仅本机访问（来源 IP = 服务 IP）时展示「文件保存路径」模块，远程访问隐藏
