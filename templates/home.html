@@ -16,7 +16,7 @@
   <div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
     <div class="settings-panel">
       <div class="settings-head">
-        <h2><span class="set-title-pc">设置</span><span class="set-title-m">打赏</span></h2>
+        <h2><span class="set-title-pc">设置</span><span class="set-title-m">关于Aellus</span></h2>
         <button class="settings-close" onclick="closeSettings()" aria-label="关闭">✕</button>
       </div>
       <div class="settings-body">
@@ -42,7 +42,7 @@
         </section>
         <div class="separator"></div>
         <section class="settings-sec settings-sec--reward">
-          <h4>打赏二维码</h4>
+          <h4>打赏</h4>
           <p class="settings-reward-desc">如果我们开发的 Aellus 工具对您有所帮助的话，可以请我们喝一杯咖啡吗？</p>
           <p class="settings-reward-tip">这是完全自愿的个人赠与，不是购买软件，也不是购买服务。无论是否打赏，工具的功能和使用权限都不会有任何变化，也不会因此获得额外的技术支持或商用授权。</p>
           <div class="qr-list">
@@ -146,22 +146,33 @@
     msg.className='settings-msg'; msg.textContent='';
     closeDirPopup();
     fetch('/api/settings').then(r=>r.json()).then(d=>{
-      var hidden=document.getElementById('saveDirDisplay');
-      hidden.value=d.saveDir||''; hidden.dataset.path=d.saveDir||'';
-      // 未修改路径（仍是默认）则不展示「恢复默认」按钮；改过路径才展示
-      document.getElementById('resetDirBtn').style.display = d.isDefault ? 'none' : '';
-      // 提示文案：fpk 端（飞牛授权管理）不持久化路径——重启回到飞牛注入值；
-      // 桌面端用户自主决定，修改后重启保留。
-      var tip=document.getElementById('saveDirTip');
-      if(tip){
-        if(d.persistSaveDir===false){
-          tip.textContent='保存路径由飞牛授权目录决定（可在已授权目录及其子目录中选择），修改仅当前运行生效，重启后回到飞牛授权目录。添加 / 移除授权请在飞牛「应用设置 → 授权目录」操作。';
-        } else {
-          tip.textContent='接收到的文件将保存到该目录（修改后立即生效，重启后保留）。';
+      var pathSec=document.querySelector('.settings-sec--path');
+      var sep=document.querySelector('.separator');
+      // 仅本机访问（来源 IP = 服务 IP）时展示「文件保存路径」模块，远程访问隐藏
+      if(d.isLocal){
+        if(pathSec){ pathSec.style.display=''; }
+        if(sep){ sep.style.display=''; }
+        var hidden=document.getElementById('saveDirDisplay');
+        hidden.value=d.saveDir||''; hidden.dataset.path=d.saveDir||'';
+        // 未修改路径（仍是默认）则不展示「恢复默认」按钮；改过路径才展示
+        document.getElementById('resetDirBtn').style.display = d.isDefault ? 'none' : '';
+        // 提示文案：fpk 端（飞牛授权管理）不持久化路径——重启回到飞牛注入值；
+        // 桌面端用户自主决定，修改后重启保留。
+        var tip=document.getElementById('saveDirTip');
+        if(tip){
+          if(d.persistSaveDir===false){
+            tip.textContent='保存路径由飞牛授权目录决定（可在已授权目录及其子目录中选择），修改仅当前运行生效，重启后回到飞牛授权目录。添加 / 移除授权请在飞牛「应用设置 → 授权目录」操作。';
+          } else {
+            tip.textContent='接收到的文件将保存到该目录（修改后立即生效，重启后保留）。';
+          }
         }
+        // 复用已拿到的 settings 数据初始化路径选择器，不再重复请求 /api/settings
+        renderAuthPaths(d);
+      } else {
+        if(pathSec){ pathSec.style.display='none'; }
+        if(sep){ sep.style.display='none'; }
       }
     }).catch(()=>{});
-    renderAuthPaths();
   }
   function closeSettings(){
     document.getElementById('settingsOverlay').classList.remove('active');
@@ -287,16 +298,18 @@
         else { msg.className='settings-msg show err'; msg.textContent=d.error||'恢复失败'; }
       }).catch(()=>{ msg.className='settings-msg show err'; msg.textContent='网络错误'; });
   }
-  // 飞牛授权目录：弹层列出已授权目录（授权根来自官方 API /api/authpaths），
-  // 选中即设为保存目录。只读、不新建；添加/移除授权在飞牛「应用设置 → 授权目录」操作。
-  // 桌面端（非飞牛）：无授权目录概念，直接展示输入框让用户填写绝对路径。
-  function renderAuthPaths(){
+  // 初始化「文件保存路径」选择器。s 为 /api/settings 已返回的数据（由 openSettings
+  // 传入，避免重复请求）。飞牛端弹层列出已授权目录（授权根来自官方 API /api/authpaths），
+  // 选中即设为保存目录；桌面端（非飞牛）无授权目录概念，直接展示输入框让用户填写绝对路径。
+  function renderAuthPaths(s){
     var hidden=document.getElementById('saveDirDisplay');
     var popup=document.getElementById('dirPopup');
     var trigger=document.getElementById('dirTrigger');
     var inputWrap=document.getElementById('dirInputWrap');
     var dirInput=document.getElementById('dirInput');
     if(!hidden) return;
+    var cur=(s&&s.saveDir)||'';
+    hidden.value=cur; hidden.dataset.path=cur;
     // 初始：下拉模式加载中
     if(popup){ popup.innerHTML='<div class="dir-empty">加载中…</div>'; popup.hidden=true; }
     if(trigger){ trigger.style.display=''; }
@@ -309,11 +322,8 @@
         if(trigger){ trigger.style.display='none'; }
         if(popup){ popup.hidden=true; }
         if(inputWrap){ inputWrap.hidden=false; }
-        fetch('/api/settings').then(function(r){return r.json();}).then(function(s){
-          var cur=(s&&s.saveDir)||'';
-          hidden.value=cur; hidden.dataset.path=cur;
-          if(dirInput){ dirInput.value=cur; }
-        }).catch(function(){});
+        if(dirInput){ dirInput.value=cur; }
+        renderDirTrigger(cur);
         return;
       }
       // 飞牛环境：下拉选择模式
@@ -326,17 +336,13 @@
         if(tip){ tip.textContent='飞牛尚未向 Aellus 授权任何共享目录。请在飞牛「应用设置 → 授权目录」中授权后，再回到此处选择保存位置。'; }
         return;
       }
-      fetch('/api/settings').then(function(r){return r.json();}).then(function(s){
-        var cur=(s&&s.saveDir)||'';
-        hidden.value=cur; hidden.dataset.path=cur;
-        renderDirTrigger(cur);
-        // 只展示授权根目录，不展开子目录（用户在飞牛端授权的是根目录，选根目录即可）
-        var all = roots.slice();
-        // 如果当前保存目录不在授权列表里（如 fnOS 默认 /vol1/@appcenter/Aellus/file-drops），
-        // 追加为合成项，保证总是能选中并显示当前路径。
-        if(cur && all.indexOf(cur)===-1){ all.push(cur); }
-        renderDirOptions(all, cur);
-      }).catch(function(){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; });
+      renderDirTrigger(cur);
+      // 只展示授权根目录，不展开子目录（用户在飞牛端授权的是根目录，选根目录即可）
+      var all = roots.slice();
+      // 如果当前保存目录不在授权列表里（如 fnOS 默认 /vol1/@appcenter/Aellus/file-drops），
+      // 追加为合成项，保证总是能选中并显示当前路径。
+      if(cur && all.indexOf(cur)===-1){ all.push(cur); }
+      renderDirOptions(all, cur);
     }).catch(function(){
       if(popup){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; }
     });

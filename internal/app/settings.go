@@ -18,6 +18,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
 		"persistSaveDir": a.platform.PersistSaveDirAllowed(), // fpk 端为 false：路径不持久化，重启回到飞牛注入值
 		"hasTrim":        hasTrimAPI(),                       // fpk（飞牛）环境标识：前端据此隐藏「默认保存在电脑桌面」等桌面专属文案
+		"isLocal":        isLocalRequest(r),                  // 访问来源 IP 是否等于服务 IP（本机访问）：前端据此显隐「文件保存路径」模块
 	})
 }
 
@@ -126,6 +127,12 @@ func (a *App) resolvePickedDir(name string) string {
 func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
+		return
+	}
+	// 仅本机可修改保存路径（来源 IP 必须等于服务 IP），防止局域网任意设备篡改落盘位置。
+	// 飞牛端远程访问同样受限——保存路径完全由启动注入的 AELLUS_SAVE_DIR 决定。
+	if !isLocalRequest(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "仅本机可修改保存路径"})
 		return
 	}
 	var req struct {
