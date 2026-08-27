@@ -301,11 +301,11 @@ const (
 <table>
   <tr>
     <td align="center">
-      <img src="static/qr-dev-ygq.png" width="180" alt="开发者 染洛凉 支付宝二维码"><br>
+      <img src="static/img/qr-dev-ygq.png" width="180" alt="开发者 染洛凉 支付宝二维码"><br>
       <sub>开发者 染洛凉</sub>
     </td>
     <td align="center">
-      <img src="static/qr-designer-yixi.png" width="180" alt="设计师 一西啊 支付宝二维码"><br>
+      <img src="static/img/qr-designer-yixi.png" width="180" alt="设计师 一西啊 支付宝二维码"><br>
       <sub>设计师 一西啊</sub>
     </td>
   </tr>
