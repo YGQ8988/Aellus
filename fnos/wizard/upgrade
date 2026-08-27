@@ -1,0 +1,11 @@
+[
+  {
+    "stepTitle": "升级 Aellus",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "正在升级 Aellus，已有的上传文件与配置将保留，升级完成后服务会自动重启。"
+      }
+    ]
+  }
+]

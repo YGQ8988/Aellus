@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Aellus</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/common.css">
+<link rel="stylesheet" href="/static/css/upload.css">
+<link rel="stylesheet" href="/static/css/browse.css">
+<link rel="stylesheet" href="/static/css/components.css">
+</head>
+<body>
+  <div class="container">
+    <div class="upload-wrap">
+      <a class="nav-back" href="/">← 返回首页</a>
+
+      <div class="card">
+        <label>设备名称（用于分目录）</label>
+        <input type="text" id="device" placeholder="如：iPhone-测试机A / vivo-Y9">
+      </div>
+
+      <!-- 大上传卡片：拖放区 + 子操作（同一 div） -->
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-zone-inner" id="dropArea">
+          <svg class="upload-zone-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p class="upload-zone-text">拖拽文件到此处，或 点击选择</p>
+          <p class="upload-zone-hint">支持文件、文件夹、图片、视频</p>
+        </div>
+
+        <!-- 子操作：照片 / 拍摄 / 录像（与上传区同一卡片内，等宽） -->
+        <div class="upload-actions">
+          <label class="upload-action-btn" for="fileInputPhoto">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            照片
+          </label>
+          <button class="upload-action-btn" onclick="openCamera('photo')">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            拍摄
+          </button>
+          <button class="upload-action-btn" onclick="openCamera('video')">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            录像
+          </button>
+          <input type="file" id="fileInputPhoto" multiple accept="image/*">
+          <input type="file" id="camInput" accept="image/*" capture="environment">
+          <input type="file" id="recInput" accept="video/*" capture="environment">
+        </div>
+
+        <input type="file" id="fileInput" multiple>
+        <input type="file" id="folderInput" webkitdirectory directory multiple>
+        <div id="progress" class="up-progress"></div>
+        <div class="result" id="result"></div>
+      </div>
+
+      <div class="tip">
+        <span id="tipSaveLoc">文件自动保存到设置目录 <b>file-drops/&lt;设备名&gt;/</b> 目录<br></span>
+        文件名自动加时间戳，不会覆盖
+      </div>
+    </div>
+  </div>
+
+  <!-- 网页内相机弹窗：拍照/录像直接调摄像头，绕开系统文件选择器，三端行为一致 -->
+  <div id="camModal" class="cam-modal">
+    <div class="cam-inner">
+      <video id="camVideo" autoplay playsinline muted></video>
+      <div id="camPreview" class="cam-preview"></div>
+      <div class="cam-bar">
+        <button class="btn-cam" id="camCapture">拍照</button>
+        <button class="btn-rec" id="camRecord">开始录像</button>
+        <button class="btn-primary" id="camConfirm" style="display:none">确认上传</button>
+        <button class="btn-cancel" id="camCancel">取消</button>
+      </div>
+      <div id="camStatus" class="cam-status"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/ui.js"></script>
+  <script src="/static/js/upload.js"></script>
+  <script>
+  // fpk（飞牛）端：隐藏「文件自动保存到设置目录」这句（NAS 上无桌面概念，落盘到飞牛授权目录）
+  document.addEventListener('DOMContentLoaded', function(){
+    var loc = document.getElementById('tipSaveLoc');
+    if(!loc) return;
+    fetch('/api/settings').then(function(r){return r.json();}).then(function(d){
+      if(d && d.hasTrim){ loc.style.display = 'none'; }
+    }).catch(function(){});
+  });
+  </script>
+</body>
+</html>

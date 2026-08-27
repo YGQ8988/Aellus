@@ -1,6 +1,6 @@
-//go:build !darwin
+//go:build !darwin && !windows && !fpk
 
-// 非 macOS 平台：无需通知。
 package platform
 
-func NotifyStartup(saveDir, accessURL string) {}
+// 非 macOS / 非 Windows 平台不弹系统通知（保持原有行为：仅菜单栏/托盘点击才打开浏览器）。
+func postOpenNotification(title, body, url string) {}

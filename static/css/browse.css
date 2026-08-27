@@ -1,0 +1,195 @@
+/* ============================================================
+   读取页样式（shadcn / zinc light）
+   ============================================================ */
+#dirsView, #filesView { display: none; }
+#dirsView.active, #filesView.active { display: block; }
+
+/* 面包屑导航 → ghost 链接按钮 */
+.breadcrumb { display: flex; align-items: center; flex-wrap: wrap; margin-bottom: 14px; font-size: 14px; }
+.breadcrumb .bc-link { color: hsl(var(--muted-foreground)); text-decoration: none; font-weight: 500; padding: 6px 10px; border-radius: calc(var(--radius) - 2px); transition: background .15s, color .15s; }
+@media (hover: hover) and (pointer: fine) {
+  .breadcrumb .bc-link:hover { color: hsl(var(--foreground)); background: hsl(var(--accent)); }
+}
+.breadcrumb .bc-cur { color: hsl(var(--foreground)); font-weight: 600; padding: 6px 10px; word-break: break-all; }
+.breadcrumb .bc-sep { color: hsl(var(--muted-foreground)); padding: 0 2px; }
+
+/* 面包屑 + 批量操作栏：吸顶；.top-bar 本身满宽（已移出 1120 容器），
+   未滚动时透明、nav 与 div 分开；下滑（.scrolled）才整条满宽毛玻璃（模糊 20px）。 */
+.top-bar {
+  position: -webkit-sticky; position: sticky; top: 0; z-index: 30;
+  /* 满宽出血：body 有 16px padding，用 100vw + 负 margin 破出 */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+}
+/* 模糊背景层：绝对定位铺满 .top-bar（含满宽），backdrop-filter 作用在伪元素上。
+   关键修复（sticky + backdrop-filter 的 WebKit/Chrome 合成 bug）：
+   1) transform: translateZ(0) 强制独立 GPU 合成层 → 模糊随滚动实时刷新，
+      不再出现回滚时顶部露馅；
+   2) top 多延展 2px 覆盖顶部 1px 接缝。
+   注：.top-bar 不设 overflow:hidden，避免裁剪/干扰 backdrop 采样；满宽出血由
+   100vw + 负 margin 实现，横向不溢出滚动条（html 已 overflow-x:hidden）。 */
+.top-bar.scrolled::before {
+  content: "";
+  position: absolute;
+  top: -2px; left: 0; right: 0; bottom: 0;
+  background: hsl(var(--background) / 0.72);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  z-index: -1;
+}
+.top-bar.scrolled {
+  padding-bottom: 10px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+/* 内层把内容居中到 1120，与下方网格对齐；左右内边距用 --page-gutter（同 .container），
+   保证面包屑/批量栏与网格内容左右对齐。背景/模糊仍是满宽（在 .top-bar 上）。 */
+.top-bar-inner { max-width: 1120px; margin: 0 auto; padding: var(--page-top) var(--page-gutter) 0; }
+.top-bar .breadcrumb { margin-bottom: 0; }
+.top-bar .batch-bar { margin: 10px 0 0; }
+/* 读取页网格容器：顶部间距已由 .top-bar-inner 的 --page-top 承接，这里只留小间距
+   （原 .top-bar margin-bottom:14px 量级），不要再叠加 .container 的 40px 顶距，
+   否则面包屑与网格离得太远。上传页不受影响（仍用 .container 的 40px）。 */
+#dirsView .container, #filesView .container { padding-top: 14px; }
+
+.dirs-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+/* 目录卡片复用 .file-item 结构（checkbox + thumb-folder + name + actions） */
+/* :hover 由 .file-item:hover 统一处理；此处仅保留按下态高亮 */
+.dir-card:active { box-shadow: var(--shadow-card-active); transform: translateY(-1px); }
+
+.files-grid { display: grid; grid-template-columns: 1fr; gap: 10px; transition: opacity .15s ease; }
+/* 切换目录时的半透明过渡，避免旧列表瞬间清空出现白屏闪烁 */
+.files-grid.swapping { opacity: .45; }
+/* 文件项 → shadcn Card */
+.file-item {
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius); padding: 14px;
+  display: grid; grid-template-columns: 24px 1fr; column-gap: 12px; row-gap: 0; align-items: start;
+  transition: border-color .15s, box-shadow .25s ease, transform .25s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .file-item:hover {
+    border-color: hsl(var(--border));
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-2px);
+  }
+}
+.file-item .thumb { width: 72px; height: 72px; border-radius: calc(var(--radius) - 2px); object-fit: cover; background: hsl(var(--muted)); flex-shrink: 0; opacity: 0; transition: opacity .25s ease; }
+/* 缩略图加载完成后淡入，消除“空框→图片”跳变 */
+.file-item .thumb.loaded { opacity: 1; }
+.file-item .thumb-video { width: 72px; height: 72px; border-radius: calc(var(--radius) - 2px); background: #000; flex-shrink: 0; object-fit: cover; }
+/* 缩略图与文件夹图标容器样式完全相同，合并为一条规则 */
+.file-item .thumb-other, .file-item .thumb-folder { width: 72px; height: 72px; border-radius: calc(var(--radius) - 2px); background: hsl(var(--muted)); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.file-item .thumb-other svg { width: 36px; height: 36px; color: hsl(var(--muted-foreground)); }
+/* 文件夹项：可点击进入，无下载/删除 */
+.file-item .thumb-folder svg { width: 40px; height: 40px; color: hsl(var(--muted-foreground)); }
+.file-item .fname { font-size: 14px; color: hsl(var(--foreground)); word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+/* 文件夹卡片：文件名与「文件夹」badge 同行、垂直居中对齐 */
+.file-item .fname-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; -webkit-line-clamp: initial; }
+.file-item .fname-row .ftext { word-break: break-all; line-height: 1.4; }
+/* 图片 + 文件名/大小/日期 组合块 */
+.file-item .file-main { grid-column: 2; grid-row: 1; display: flex; gap: 12px; align-items: flex-start; min-width: 0; width: fit-content; max-width: 100%; }
+/* 文件名顶对齐缩略图顶部、文件大小/日期底对齐缩略图底部（列高=缩略图 72px） */
+.file-item .file-meta-col { min-height: 72px; display: flex; flex-direction: column; justify-content: space-between; }
+/* 操作按钮容器：三个按钮水平平均分布，整行换行到图/文下方 */
+.file-item .file-actions { grid-column: 2; grid-row: 2; display: flex; gap: 8px; margin-top: 12px; }
+.file-item .fmeta { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 4px; }
+/* 操作按钮：默认描边（quiet），hover 时填充主色/危险色 */
+.file-item .dl-btn, .file-item .del-btn {
+  flex: 1; text-align: center; padding: 7px 16px; border-radius: calc(var(--radius) - 4px); font-size: 13px; text-decoration: none; font-weight: 500; cursor: pointer; border: 1px solid hsl(var(--border)); background: transparent; transition: background-color .15s, color .15s, border-color .15s;
+}
+.file-item .dl-btn { color: hsl(var(--primary)); }
+@media (hover: hover) and (pointer: fine) {
+  .file-item .dl-btn:hover { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+}
+.file-item .del-btn { color: hsl(var(--destructive)); }
+@media (hover: hover) and (pointer: fine) {
+  .file-item .del-btn:hover { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); border-color: hsl(var(--destructive)); }
+}
+.file-item .del-btn.loading { pointer-events: none; opacity: .6; }
+
+/* 灯箱预览 */
+.lightbox { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; }
+.lb-backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / 0.9); }
+.lb-media { position: relative; z-index: 1; max-width: 92vw; max-height: 82vh; border-radius: calc(var(--radius) - 2px); object-fit: contain; background: #000; }
+/* 灯箱大图：先透明，加载完成再淡入，翻页不再闪 */
+#lbImg { opacity: 0; transition: opacity .18s ease; }
+#lbImg.loaded { opacity: 1; }
+/* 灯箱导航/工具按钮：覆盖在媒体上的深色控件（保持原样） */
+.lb-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 54px; height: 54px; min-height: 0; padding: 0; box-sizing: border-box; border-radius: 50%; background: rgb(255 255 255 / 0.18); color: #fff; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; }
+@media (hover: hover) and (pointer: fine) {
+  .lb-nav:hover, .lb-top-btn:hover { background: rgb(255 255 255 / 0.3); }
+}
+.lb-prev { left: 16px; }
+.lb-next { right: 16px; }
+/* 关键修复：全局 button:active 的 transform: scale(.97) 会覆盖本类的 translateY(-50%)，
+   导致按下时按钮失去垂直居中偏移而下落跳动。这里按下时把 translateY 一起带上。 */
+.lb-nav:active { transform: translateY(-50%) scale(.96); }
+/* 灯箱顶部工具栏：关闭按钮左侧的下载 / 删除图标 */
+.lb-topbar { position: absolute; top: 16px; right: 16px; z-index: 2; display: flex; gap: 16px; align-items: center; }
+/* 关闭按钮移到左上角 */
+.lb-close-left { position: absolute; top: 16px; left: 16px; z-index: 2; }
+.lb-top-btn { width: 40px; height: 40px; min-height: 0; padding: 0; box-sizing: border-box; border-radius: 50%; background: rgb(255 255 255 / 0.18); color: #fff; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; }
+.lb-top-btn.loading { pointer-events: none; opacity: .6; }
+.lb-top-btn .icon { width: 22px; height: 22px; }
+@media (max-width: 480px) {
+  .lb-nav { width: 40px; height: 40px; font-size: 24px; }
+  .lb-prev { left: 8px; }
+  .lb-next { right: 8px; }
+  .lb-topbar { top: 10px; right: 10px; gap: 16px; }
+  .lb-close-left { top: 10px; left: 10px; }
+}
+/* 移动端：隐藏左右箭头按钮，改用触摸滑动切换（!important 压过 JS 内联 display:flex） */
+@media (max-width: 768px) {
+  .lb-nav { display: none !important; }
+}
+
+/* 批量操作栏 → shadcn Card */
+.batch-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 12px 16px; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius); flex-wrap: wrap; }
+.select-all { display: flex; align-items: center; gap: 6px; margin-bottom: 0; font-size: 14px; font-weight: 500; cursor: pointer; user-select: none; color: hsl(var(--foreground)); }
+.select-all input { width: 16px; height: 16px; cursor: pointer; }
+.batch-actions { display: flex; gap: 8px; margin-left: auto; }
+.btn-batch { padding: 8px 16px; min-height: 0; border-radius: calc(var(--radius) - 4px); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: opacity .15s, background-color .15s, color .15s, border-color .15s; }
+.btn-batch:disabled { opacity: .5; cursor: not-allowed; }
+/* 移动端：保持原样 —— 始终实色填充（下载=主色、删除=危险色） */
+.btn-selected { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.btn-del-selected { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-batch:not(:disabled):hover { opacity: .9; }
+}
+/* 桌面端（>=768px）：默认描边静默（与卡片 dl-btn/del-btn 一致），勾选文件后实色填充 */
+@media (min-width: 768px) {
+  .btn-batch { border-color: hsl(var(--border)); }
+  .btn-selected { background: transparent; color: hsl(var(--primary)); border-color: hsl(var(--border)); }
+  .btn-del-selected { background: transparent; color: hsl(var(--destructive)); border-color: hsl(var(--border)); }
+  .btn-selected:not(:disabled) { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .btn-del-selected:not(:disabled) { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); border-color: hsl(var(--destructive)); }
+}
+
+/* 文件项 checkbox（shadcn 风格）：固定 24px 槽宽内水平+垂直居中 */
+.file-check { cursor: pointer; flex-shrink: 0; grid-column: 1; grid-row: 1 / span 2; align-self: center; justify-self: center; }
+
+/* 下载 loading */
+.spinner {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid currentColor; border-top-color: transparent;
+  border-radius: 50%; animation: spin .6s linear infinite;
+  vertical-align: -2px; margin-right: 5px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-batch.loading, .dl-btn.loading { pointer-events: none; opacity: .75; }
+
+@media (min-width: 640px) {
+  .dirs-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .files-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+}
+@media (min-width: 768px) {
+  .breadcrumb { font-size: 15px; }
+}
+/* 手机端（<768px）：打开/下载实色填充白字；删除 ghost 浅底红字；按下仅轻微变暗，不出现半透明色块叠加 */
+@media (max-width: 767px) {
+  .file-item .dl-btn, .file-item .del-btn { border-color: transparent; }
+  .file-item .dl-btn { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .file-item .del-btn { background: hsl(var(--destructive)/.1); color: hsl(var(--destructive)); }
+  .file-item .dl-btn:active, .file-item .del-btn:active { opacity: .8; }
+}

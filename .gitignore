@@ -1,5 +1,6 @@
 # 构建产物
 /dist/
+.build/
 
 # 运行时日志（运行时自动生成）
 *.log
@@ -20,3 +21,9 @@ aellus-drops/
 *.exe
 *.test
 *.out
+
+# 下载的构建工具
+tools/
+
+# fnOS 打包目录中的编译产物（配置文件本身应提交）
+fnos/app/aellus

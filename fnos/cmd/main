@@ -1,0 +1,118 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+
+# 每个 fpk 包只含对应架构的二进制（manifest 的 platform 字段限制安装目标），统一用 aellus
+BIN="${TRIM_APPDEST}/aellus"
+
+if [ ! -x "${BIN}" ]; then
+  echo "二进制不存在或不可执行: ${BIN}" > "${TRIM_TEMP_LOGFILE}"
+  exit 1
+fi
+
+# 上传文件落盘目录：优先用飞牛声明的共享目录（文件管理器可见），回退到应用数据目录
+SHARE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+if [ -z "${SHARE_DIR}" ]; then
+  SHARE_DIR="${TRIM_PKGVAR}/drops"
+fi
+mkdir -p "${SHARE_DIR}"
+
+# 端口优先级：向导自定义 > manifest 声明 > 默认 8000
+PORT="${wizard_port:-${TRIM_SERVICE_PORT:-8000}}"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> ${LOG_FILE}
+}
+
+start_process() {
+    if status; then
+        return 0
+    fi
+
+    log_msg "Starting Aellus ..."
+    log_msg "BIN = ${BIN}"
+    log_msg "SHARE_DIR = ${SHARE_DIR}"
+    log_msg "PORT = ${PORT}"
+    # main.go 不解析命令行参数：保存目录经 AELLUS_SAVE_DIR 注入，端口经 AELLUS_PORT 注入
+    AELLUS_SAVE_DIR="${SHARE_DIR}" AELLUS_PORT="${PORT}" AELLUS_STRICT_PORT=1 "${BIN}" >> ${LOG_FILE} 2>&1 &
+    printf "%s" "$!" > ${PID_FILE}
+    return 0
+}
+
+stop_process() {
+    log_msg "Stopping process ..."
+
+    if [ -r "${PID_FILE}" ]; then
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+
+        log_msg "pid=${pid}"
+        if ! check_process "${pid}"; then
+            rm -f "${PID_FILE}"
+            log_msg "remove pid file 1"
+            return
+        fi
+
+        log_msg "send TERM signal to PID:${pid}..."
+        kill -TERM ${pid} >> ${LOG_FILE} 2>&1
+
+        local count=0
+        while check_process "${pid}" && [ $count -lt 10 ]; do
+            sleep 1
+            count=$((count + 1))
+            log_msg "waiting process terminal... (${count}s/10s)"
+        done
+
+        if check_process "${pid}"; then
+            log_msg "send KILL signal to PID:${pid}..."
+            kill -KILL ${pid}
+            sleep 1
+            rm -f "${PID_FILE}"
+        else
+            log_msg "process killed... "
+        fi
+    fi
+
+    return 0
+}
+
+check_process() {
+    local pid=$1
+    if kill -0 "${pid}" 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+status() {
+    if [ -f "${PID_FILE}" ]; then
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if check_process "${pid}"; then
+            return 0
+        else
+            rm -f "${PID_FILE}"
+        fi
+    fi
+
+    return 1
+}
+
+case $1 in
+start)
+    start_process
+    ;;
+stop)
+    stop_process
+    ;;
+status)
+    if status; then
+        exit 0
+    else
+        exit 3
+    fi
+    ;;
+*)
+    exit 1
+    ;;
+esac
