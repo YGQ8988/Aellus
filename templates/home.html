@@ -33,10 +33,10 @@
               <input type="hidden" id="saveDirDisplay" value="" data-path="">
               <div class="dir-input-wrap" id="dirInputWrap" hidden>
                 <input type="text" id="dirInput" class="dir-input" placeholder="输入保存目录的绝对路径" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSaveDirInput();}">
-                <button type="button" class="btn-set-ghost dir-save-btn" id="dirSaveBtn" onclick="saveSaveDirInput()">保存</button>
+                <button type="button" class="btn-set-primary dir-save-btn" id="dirSaveBtn" onclick="saveSaveDirInput()">保存</button>
               </div>
             </div>
-            <button class="btn-set-ghost" id="resetDirBtn" onclick="resetSaveDir()">恢复默认</button>
+            <button class="btn-set-text" id="resetDirBtn" onclick="resetSaveDir()">恢复默认</button>
           </div>
           <div class="settings-msg" id="saveDirMsg"></div>
         </section>
@@ -44,6 +44,7 @@
         <section class="settings-sec settings-sec--reward">
           <h3>打赏二维码</h3>
           <p class="settings-reward-desc">如果我们开发的 Aellus 工具对您有所帮助的话，可以请我们喝一杯咖啡吗？</p>
+          <p class="settings-reward-tip">打赏纯属自愿，所有款项用于支持开发者持续维护本项目。</p>
           <div class="qr-list">
             <div class="qr-card">
               <img src="/static/img/qr-dev-ygq.png" alt="开发者 染洛凉 支付宝二维码" class="qr-img">
@@ -54,6 +55,10 @@
               <span class="qr-label">设计师 一西啊</span>
             </div>
           </div>
+          <details class="reward-disclaimer">
+            <summary>免责声明</summary>
+            <p>本软件按「AS IS」方式提供，用户不得使用本软件传输违法、侵权、涉密文件，违规使用的全部法律责任由用户自行承担；作者不对因使用本软件导致的数据丢失、损坏或泄露承担责任，请自行备份重要文件。</p>
+          </details>
         </section>
       </div>
     </div>

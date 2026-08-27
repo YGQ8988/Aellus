@@ -39,7 +39,7 @@ echo "   amd64/arm64 编译完成"
 echo ">> [2/3] 打包 x86 版"
 cp "${BUILD_TMP}/aellus-amd64" fnos/app/aellus
 chmod +x fnos/app/aellus
-sed -i.bak 's/^platform     = .*/platform     = x86/' fnos/manifest && rm -f fnos/manifest.bak
+sed -i.bak 's/^platform *= .*/platform              = x86/' fnos/manifest && rm -f fnos/manifest.bak
 "$FN_PACK" build --directory fnos
 # 当前 fnpack 版本固定产出 Aellus.fpk（不带版本/平台），需手动重命名以免被下一轮覆盖
 mv Aellus.fpk "dist/Aellus-1.0.0-x86.fpk"
@@ -47,13 +47,13 @@ mv Aellus.fpk "dist/Aellus-1.0.0-x86.fpk"
 echo ">> [3/3] 打包 arm 版"
 cp "${BUILD_TMP}/aellus-arm64" fnos/app/aellus
 chmod +x fnos/app/aellus
-sed -i.bak 's/^platform     = .*/platform     = arm/' fnos/manifest && rm -f fnos/manifest.bak
+sed -i.bak 's/^platform *= .*/platform              = arm/' fnos/manifest && rm -f fnos/manifest.bak
 "$FN_PACK" build --directory fnos
 mv Aellus.fpk "dist/Aellus-1.0.0-arm.fpk"
 
-# 还原为 x86 状态
+# 还原 manifest 为 all（源码默认，支持全平台）
 cp "${BUILD_TMP}/aellus-amd64" fnos/app/aellus
-sed -i.bak 's/^platform     = .*/platform     = x86/' fnos/manifest && rm -f fnos/manifest.bak
+sed -i.bak 's/^platform *= .*/platform              = all/' fnos/manifest && rm -f fnos/manifest.bak
 
 # 清理中间产物：.build/ 下的临时二进制是过路货，成品 fpk 已生成在 dist/ 目录
 rm -rf "${BUILD_TMP}"
