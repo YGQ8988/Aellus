@@ -158,14 +158,6 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 @media (hover: hover) and (pointer: fine) {
   .btn-outline:hover { background: hsl(var(--accent)); }
 }
-.btn-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
-@media (hover: hover) and (pointer: fine) {
-  .btn-secondary:hover { background: hsl(var(--secondary) / 0.8); }
-}
-.btn-ghost { background: transparent; color: hsl(var(--foreground)); }
-@media (hover: hover) and (pointer: fine) {
-  .btn-ghost:hover { background: hsl(var(--accent)); }
-}
 .btn-destructive { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
 @media (hover: hover) and (pointer: fine) {
   .btn-destructive:hover { background: hsl(var(--destructive) / 0.9); }

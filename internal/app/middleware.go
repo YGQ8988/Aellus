@@ -25,13 +25,6 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return s.ResponseWriter.Write(b)
 }
 
-// Flush 透传到底层 ResponseWriter，使 SSE（http.Flusher）在 withLog 包装下仍可用。
-func (s *statusRecorder) Flush() {
-	if f, ok := s.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
 // withLog 统一访问日志中间件，包装整个路由（用 App.logAccess 记录）。
 func (a *App) withLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

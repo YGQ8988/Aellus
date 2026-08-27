@@ -18,10 +18,6 @@ type Platform interface {
 	// fpk 端由 fnOS/systemd 保证单实例，直接返回 true。
 	EnforceSingleInstance() bool
 
-	// OpenBrowser 用系统默认浏览器打开 URL。
-	// fpk 端无桌面，空实现。
-	OpenBrowser(url string)
-
 	// PickFolderDialog 弹出系统原生「选择文件夹」对话框，返回选中的绝对路径；用户取消返回空串。
 	// PickDirSupported 返回 false 时（fpk 端）不应调用 PickFolderDialog。
 	PickFolderDialog() string

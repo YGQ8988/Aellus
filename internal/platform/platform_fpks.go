@@ -37,9 +37,6 @@ func (fpkPlatform) RunTray(url string) {
 // PostOpenNotification fpk 下无桌面通知，空实现。
 func (fpkPlatform) PostOpenNotification(title, body, url string) {}
 
-// OpenBrowser fpk 下无桌面浏览器，空实现。
-func (fpkPlatform) OpenBrowser(url string) {}
-
 // EnforceSingleInstance fpk 由 fnOS / systemd 保证单实例，应用自身无需加锁，直接放行。
 func (fpkPlatform) EnforceSingleInstance() bool { return true }
 

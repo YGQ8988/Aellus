@@ -44,7 +44,6 @@ var (
 	shellNotifyIcon         = shell32.NewProc("Shell_NotifyIconW")
 	procExtractIconEx       = shell32.NewProc("ExtractIconExW")
 	procGetModuleHandle     = kernel32.NewProc("GetModuleHandleW")
-	procGetLastError        = kernel32.NewProc("GetLastError")
 )
 
 const (

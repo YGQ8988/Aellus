@@ -24,8 +24,6 @@ var (
 	procCloseHandle = kernel32.NewProc("CloseHandle")
 	procFindWindow  = user32.NewProc("FindWindowW")
 	procSendMessage = user32.NewProc("SendMessageW")
-
-	gMutexHandle uintptr // 第一个实例持有的互斥体句柄（进程退出自动释放）
 )
 
 // enforceSingleInstance 单实例检查。返回 false 表示已有实例在运行
@@ -50,7 +48,6 @@ func enforceSingleInstance() bool {
 		notifyAlreadyRunning()
 		return false
 	}
-	gMutexHandle = h // 持有到进程退出
 	return true
 }
 

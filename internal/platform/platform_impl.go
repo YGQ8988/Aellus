@@ -44,7 +44,6 @@ func openBrowser(u string) {
 func (platformImpl) RunTray(url string)                  { runTray(url) }
 func (platformImpl) PostOpenNotification(t, b, u string) { postOpenNotification(t, b, u) }
 func (platformImpl) EnforceSingleInstance() bool         { return enforceSingleInstance() }
-func (platformImpl) OpenBrowser(u string)                { openBrowser(u) }
 func (platformImpl) PickDirSupported() bool              { return true }
 func (platformImpl) PersistSaveDirAllowed() bool         { return true }
 func (platformImpl) EnforceAuthBoundary() bool           { return false }

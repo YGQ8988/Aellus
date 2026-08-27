@@ -27,17 +27,6 @@ func sanitizeDevice(name string) string {
 	return b.String()
 }
 
-// sanitizeFileName 去掉文件名里的目录部分，并避免以 "." 开头（隐藏文件），
-// 防止客户端上传 "../../etc/passwd" 之类的穿越文件名。
-func sanitizeFileName(name string) string {
-	name = filepath.Base(name)         // 去掉任何目录前缀，只留最后的文件名
-	name = strings.TrimLeft(name, ".") // 去掉开头的 "."，避免变成隐藏文件
-	if name == "" || name == "." || name == ".." {
-		name = "unnamed"
-	}
-	return name
-}
-
 // resolveUploadTarget 根据客户端上传时的“逻辑名”(可能是带目录的相对路径，
 // 如 "MyFolder/sub/file.jpg"，来自网页内文件夹选择器) 计算最终落盘路径。
 // 返回：dstPath(实际文件绝对路径)、displayName(用于回显的相对名)、error。
