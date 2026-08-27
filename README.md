@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="static/favicon.svg" width="120" alt="Aellus">
+  <img src="static/img/favicon.svg" width="120" alt="Aellus">
 </p>
 
 <h1 align="center">Aellus · 局域网文件互传</h1>
 
 <p align="center">
-  <em>Power comes from AI</em><br>
+  <em>The power comes from AI</em><br>
   <em>The design comes from Yang Guangqing!</em><br>
   <em>The style comes from Yang Junwen!</em>
 </p>
