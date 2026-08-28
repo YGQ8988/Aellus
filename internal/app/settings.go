@@ -129,9 +129,10 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
 		return
 	}
-	// 仅本机可修改保存路径（来源 IP 必须等于服务 IP），防止局域网任意设备篡改落盘位置。
-	// 飞牛端远程访问同样受限——保存路径完全由启动注入的 AELLUS_SAVE_DIR 决定。
-	if !isLocalRequest(r) {
+	// 桌面端（非飞牛）要求来源 IP 等于服务 IP（仅本机可改），防止局域网任意设备篡改落盘位置。
+	// 飞牛端不限来源 IP——保存路径必须落在飞牛授权目录树内（EnforceAuthBoundary + 授权校验），
+	// 攻击者最多把路径改成另一个已授权目录，危害有限；飞牛端远程访问可在授权范围内选目录。
+	if !a.platform.EnforceAuthBoundary() && !isLocalRequest(r) {
 		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "仅本机可修改保存路径"})
 		return
 	}

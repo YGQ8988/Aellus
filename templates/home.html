@@ -146,13 +146,15 @@
     msg.className='settings-msg'; msg.textContent='';
     closeDirPopup();
     fetch('/api/settings').then(r=>r.json()).then(d=>{
-      // 标题：本机访问为「设置」，远程访问为「关于Aellus」（移动端标题「打赏」不变）
+      // 是否可编辑保存路径：飞牛端（在飞牛系统里打开）或桌面端本机访问
+      var canEdit = d.hasTrim || d.isLocal;
+      // 标题：可编辑为「设置」，否则为「关于Aellus」（移动端标题「打赏」不变）
       var titlePc=document.querySelector('.set-title-pc');
-      if(titlePc){ titlePc.textContent = d.isLocal ? '设置' : '关于Aellus'; }
+      if(titlePc){ titlePc.textContent = canEdit ? '设置' : '关于Aellus'; }
       var pathSec=document.querySelector('.settings-sec--path');
       var sep=document.querySelector('.separator');
-      // 仅本机访问（来源 IP = 服务 IP）时展示「文件保存路径」模块，远程访问隐藏
-      if(d.isLocal){
+      // 飞牛端（在飞牛系统里打开）或桌面端本机访问时展示「文件保存路径」模块，否则隐藏
+      if(canEdit){
         if(pathSec){ pathSec.style.display=''; }
         if(sep){ sep.style.display=''; }
         var hidden=document.getElementById('saveDirDisplay');
