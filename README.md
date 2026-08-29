@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="static/img/favicon.svg" width="120" alt="Aellus">
+  <img src="static/img/icon.png" width="120" alt="Aellus">
 </p>
 
 <h1 align="center">Aellus · 局域网文件互传</h1>
