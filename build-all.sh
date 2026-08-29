@@ -34,6 +34,8 @@ echo "================================"
 echo ""
 if [ "$(uname)" = "Darwin" ]; then
   echo "[macOS] (cgo/Cocoa, 需 Xcode CLT)"
+  # 兼容旧版 macOS：避免 cgo 默认写入 minos=26.0 导致 macOS 13 等旧系统拒绝加载
+  export MACOSX_DEPLOYMENT_TARGET=10.13
   build darwin arm64
   build darwin amd64
 else
