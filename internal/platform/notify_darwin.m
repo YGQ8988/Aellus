@@ -83,6 +83,9 @@ static void reallyPost(NSString* title, NSString* body, NSString* url) {
 // 「打开浏览器」打开文件传输页；「稍后」关闭弹窗，程序继续在菜单栏运行。必须在主线程调用。
 static void fallbackAlert(NSString* title, NSString* body, NSString* url) {
     NSLog(@"aellus: fallback to NSAlert");
+    // 代理类 app（LSUIElement）无 Dock/主窗口，NSAlert 需先把自身带到前台才显示；
+    // 否则 macOS 13 上 denied 分支直接调 fallbackAlert 时弹窗不出现。
+    if (NSApp != nil) { [NSApp activateIgnoringOtherApps:YES]; }
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:title];
     [alert setInformativeText:body];
