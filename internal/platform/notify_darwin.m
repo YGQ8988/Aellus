@@ -126,12 +126,11 @@ void postNotify(const char* title, const char* body, const char* url) {
         }
         [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
             UNAuthorizationStatus st = settings.authorizationStatus;
-            NSLog(@"aellus: auth status=%ld (0=notDetermined 1=denied 2=authorized 3=provisional 4=ephemeral)", (long)st);
+            NSLog(@"aellus: auth status=%ld (0=notDetermined 1=denied 2=authorized 3=provisional)", (long)st);
             onMain(^{
                 if (st == UNAuthorizationStatusAuthorized ||
-                    st == UNAuthorizationStatusProvisional ||
-                    st == UNAuthorizationStatusEphemeral) {
-                    // 已授权（含临时授权）：发系统通知。Provisional/Ephemeral 下
+                    st == UNAuthorizationStatusProvisional) {
+                    // 已授权（含临时授权）：发系统通知。Provisional 下
                     // 通知静默进通知中心（无横幅、无声音），Authorized 下才弹横幅。
                     reallyPost(nsTitle, nsBody, nsUrl);
                 } else if (st == UNAuthorizationStatusNotDetermined) {
