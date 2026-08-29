@@ -14,6 +14,11 @@ cd "$(dirname "$0")"
 export COPYFILE_DISABLE=1
 mkdir -p dist .build
 
+# 兼容旧版 macOS：cgo 默认用本机 SDK 版本写入 Mach-O 的 LC_BUILD_VERSION.minos，
+# 在 macOS 26 上编译会写成 26.0，导致 macOS 13 等旧系统内核拒绝加载（"应用已损坏"）。
+# 显式设为 10.13，链接器对 arm64 自动钳到 11.0（arm64 Mac 最低系统），amd64 保持 10.13。
+export MACOSX_DEPLOYMENT_TARGET=10.13
+
 echo ">> [1/4] 编译 Apple Silicon (arm64)"
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-arm64 .
 
