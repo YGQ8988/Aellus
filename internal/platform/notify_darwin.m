@@ -1,7 +1,7 @@
 // notify_darwin.m — compiled by cgo as Objective-C via #cgo directive.
 // Posts a macOS system notification on app launch; clicking it opens the browser.
 // 若系统通知不可用（未授权 / 代理类 app 弹不出授权框），降级为可点击的 NSAlert，
-// 「打开浏览器」打开文件传输页，「退出」退出进程。
+// 「打开浏览器」打开文件传输页，「稍后」关闭弹窗（程序继续在菜单栏运行）。
 //
 // 重要：
 // 1) 所有涉及 AppKit/Cocoa UI 的调用（runModal / requestAuthorization /
@@ -18,8 +18,6 @@
 
 // Provided by Go's //export aellusOpenBrowser (in notify_darwin.go)
 extern void aellusOpenBrowser(const char* url);
-// Provided by Go's //export aellusQuit (in notify_darwin.go)
-extern void aellusQuit(void);
 
 @interface AellusNotifyDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
@@ -82,22 +80,19 @@ static void reallyPost(NSString* title, NSString* body, NSString* url) {
 }
 
 // 降级：系统通知不可用时，弹一个可点击的对话框兜底。
-// 「打开浏览器」打开文件传输页；「退出」退出进程。必须在主线程调用。
+// 「打开浏览器」打开文件传输页；「稍后」关闭弹窗，程序继续在菜单栏运行。必须在主线程调用。
 static void fallbackAlert(NSString* title, NSString* body, NSString* url) {
-    (void)body; // body 仅系统通知使用，弹窗用自定义文案
     NSLog(@"aellus: fallback to NSAlert");
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:title];
-    [alert setInformativeText:@"打开浏览器查看文件传输页，或退出程序。"];
+    [alert setInformativeText:body];
     [alert addButtonWithTitle:@"打开浏览器"];
-    [alert addButtonWithTitle:@"退出"];
+    [alert addButtonWithTitle:@"稍后"];
     NSModalResponse r = [alert runModal];
     if (r == NSAlertFirstButtonReturn) {
         aellusOpenBrowser([url UTF8String]);
-    } else {
-        // 「退出」或直接关闭窗口 → 退出进程
-        aellusQuit();
     }
+    // 「稍后」或直接关闭窗口 → 不打开浏览器，程序继续在菜单栏运行，不退出。
 }
 
 // hasAppBundle 判断当前进程是否运行在 .app bundle 内。
