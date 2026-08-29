@@ -98,25 +98,11 @@ static void fallbackAlert(NSString* title, NSString* body, NSString* url) {
     // 「稍后」或直接关闭窗口 → 不打开浏览器，程序继续在菜单栏运行，不退出。
 }
 
-// hasAppBundle 判断当前进程是否运行在 .app bundle 内。
-// UNUserNotificationCenter 要求进程有 bundle 身份，裸二进制调用会抛
-// NSInternalInconsistencyException (bundleProxyForCurrentProcess is nil) 直接崩溃。
-static BOOL hasAppBundle(void) {
-    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-    return bundlePath != nil && [bundlePath hasSuffix:@".app"];
-}
-
 void postNotify(const char* title, const char* body, const char* url) {
     // 立刻把 C 字符串拷贝成 NSString（自带内存），避免 Go 侧 free 后 use-after-free。
     NSString *nsTitle = [NSString stringWithUTF8String:(title ? title : "")];
     NSString *nsBody  = [NSString stringWithUTF8String:(body ? body : "")];
     NSString *nsUrl   = [NSString stringWithUTF8String:(url ? url : "")];
-    // 裸二进制（非 .app bundle）无法使用 UNUserNotificationCenter，直接跳过通知，
-    // 不崩溃。用户通过终端输出的访问地址自行打开浏览器。
-    if (!hasAppBundle()) {
-        NSLog(@"aellus: not in app bundle, skip system notification");
-        return;
-    }
     onMain(^{
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
         if (center == nil) { fallbackAlert(nsTitle, nsBody, nsUrl); return; }
