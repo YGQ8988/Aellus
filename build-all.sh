@@ -20,10 +20,12 @@ build() {
   local out="dist/aellus-${goos}-${goarch}${ext}"
   local cgo=0
   [ "$goos" = "darwin" ] && cgo=1
+  # darwin：cgo 走 Cocoa/WebKit/UserNotifications，需在 Mac 本机编译
+  local extld=""
 
   printf "  %-18s " "${goos}/${goarch}"
   GOOS=$goos GOARCH=$goarch CGO_ENABLED=$cgo \
-    go build -trimpath -ldflags="${LDFLAGS_BASE} ${extra}" -o "$out" .
+    go build -trimpath -ldflags="${LDFLAGS_BASE} ${extra} ${extld}" -o "$out" .
   echo "✓ $(ls -lh "$out" | awk '{print $5}')"
 }
 
@@ -34,8 +36,13 @@ echo "================================"
 echo ""
 if [ "$(uname)" = "Darwin" ]; then
   echo "[macOS] (cgo/Cocoa, 需 Xcode CLT)"
-  # 兼容旧版 macOS：避免 cgo 默认写入 minos=26.0 导致 macOS 13 等旧系统拒绝加载
-  export MACOSX_DEPLOYMENT_TARGET=10.13
+  # 兼容旧版 macOS：避免 cgo 默认写入 minos=26.0 导致 macOS 13 等旧系统拒绝加载；
+  # 设为 11.0（Big Sur）保证 UserNotifications strong link（代码用了 macOS 11+ 的
+  # UNNotificationPresentationOptionBanner，低于 11.0 会弱链接致通知授权失效）。
+  export MACOSX_DEPLOYMENT_TARGET=11.0
+  # 强制 cgo 目标=11.0：本机 clang 默认 minos=13.0，且 Go cgo 子进程不透传
+  # MACOSX_DEPLOYMENT_TARGET，会导致 cgo object 被抬到 13.0（macOS 11 真机弱链接崩溃）。
+  export CGO_CFLAGS="-mmacosx-version-min=11.0"
   build darwin arm64
   build darwin amd64
 else

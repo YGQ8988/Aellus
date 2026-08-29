@@ -1,7 +1,7 @@
 // notify_darwin.m — compiled by cgo as Objective-C via #cgo directive.
 // Posts a macOS system notification on app launch; clicking it opens the browser.
 // 若系统通知不可用（未授权 / 代理类 app 弹不出授权框），降级为可点击的 NSAlert，
-// 依然满足“点击才打开浏览器，不点不打开”。
+// 「打开浏览器」打开文件传输页，「稍后」关闭弹窗（程序继续在菜单栏运行）。
 //
 // 重要：
 // 1) 所有涉及 AppKit/Cocoa UI 的调用（runModal / requestAuthorization /
@@ -79,10 +79,13 @@ static void reallyPost(NSString* title, NSString* body, NSString* url) {
     }];
 }
 
-// 降级：用 NSAlert 弹一个可点击的对话框（代理类 app 拿不到系统通知权限时兜底）。
-// 必须在主线程调用。
+// 降级：系统通知不可用时，弹一个可点击的对话框兜底。
+// 「打开浏览器」打开文件传输页；「稍后」关闭弹窗，程序继续在菜单栏运行。必须在主线程调用。
 static void fallbackAlert(NSString* title, NSString* body, NSString* url) {
     NSLog(@"aellus: fallback to NSAlert");
+    // 代理类 app（LSUIElement）无 Dock/主窗口，NSAlert 需先把自身带到前台才显示；
+    // 否则 macOS 13 上 denied 分支直接调 fallbackAlert 时弹窗不出现。
+    if (NSApp != nil) { [NSApp activateIgnoringOtherApps:YES]; }
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:title];
     [alert setInformativeText:body];
@@ -92,14 +95,7 @@ static void fallbackAlert(NSString* title, NSString* body, NSString* url) {
     if (r == NSAlertFirstButtonReturn) {
         aellusOpenBrowser([url UTF8String]);
     }
-}
-
-// hasAppBundle 判断当前进程是否运行在 .app bundle 内。
-// UNUserNotificationCenter 要求进程有 bundle 身份，裸二进制调用会抛
-// NSInternalInconsistencyException (bundleProxyForCurrentProcess is nil) 直接崩溃。
-static BOOL hasAppBundle(void) {
-    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-    return bundlePath != nil && [bundlePath hasSuffix:@".app"];
+    // 「稍后」或直接关闭窗口 → 不打开浏览器，程序继续在菜单栏运行，不退出。
 }
 
 void postNotify(const char* title, const char* body, const char* url) {
@@ -107,12 +103,6 @@ void postNotify(const char* title, const char* body, const char* url) {
     NSString *nsTitle = [NSString stringWithUTF8String:(title ? title : "")];
     NSString *nsBody  = [NSString stringWithUTF8String:(body ? body : "")];
     NSString *nsUrl   = [NSString stringWithUTF8String:(url ? url : "")];
-    // 裸二进制（非 .app bundle）无法使用 UNUserNotificationCenter，直接跳过通知，
-    // 不崩溃。用户通过终端输出的访问地址自行打开浏览器。
-    if (!hasAppBundle()) {
-        NSLog(@"aellus: not in app bundle, skip system notification");
-        return;
-    }
     onMain(^{
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
         if (center == nil) { fallbackAlert(nsTitle, nsBody, nsUrl); return; }
@@ -122,12 +112,16 @@ void postNotify(const char* title, const char* body, const char* url) {
         }
         [center getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings *settings) {
             UNAuthorizationStatus st = settings.authorizationStatus;
-            NSLog(@"aellus: auth status=%ld", (long)st);
+            NSLog(@"aellus: auth status=%ld (0=notDetermined 1=denied 2=authorized 3=provisional)", (long)st);
             onMain(^{
-                if (st == UNAuthorizationStatusAuthorized) {
+                if (st == UNAuthorizationStatusAuthorized ||
+                    st == UNAuthorizationStatusProvisional) {
+                    // 已授权（含临时授权）：发系统通知。Provisional 下
+                    // 通知静默进通知中心（无横幅、无声音），Authorized 下才弹横幅。
                     reallyPost(nsTitle, nsBody, nsUrl);
                 } else if (st == UNAuthorizationStatusNotDetermined) {
                     // 代理类 app 需要先把自身带到前台，授权弹窗才会出现。
+                    // 仅 activate（不切 Regular 策略、不显示 Dock 图标），与 aellus-fnos 一致。
                     if (NSApp != nil) { [NSApp activateIgnoringOtherApps:YES]; }
                     [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
                                           completionHandler:^(BOOL granted, NSError *error) {
@@ -136,13 +130,13 @@ void postNotify(const char* title, const char* body, const char* url) {
                             if (granted) {
                                 reallyPost(nsTitle, nsBody, nsUrl);
                             } else {
-                                // 用户未允许（或弹窗未出现，系统直接回调 granted=NO）→ 降级。
+                                // 用户拒绝 → 降级为弹窗。
                                 fallbackAlert(nsTitle, nsBody, nsUrl);
                             }
                         });
                     }];
                 } else {
-                    // denied / provisional / ephemeral → 系统通知不可用，降级。
+                    // 仅 Denied → 系统通知不可用，降级为弹窗。
                     fallbackAlert(nsTitle, nsBody, nsUrl);
                 }
             });

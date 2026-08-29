@@ -4,26 +4,161 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
 
 // === 网络纯函数（无状态） ===
 
-// GetLANIP 获取本机局域网 IP。
-// 技巧：用一个 UDP "连接" 到公网地址（不会真的发包），然后读取本地绑定的 IP，
-// 这个 IP 就是当前用来上网的网卡 IP（通常是局域网 IP）。比遍历网卡更可靠。
+// GetLANIP 返回供局域网内其它设备访问的「本机 IP」。
+// 采用枚举网卡、筛选真实局域网 IPv4 的方式，避免旧实现用「UDP 连公网取出口 IP」
+// 在开启 VPN 时被默认路由带偏到隧道口（如 198.18.0.1）的问题。
 func GetLANIP() string {
+	if cands := lanCandidates(); len(cands) > 0 {
+		return cands[0]
+	}
+	// 兜底：极端环境（无可用物理网卡）下仍用出口 IP 探测
+	if ip := udpEgressIP(); ip != "" {
+		return ip
+	}
+	return "127.0.0.1"
+}
+
+// udpEgressIP 旧实现的兜底：UDP "连接" 公网地址（不会真的发包）读本地绑定 IP。
+func udpEgressIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		return "127.0.0.1"
+		return ""
 	}
 	defer conn.Close()
 	addr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
-		return "127.0.0.1"
+		return ""
 	}
 	return addr.IP.String()
+}
+
+// lanCandidates 枚举所有网卡，筛出适合做局域网访问地址的 IPv4 候选，按优先级排序：
+//  1. 物理网卡上的 RFC1918 私网地址（10/8、172.16/12、192.168/16）——局域网首选；
+//  2. 其它全局单播地址（公网 IP）——兜底；
+//  3. CGNAT（100.64/10，Tailscale / WireGuard 等）——仅在无前两者时兜底。
+//
+// 跳过：回环、未启用、链路本地（169.254/16、fe80::）、基准测试网段（198.18/15）、
+// 以及隧道 / 虚拟网卡（VPN、容器、虚拟机网桥等）——这些地址局域网内其它设备通常无法直连。
+func lanCandidates() []string {
+	type cand struct {
+		ip   net.IP
+		prio int
+	}
+	var cands []cand
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for _, iface := range ifaces {
+		// 只取已启用且非回环的网卡
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		// 跳过隧道 / 虚拟网卡（VPN、容器、虚拟机网桥等）：局域网其它设备直连不到
+		if isVirtualIface(iface.Name) {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipNet.IP.To4()
+			if ip == nil {
+				continue // 只取 IPv4（局域网文件互传场景 IPv4 足够）
+			}
+			prio, ok := lanPriority(ip)
+			if !ok {
+				continue
+			}
+			cands = append(cands, cand{ip: ip, prio: prio})
+		}
+	}
+	if len(cands) == 0 {
+		return nil
+	}
+	sort.SliceStable(cands, func(i, j int) bool {
+		return cands[i].prio > cands[j].prio
+	})
+	out := make([]string, 0, len(cands))
+	for _, c := range cands {
+		out = append(out, c.ip.String())
+	}
+	return out
+}
+
+// lanPriority 给候选 IPv4 打分：(优先级, 是否采纳)。
+// 优先 RFC1918 私网，其次公网，最后 CGNAT；跳过大链路本地 / 基准测试网段。
+func lanPriority(ip net.IP) (int, bool) {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return 0, false
+	}
+	// 基准测试网段 198.18.0.0/15（RFC2544）：VPN 隧道口常见伪地址，局域网不可达
+	if benchmark19818.Contains(ip) {
+		return 0, false
+	}
+	// RFC1918 私网：局域网首选
+	if isRFC1918(ip) {
+		return 3, true
+	}
+	// CGNAT 100.64.0.0/10（Tailscale / WireGuard 等）：仅在无私网时兜底
+	if cgnat10064.Contains(ip) {
+		return 1, true
+	}
+	// 其余全局单播（公网）：兜底
+	if ip.IsGlobalUnicast() {
+		return 2, true
+	}
+	return 0, false
+}
+
+// isVirtualIface 判断是否为隧道 / 虚拟网卡（VPN、容器、虚拟机网桥等）。
+func isVirtualIface(name string) bool {
+	n := strings.ToLower(name)
+	prefixes := []string{"lo", "utun", "tun", "tap", "ppp", "ipsec", "wg", "vpn", "zt", "tailscale", "fl0", "awdl", "llw", "p2p", "anpi"}
+	for _, p := range prefixes {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	contains := []string{"vboxnet", "vmnet", "docker", "bridge", "veth", "ovpn"}
+	for _, c := range contains {
+		if strings.Contains(n, c) {
+			return true
+		}
+	}
+	return false
+}
+
+// RFC1918 / CGNAT / 基准测试网段，用于 lanPriority 判定。
+var (
+	benchmark19818 = &net.IPNet{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)}
+	cgnat10064     = &net.IPNet{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)}
+)
+
+// isRFC1918 判断是否为 RFC1918 私网地址（10/8、172.16/12、192.168/16）。
+func isRFC1918(ip net.IP) bool {
+	for _, n := range []*net.IPNet{
+		{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)},
+		{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)},
+		{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)},
+	} {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // ListenWithFallback 从 start 端口开始尝试监听，被占用就 +1 继续试，

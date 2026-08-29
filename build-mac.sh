@@ -16,8 +16,15 @@ mkdir -p dist .build
 
 # 兼容旧版 macOS：cgo 默认用本机 SDK 版本写入 Mach-O 的 LC_BUILD_VERSION.minos，
 # 在 macOS 26 上编译会写成 26.0，导致 macOS 13 等旧系统内核拒绝加载（"应用已损坏"）。
-# 显式设为 10.13，链接器对 arm64 自动钳到 11.0（arm64 Mac 最低系统），amd64 保持 10.13。
-export MACOSX_DEPLOYMENT_TARGET=10.13
+# 显式设为 11.0（Big Sur）：既让 macOS 13 能加载，又保证 UserNotifications 框架
+# strong link（< 10.14 或 < 11.0 都会被弱链接，通知授权静默失效、不弹授权横幅）。
+# 代码用了 UNNotificationPresentationOptionBanner（macOS 11+），故下限为 11.0。
+export MACOSX_DEPLOYMENT_TARGET=11.0
+# 强制 cgo 编译目标=11.0。本机 clang 默认 minos=13.0，而 Go cgo 子进程不会把
+# MACOSX_DEPLOYMENT_TARGET 透传给 clang，导致 systray/项目 .m 编译出的 object 被抬到 13.0，
+# 既刷 "built for newer macOS version (13.0)" 警告，又在 macOS 11 真机上因弱链接符号缺失而崩溃。
+# 显式 CGO_CFLAGS 让所有 cgo object 真正按 11.0 编译，覆盖 macOS 11.0–26。
+export CGO_CFLAGS="-mmacosx-version-min=11.0"
 
 echo ">> [1/4] 编译 Apple Silicon (arm64)"
 GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-arm64 .
@@ -57,7 +64,7 @@ cat > dist/Aellus.app/Contents/Info.plist << 'PLIST'
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>LSMinimumSystemVersion</key>
-    <string>10.13</string>
+    <string>11.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <!-- true = 菜单栏常驻（agent app），Dock 不显示图标；菜单栏图标右键可退出 -->
