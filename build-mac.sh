@@ -16,14 +16,16 @@ mkdir -p dist .build
 
 # 兼容旧版 macOS：cgo 默认用本机 SDK 版本写入 Mach-O 的 LC_BUILD_VERSION.minos，
 # 在 macOS 26 上编译会写成 26.0，导致 macOS 13 等旧系统内核拒绝加载（"应用已损坏"）。
-# 显式设为 10.13，链接器对 arm64 自动钳到 11.0（arm64 Mac 最低系统），amd64 保持 10.13。
-export MACOSX_DEPLOYMENT_TARGET=10.13
+# 显式设为 11.0（Big Sur）：既让 macOS 13 能加载，又保证 UserNotifications 框架
+# strong link（< 10.14 或 < 11.0 都会被弱链接，通知授权静默失效、不弹授权横幅）。
+# 代码用了 UNNotificationPresentationOptionBanner（macOS 11+），故下限为 11.0。
+export MACOSX_DEPLOYMENT_TARGET=11.0
 
 echo ">> [1/4] 编译 Apple Silicon (arm64)"
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-arm64 .
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w -extldflags=-Wl,-no_weak_imports" -o .build/aellus-darwin-arm64 .
 
 echo ">> [2/4] 编译 Intel Mac (amd64)"
-GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-amd64 .
+GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w -extldflags=-Wl,-no_weak_imports" -o .build/aellus-darwin-amd64 .
 
 echo ">> [3/4] 合并为通用二进制 (Universal / fat) —— 取代 shell 启动器，让 .app 直接是可执行 Mach-O"
 # 通用二进制是 macOS 标准的双架构方案，避免 shell 脚本 exec 二进制带来的 bundle 身份丢失问题。
