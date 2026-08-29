@@ -1,7 +1,7 @@
 // notify_darwin.m — compiled by cgo as Objective-C via #cgo directive.
 // Posts a macOS system notification on app launch; clicking it opens the browser.
-// 若系统通知不可用（未授权 / 代理类 app 弹不出授权框），静默跳过——
-// 菜单栏图标已是主要交互入口，不用模态弹窗打断用户。
+// 若系统通知不可用（未授权 / 代理类 app 弹不出授权框），降级为可点击的 NSAlert，
+// 「打开浏览器」打开文件传输页，「退出」退出进程。
 //
 // 重要：
 // 1) 所有涉及 AppKit/Cocoa UI 的调用（runModal / requestAuthorization /
@@ -18,6 +18,8 @@
 
 // Provided by Go's //export aellusOpenBrowser (in notify_darwin.go)
 extern void aellusOpenBrowser(const char* url);
+// Provided by Go's //export aellusQuit (in notify_darwin.go)
+extern void aellusQuit(void);
 
 @interface AellusNotifyDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
@@ -79,6 +81,25 @@ static void reallyPost(NSString* title, NSString* body, NSString* url) {
     }];
 }
 
+// 降级：系统通知不可用时，弹一个可点击的对话框兜底。
+// 「打开浏览器」打开文件传输页；「退出」退出进程。必须在主线程调用。
+static void fallbackAlert(NSString* title, NSString* body, NSString* url) {
+    (void)body; // body 仅系统通知使用，弹窗用自定义文案
+    NSLog(@"aellus: fallback to NSAlert");
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:title];
+    [alert setInformativeText:@"打开浏览器查看文件传输页，或退出程序。"];
+    [alert addButtonWithTitle:@"打开浏览器"];
+    [alert addButtonWithTitle:@"退出"];
+    NSModalResponse r = [alert runModal];
+    if (r == NSAlertFirstButtonReturn) {
+        aellusOpenBrowser([url UTF8String]);
+    } else {
+        // 「退出」或直接关闭窗口 → 退出进程
+        aellusQuit();
+    }
+}
+
 // hasAppBundle 判断当前进程是否运行在 .app bundle 内。
 // UNUserNotificationCenter 要求进程有 bundle 身份，裸二进制调用会抛
 // NSInternalInconsistencyException (bundleProxyForCurrentProcess is nil) 直接崩溃。
@@ -100,7 +121,7 @@ void postNotify(const char* title, const char* body, const char* url) {
     }
     onMain(^{
         UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
-        if (center == nil) { NSLog(@"aellus: center nil, skip notification"); return; }
+        if (center == nil) { fallbackAlert(nsTitle, nsBody, nsUrl); return; }
         if (gNotifyDelegate == nil) {
             gNotifyDelegate = [[AellusNotifyDelegate alloc] init];
             center.delegate = gNotifyDelegate;
@@ -122,15 +143,14 @@ void postNotify(const char* title, const char* body, const char* url) {
                                 reallyPost(nsTitle, nsBody, nsUrl);
                             } else {
                                 // 用户未允许（或代理类 app 弹不出授权弹窗，系统直接回调
-                                // granted=NO）→ 静默跳过。菜单栏图标已是主要交互入口，
-                                // 不再用模态 NSAlert 打断用户。
-                                NSLog(@"aellus: notification not granted, skip");
+                                // granted=NO）→ 降级为弹窗。
+                                fallbackAlert(nsTitle, nsBody, nsUrl);
                             }
                         });
                     }];
                 } else {
-                    // denied / provisional / ephemeral → 系统通知不可用，静默跳过。
-                    NSLog(@"aellus: auth status=%ld, skip notification", (long)st);
+                    // denied / provisional / ephemeral → 系统通知不可用，降级为弹窗。
+                    fallbackAlert(nsTitle, nsBody, nsUrl);
                 }
             });
         }];
