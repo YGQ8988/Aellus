@@ -20,12 +20,17 @@ mkdir -p dist .build
 # strong link（< 10.14 或 < 11.0 都会被弱链接，通知授权静默失效、不弹授权横幅）。
 # 代码用了 UNNotificationPresentationOptionBanner（macOS 11+），故下限为 11.0。
 export MACOSX_DEPLOYMENT_TARGET=11.0
+# 强制 cgo 编译目标=11.0。本机 clang 默认 minos=13.0，而 Go cgo 子进程不会把
+# MACOSX_DEPLOYMENT_TARGET 透传给 clang，导致 systray/项目 .m 编译出的 object 被抬到 13.0，
+# 既刷 "built for newer macOS version (13.0)" 警告，又在 macOS 11 真机上因弱链接符号缺失而崩溃。
+# 显式 CGO_CFLAGS 让所有 cgo object 真正按 11.0 编译，覆盖 macOS 11.0–26。
+export CGO_CFLAGS="-mmacosx-version-min=11.0"
 
 echo ">> [1/4] 编译 Apple Silicon (arm64)"
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w -extldflags=-Wl,-no_weak_imports" -o .build/aellus-darwin-arm64 .
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-arm64 .
 
 echo ">> [2/4] 编译 Intel Mac (amd64)"
-GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w -extldflags=-Wl,-no_weak_imports" -o .build/aellus-darwin-amd64 .
+GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-amd64 .
 
 echo ">> [3/4] 合并为通用二进制 (Universal / fat) —— 取代 shell 启动器，让 .app 直接是可执行 Mach-O"
 # 通用二进制是 macOS 标准的双架构方案，避免 shell 脚本 exec 二进制带来的 bundle 身份丢失问题。
@@ -59,7 +64,7 @@ cat > dist/Aellus.app/Contents/Info.plist << 'PLIST'
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>LSMinimumSystemVersion</key>
-    <string>10.13</string>
+    <string>11.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <!-- true = 菜单栏常驻（agent app），Dock 不显示图标；菜单栏图标右键可退出 -->
