@@ -134,21 +134,13 @@ void postNotify(const char* title, const char* body, const char* url) {
                     // 通知静默进通知中心（无横幅、无声音），Authorized 下才弹横幅。
                     reallyPost(nsTitle, nsBody, nsUrl);
                 } else if (st == UNAuthorizationStatusNotDetermined) {
-                    // macOS 13 Ventura 上，LSUIElement 菜单栏 app（Accessory 策略）调用
-                    // requestAuthorization 不会弹出授权弹窗。需临时切到 Regular（前台）策略
-                    // 并激活自身，授权弹窗才会出现；回调后恢复 Accessory（菜单栏常驻无 Dock）。
-                    if (NSApp != nil) {
-                        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-                        [NSApp activateIgnoringOtherApps:YES];
-                    }
+                    // 代理类 app 需要先把自身带到前台，授权弹窗才会出现。
+                    // 仅 activate（不切 Regular 策略、不显示 Dock 图标），与 aellus-fnos 一致。
+                    if (NSApp != nil) { [NSApp activateIgnoringOtherApps:YES]; }
                     [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
                                           completionHandler:^(BOOL granted, NSError *error) {
                         NSLog(@"aellus: requestAuthorization granted=%d error=%@", granted, error);
                         onMain(^{
-                            // 恢复菜单栏常驻策略（隐藏 Dock 图标）
-                            if (NSApp != nil) {
-                                [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-                            }
                             if (granted) {
                                 reallyPost(nsTitle, nsBody, nsUrl);
                             } else {
