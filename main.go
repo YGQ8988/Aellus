@@ -64,7 +64,12 @@ func main() {
 	}
 
 	// 1) 数据目录解析
-	baseDir := app.ResolveBaseDir()     // 日志根目录（与二进制/ .app 同级）
+	// 日志目录：与 settings/owners 统一到系统配置目录，拖到 /Applications 不再污染系统目录。
+	baseDir := p.LogsDir()
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		// 系统配置目录不可写（罕见），回退到 .app / 可执行文件同级（旧行为）
+		baseDir = app.ResolveBaseDir()
+	}
 	defaultSave := app.ResolveSaveDir() // 上传文件保存目录（桌面 file-drops，跨机器默认可写）
 	saveParent := defaultSave
 	// 飞牛 fnOS：cmd/main 通过 AELLUS_SAVE_DIR 注入共享目录，把它当"配置"而非"默认"。

@@ -12,12 +12,20 @@ mkdir -p dist
 VERSION="${1:-1.0.0}"
 LDFLAGS_BASE="-s -w -X main.Version=${VERSION}"
 
+# arch_out：产物命名用 x86_64（Unix 惯例）替代 goarch 的 amd64，其余保持。
+arch_out() {
+  case "$1" in
+    amd64) echo "x86_64" ;;
+    *)     echo "$1" ;;
+  esac
+}
+
 # build <goos> <goarch> [extra-ldflags]
 build() {
   local goos=$1 goarch=$2 extra=$3
   local ext=""
   [ "$goos" = "windows" ] && ext=".exe"
-  local out="dist/aellus-${goos}-${goarch}${ext}"
+  local out="dist/aellus-${goos}-$(arch_out "$goarch")${ext}"
   local cgo=0
   [ "$goos" = "darwin" ] && cgo=1
   # darwin：cgo 走 Cocoa/WebKit/UserNotifications，需在 Mac 本机编译
