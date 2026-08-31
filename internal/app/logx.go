@@ -22,13 +22,13 @@ func (a *App) writeLog(path, msg string) {
 	f.WriteString(ts + "  " + msg + "\n")
 }
 
-// logAccess 访问日志：记录 IP、Method、Path、Status、UA。
+// logAccess 访问日志：记录 IP、Method、Path、Status、设备 ID。
 // /static/* 和 /favicon.ico 这种刷屏请求不记录。
-func (a *App) logAccess(ip, method, path, status, ua string) {
+func (a *App) logAccess(ip, method, path, status, devID string) {
 	if strings.HasPrefix(path, "/static/") || path == "/favicon.ico" {
 		return
 	}
-	a.writeLog(a.accessLogPath, fmt.Sprintf("%s %s %s %s %s", ip, method, path, status, ua))
+	a.writeLog(a.accessLogPath, fmt.Sprintf("%s %s %s %s %s", ip, method, path, status, devID))
 }
 
 // logOp 操作日志：记录上传成功、批量下载等。

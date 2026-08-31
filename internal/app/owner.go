@@ -32,50 +32,6 @@ func encodeDir(dir string) string {
 	return hex.EncodeToString(sum[:]) + ".json"
 }
 
-// deviceSigFromUA 从 User-Agent 提取“设备签名”：去掉浏览器标识（Safari/Edg/Chrome 等），
-// 只保留设备类别/系统/型号，使【同一设备的不同浏览器】签名一致、不同设备尽量不同。
-// 返回带 "ua:" 前缀的字符串；不带前缀的旧归属（随机 deviceId）视为兼容旧数据、不参与限制。纯函数。
-func deviceSigFromUA(ua string) string {
-	lower := strings.ToLower(ua)
-	switch {
-	case strings.Contains(lower, "iphone"):
-		return "ua:iphone-ios"
-	case strings.Contains(lower, "ipad"):
-		return "ua:ipad-ios"
-	case strings.Contains(lower, "ipod"):
-		return "ua:ipod-ios"
-	case strings.Contains(lower, "macintosh"):
-		return "ua:mac-osx"
-	case strings.Contains(lower, "windows nt"):
-		return "ua:windows-nt"
-	case strings.Contains(lower, "android"):
-		// UA 形如 "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A...) AppleWebKit/..."
-		// 取 "android 13" 段与紧跟的 "; 型号" 段（截断 build/），如 android-13-pixel7
-		sig := "android"
-		if i := strings.Index(lower, "android"); i >= 0 {
-			rest := lower[i:]
-			segs := strings.SplitN(rest, ";", 3)
-			ver := strings.TrimSpace(strings.TrimPrefix(segs[0], "android"))
-			if ver != "" {
-				sig += "-" + strings.ReplaceAll(ver, " ", "")
-			}
-			if len(segs) > 1 {
-				model := strings.TrimSpace(segs[1])
-				if k := strings.Index(model, "build/"); k > 0 {
-					model = strings.TrimSpace(model[:k])
-				}
-				model = strings.ReplaceAll(model, " ", "")
-				if model != "" {
-					sig += "-" + model
-				}
-			}
-		}
-		return "ua:" + sanitizeDevice(sig)
-	default:
-		return "ua:unknown"
-	}
-}
-
 // ownersFilePath 返回 dir 对应的 manifest 文件路径（位于 OwnersBaseDir 下，
 // 文件名由目录路径编码得到，集中存放、不再散落在各共享目录里）。
 func (a *App) ownersFilePath(dir string) string {
@@ -134,10 +90,10 @@ func (a *App) writeOwners(dir string, m map[string]string) {
 	os.WriteFile(path, b, 0644)
 }
 
-// recordOwner 在 dir 的 manifest 中记录子项 name 的上传来源（客户端 IP + UA 设备签名）；
+// recordOwner 在 dir 的 manifest 中记录子项 name 的上传来源（客户端 IP + 设备 ID）；
 // 已有其他来源记录时不覆盖（首个上传者为准）。
-func (a *App) recordOwner(dir, name, ip, ua string) {
-	if ip == "" && ua == "" || name == "" || strings.HasPrefix(name, ".") {
+func (a *App) recordOwner(dir, name, ip, devID string) {
+	if ip == "" && devID == "" || name == "" || strings.HasPrefix(name, ".") {
 		return
 	}
 	a.ownerMu.Lock()
@@ -146,7 +102,7 @@ func (a *App) recordOwner(dir, name, ip, ua string) {
 	if _, ok := m[name]; ok {
 		return // 已有归属（无论谁），不覆盖
 	}
-	b, _ := json.Marshal(map[string]string{"ip": ip, "ua": ua})
+	b, _ := json.Marshal(map[string]string{"ip": ip, "dev": devID})
 	m[name] = string(b)
 	a.writeOwners(dir, m)
 }
@@ -162,22 +118,26 @@ func (a *App) ownerOf(dir, name string) string {
 }
 
 // deletable 判断某项是否可由当前请求删除：归属为空（旧数据）或
-// 请求 IP 与归属 IP 相同（同一设备换任何浏览器）或 UA 签名相同（IP 变化后兜底）→ 可删。
-// 旧版纯 "ua:" 前缀归属按签名比对；更早的随机 ID 归属视为旧数据放行。纯函数。
-func deletable(owner, ip, ua string) bool {
+// 请求 IP 与归属 IP 相同（同一设备换任何浏览器）或设备 ID 相同（IP 变化后兜底）→ 可删。
+// 旧数据（旧版 "ua:" 前缀 / 随机 ID / 无 dev 字段的 {ip,ua}）无法匹配设备 ID，视为旧数据放行。纯函数。
+func deletable(owner, ip, devID string) bool {
 	if owner == "" {
 		return true
 	}
 	var o struct {
-		IP string `json:"ip"`
-		UA string `json:"ua"`
+		IP  string `json:"ip"`
+		Dev string `json:"dev"`
 	}
-	if json.Unmarshal([]byte(owner), &o) == nil && (o.IP != "" || o.UA != "") {
-		return o.IP == ip || o.UA == ua
+	if json.Unmarshal([]byte(owner), &o) == nil && (o.IP != "" || o.Dev != "") {
+		if o.IP == ip {
+			return true
+		}
+		if devID != "" && o.Dev == devID {
+			return true
+		}
+		return false
 	}
-	if strings.HasPrefix(owner, "ua:") {
-		return owner == ua
-	}
+	// 旧数据（无法识别为 {ip,dev} 结构的归属）放行
 	return true
 }
 
@@ -235,4 +195,48 @@ func MigrateLegacyOwners(saveDir, newBaseDir string) {
 		}
 		os.Remove(oldPath)
 	}
+}
+
+// === 设备名映射（device name）===
+// 记录「设备 ID → 用户输入的设备名」映射，存到配置目录下的 devices.json。
+// 用途：换浏览器 / 清 localStorage 后，上传页仍能按设备 ID 从服务端取回上次的设备名，避免重复输入。
+// 存储位置与 owners 同级目录（Aellus/devices.json 或 TRIM_PKGVAR/devices.json）。
+
+// deviceNamesPath 返回设备名映射配置文件路径（与 owners 同级目录下）。
+func (a *App) deviceNamesPath() string {
+	return filepath.Join(filepath.Dir(a.platform.OwnersBaseDir(a.getSaveDir())), "devices.json")
+}
+
+// recordDeviceName 记录设备 ID → 设备名映射（供下次自动填充）；同名跳过。
+func (a *App) recordDeviceName(devID, name string) {
+	if devID == "" || name == "" {
+		return
+	}
+	a.ownerMu.Lock()
+	defer a.ownerMu.Unlock()
+	m := map[string]string{}
+	if b, err := os.ReadFile(a.deviceNamesPath()); err == nil {
+		_ = json.Unmarshal(b, &m)
+	}
+	if m[devID] == name {
+		return
+	}
+	m[devID] = name
+	b, _ := json.Marshal(m)
+	_ = os.MkdirAll(filepath.Dir(a.deviceNamesPath()), 0755)
+	_ = os.WriteFile(a.deviceNamesPath(), b, 0644)
+}
+
+// deviceNameOf 返回设备 ID 对应的设备名；无记录返回空串。
+func (a *App) deviceNameOf(devID string) string {
+	if devID == "" {
+		return ""
+	}
+	a.ownerMu.Lock()
+	defer a.ownerMu.Unlock()
+	m := map[string]string{}
+	if b, err := os.ReadFile(a.deviceNamesPath()); err == nil {
+		_ = json.Unmarshal(b, &m)
+	}
+	return m[devID]
 }

@@ -49,8 +49,8 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	mr := multipart.NewReader(r.Body, boundary)
 
 	device := "default"
-	upIP := clientIP(r)                    // 上传来源 IP（同一设备换任何浏览器都一致）
-	upUA := deviceSigFromUA(r.UserAgent()) // 上传来源 UA 设备签名（IP 变化后的兜底）
+	upIP := clientIP(r)     // 上传来源 IP（同一设备换任何浏览器都一致）
+	upDevID := deviceID(r)  // 上传来源设备 ID（IP 变化后的兜底）
 	var rels []string                      // 所有文件的相对路径，按出现顺序收集
 	var scratch bytes.Buffer
 	buf := make([]byte, 1<<20) // 1MB 缓冲区，分块写入
@@ -133,7 +133,9 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 记录设备目录归属（首个上传者为准，不覆盖）
-	a.recordOwner(a.getSaveDir(), device, upIP, upUA)
+	a.recordOwner(a.getSaveDir(), device, upIP, upDevID)
+	// 记录设备名映射（供下次上传页自动填充，换浏览器/清 localStorage 也能取回）
+	a.recordDeviceName(upDevID, device)
 
 	uploaded := []UploadFileResp{}
 	for j, pf := range pending {
@@ -182,7 +184,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 		// 记录本项归属（文件级）：文件记在其所在目录的 manifest；
 		// 文件夹上传（rawName 含层级）时，逐级把新出现的文件夹也记为本次上传来源。
-		a.recordOwner(filepath.Dir(dstPath), filepath.Base(dstPath), upIP, upUA)
+		a.recordOwner(filepath.Dir(dstPath), filepath.Base(dstPath), upIP, upDevID)
 		if rel := strings.ReplaceAll(rawName, "\\", "/"); strings.Contains(rel, "/") {
 			segs := strings.Split(rel, "/")
 			acc := deviceDir
@@ -191,7 +193,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				acc = filepath.Join(acc, seg)
-				a.recordOwner(filepath.Dir(acc), filepath.Base(acc), upIP, upUA)
+				a.recordOwner(filepath.Dir(acc), filepath.Base(acc), upIP, upDevID)
 			}
 		}
 
@@ -249,7 +251,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 	dirs := []DirInfo{} // 用空切片而非 nil，确保 JSON 输出为 [] 而非 null
 	entries, err := os.ReadDir(a.getSaveDir())
 	if err == nil {
-		meIP, meUA := clientIP(r), deviceSigFromUA(r.UserAgent())
+		meIP, meDevID := clientIP(r), deviceID(r)
 		for _, e := range entries {
 			// 过滤：只要目录，且跳过以 "." 开头的隐藏目录
 			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
@@ -258,7 +260,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 			// 递归统计该目录的总大小、文件数、最新修改时间
 			size, count, mtime := dirStats(filepath.Join(a.getSaveDir(), e.Name()))
 			dirs = append(dirs, DirInfo{Name: e.Name(), Count: count, Size: size, Mtime: mtime,
-				Deletable: deletable(a.ownerOf(a.getSaveDir(), e.Name()), meIP, meUA)})
+				Deletable: deletable(a.ownerOf(a.getSaveDir(), e.Name()), meIP, meDevID)})
 		}
 	}
 	// 根目录（未命名设备）下直接存放的文件，也作为一个目录项展示；
@@ -300,7 +302,7 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meIP, meUA := clientIP(r), deviceSigFromUA(r.UserAgent())
+	meIP, meDevID := clientIP(r), deviceID(r)
 	files := []FileInfo{} // 空切片，确保无内容时输出 [] 而非 null
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".") {
@@ -316,7 +318,7 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 			Mtime:     info.ModTime().Unix(),
 			IsDir:     e.IsDir(),
 			Count:     0,
-			Deletable: deletable(a.ownerOf(dirAbs, e.Name()), meIP, meUA),
+			Deletable: deletable(a.ownerOf(dirAbs, e.Name()), meIP, meDevID),
 		}
 		// 文件夹：递归计算总大小、文件数、最新修改时间
 		if e.IsDir() {
@@ -534,8 +536,8 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 设备归属校验：目标项由其上传来源独占删除权（同 IP 或同 UA 签名可删；旧数据放行）。
-	meIP, meUA := clientIP(r), deviceSigFromUA(r.UserAgent())
-	if !deletable(a.ownerOf(dirAbs, req.File), meIP, meUA) {
+	meIP, meDevID := clientIP(r), deviceID(r)
+	if !deletable(a.ownerOf(dirAbs, req.File), meIP, meDevID) {
 		a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "其他设备上传的内容，仅可下载不可删除"})
 		return
 	}
