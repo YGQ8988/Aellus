@@ -57,9 +57,42 @@ else
   echo "[macOS] 跳过（需在 Mac 本机构建，cgo 依赖 Cocoa 框架）"
 fi
 
+# gen_winres：用 go-winres 从 winres/aellus.ico 生成 Windows 的 .syso 资源（图标 + 清单 + 版本信息）。
+# .syso 会被 go build 按目标架构自动链接进 exe（资源管理器里显示的图标、右键"属性→详细信息"的版本/描述）。
+# 注意：.syso 必须生成在项目根目录（go build 只会在包所在目录按 rsrc_windows_<arch>.syso 命名约定自动链接，
+# 放到子目录图标会丢失），因此即使源图标在 winres/ 下，产物 .syso 也写在根目录。
+# 找不到 go-winres 时回退使用仓库里已提交的 .syso；两者都没有才报错。
+gen_winres() {
+  local gw=""
+  if command -v go-winres >/dev/null 2>&1; then
+    gw="go-winres"
+  elif [ -x "$(go env GOPATH)/bin/go-winres" ]; then
+    gw="$(go env GOPATH)/bin/go-winres"
+  fi
+  if [ -z "$gw" ]; then
+    if [ -f rsrc_windows_amd64.syso ]; then
+      echo "  [winres] 未找到 go-winres，使用仓库内已有的 .syso（图标非最新时请重装工具后重跑）"
+      return
+    fi
+    echo "  [错误] 未找到 go-winres，且没有已提交的 .syso"
+    echo "        请先执行: go install github.com/tc-hib/go-winres@latest"
+    exit 1
+  fi
+  if [ ! -f winres/aellus.ico ]; then
+    echo "  [警告] 未找到 winres/aellus.ico，跳过图标资源生成（保留已有 .syso）"
+    return
+  fi
+  echo "  [winres] 从 winres/aellus.ico 生成 Windows 图标/清单/版本资源 (v${VERSION})"
+  "$gw" simply --arch amd64,arm64,386 --icon winres/aellus.ico \
+    --manifest gui --product-name "Aellus" --file-description "Aellus 局域网文件快传" \
+    --product-version "${VERSION}" --file-version "${VERSION}" \
+    --original-filename "aellus.exe" --copyright "Aellus"
+}
+
 # Windows（纯 Go 交叉编译，windowsgui 子系统不弹黑窗口）
 echo ""
-echo "[Windows] (纯 Go, -H windowsgui)"
+echo "[Windows] (纯 Go, -H windowsgui, 含图标)"
+gen_winres
 build windows amd64 "-H windowsgui"
 build windows arm64 "-H windowsgui"
 build windows 386   "-H windowsgui"

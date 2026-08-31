@@ -104,6 +104,8 @@ bash build-fnos.sh    # 打包 dist/Aellus-*.fpk
 
 > `build-all.sh` 产物直接输出到 `dist/`；`build-mac.sh` 与 `build-fnos.sh` 共用 `.build/` 中间目录，**不能并行执行**（`build-fnos.sh` 结束时会清理 `.build/`），需串行运行。
 >
+> `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
+>
 > fpk 构建通过 `-tags fpk` 选择 `internal/platform/platform_fpks.go`（headless 实现），显式排除所有桌面代码（系统托盘 / 原生通知 / 原生文件夹选择 / systray 依赖）；桌面端构建不加该标签，使用 `platform_impl.go`，保持托盘与通知体验。
 
 ---
@@ -166,6 +168,11 @@ aellus/
 ├── build-all.sh                  # 全平台裸二进制构建脚本
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本
 ├── aellus.icns                   # macOS 应用图标
+├── winres/                       # Windows 图标相关（源图标 + 工具脚本）
+│   ├── aellus.ico                # Windows 应用图标（多尺寸，go-winres 打包进 exe）
+│   ├── make_ico.py               # 图标生成工具：PNG → 多尺寸 ICO（改图标时用）
+│   └── check_pe_icon.py          # 校验脚本：检查 exe 是否含图标/版本资源
+├── rsrc_windows_{amd64,arm64,386}.syso  # Windows 图标/清单/版本资源（go build 在根目录自动链接）
 ├── fnos/                         # 飞牛 fnOS 打包资源（manifest / config / cmd）
 └── README.md
 ```
