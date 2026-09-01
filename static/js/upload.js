@@ -1,6 +1,25 @@
 // 上传页逻辑
 const $ = id => document.getElementById(id);
 
+// 记住设备名称：上传时存 localStorage，下次打开上传页自动填充，避免每次重新输入
+const DEVICE_NAME_KEY = 'aellus_device_name';
+function restoreDeviceName() {
+  try {
+    var saved = localStorage.getItem(DEVICE_NAME_KEY);
+    if (saved) { $('device').value = saved; return; }
+  } catch (e) {}
+  // localStorage 没有：按设备 ID 从服务端取回上次的设备名（换浏览器/清数据也能恢复）
+  fetch('/api/settings').then(function(r){ return r.json(); }).then(function(d){
+    if (d && d.deviceName) {
+      $('device').value = d.deviceName;
+      try { localStorage.setItem(DEVICE_NAME_KEY, d.deviceName); } catch (e) {}
+    }
+  }).catch(function(){});
+}
+function rememberDeviceName(name) {
+  try { localStorage.setItem(DEVICE_NAME_KEY, name); } catch (e) {}
+}
+
 // 与读取页一致的字段格式化（大小 / 时间），保证上传成功卡片与 files-grid 卡片字段统一
 function formatSize(b) {
   if (b < 1024) return b + ' B';
@@ -260,7 +279,9 @@ function upload(files, inputEl) {
     fd.append('files', f);
     fd.append('rels', fileUploadName(f));
   });
-  fd.append('device', $('device').value.trim() || 'default');
+  var deviceName = $('device').value.trim();
+  if (deviceName) rememberDeviceName(deviceName);
+  fd.append('device', deviceName || 'default');
 
   const xhr = new XMLHttpRequest();
   const prog = $('progress');
@@ -414,6 +435,8 @@ function upload(files, inputEl) {
     al.appendChild(at); al.appendChild(ad); box.appendChild(al);
   };
   xhr.open('POST', '/upload');
+  var deviceID = (typeof getDeviceID === 'function') ? getDeviceID() : '';
+  if (deviceID) xhr.setRequestHeader('Deviceid', deviceID);
   xhr.send(fd);
   if (inputEl) inputEl.value = '';
 }
@@ -471,3 +494,6 @@ function showResult(res, files) {
   });
   box.appendChild(grid);
 }
+
+// 打开页面时恢复上次的设备名称
+restoreDeviceName();

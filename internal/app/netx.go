@@ -199,6 +199,13 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
+// deviceID 取请求携带的设备 ID（前端首次访问时生成 UUID 存 localStorage，
+// 之后所有接口请求头携带 Deviceid）。用于删除归属判定（IP 变化后的兜底，
+// 替代原 UA 设备签名）。
+func deviceID(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("Deviceid"))
+}
+
 // realIP 取真实客户端 IP：优先 X-Forwarded-For 首段（有反代时），否则取 RemoteAddr。
 func realIP(r *http.Request) string {
 	xff := r.Header.Get("X-Forwarded-For")

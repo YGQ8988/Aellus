@@ -1,7 +1,10 @@
 #!/bin/bash
-# Aellus macOS 一键构建脚本（必须在 Mac 上运行）
+# Aellus macOS 构建脚本（必须在 Mac 上运行）
+# 拆分打包：arm64 与 amd64 各自独立生成 .app，不再合并 universal。
+# 命名规则：
+#   - 构建架构 == 运行脚本电脑的架构 → dist/Aellus.app
+#   - 否则 → dist/Aellus-<arch>.app（arch 为 arm64 / x86_64）
 # 前置：1) 安装 Go   2) 安装 Xcode 命令行工具: xcode-select --install
-#       3) 安装 Pillow: pip3 install pillow   （用于生成菜单栏图标 PNG）
 # 因为 systray 在 macOS 走 cgo(Cocoa)，无法从 Windows 交叉编译，必须在 Mac 本机编译。
 #
 # 关键：macOS 26 (Tahoe) 的菜单栏权限系统会直接忽略【未签名】的 app，
@@ -26,21 +29,40 @@ export MACOSX_DEPLOYMENT_TARGET=11.0
 # 显式 CGO_CFLAGS 让所有 cgo object 真正按 11.0 编译，覆盖 macOS 11.0–26。
 export CGO_CFLAGS="-mmacosx-version-min=11.0"
 
-echo ">> [1/4] 编译 Apple Silicon (arm64)"
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-arm64 .
+# 本机架构：arm64 / x86_64
+HOST_ARCH="$(uname -m)"
 
-echo ">> [2/4] 编译 Intel Mac (amd64)"
-GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o .build/aellus-darwin-amd64 .
+# arch_label：把 goarch / 本机架构映射为命名标识（arm64 / x86_64）。
+arch_label() {
+  case "$1" in
+    arm64)        echo "arm64" ;;
+    amd64|x86_64) echo "x86_64" ;;
+    *)            echo "$1" ;;
+  esac
+}
 
-echo ">> [3/4] 合并为通用二进制 (Universal / fat) —— 取代 shell 启动器，让 .app 直接是可执行 Mach-O"
-# 通用二进制是 macOS 标准的双架构方案，避免 shell 脚本 exec 二进制带来的 bundle 身份丢失问题。
-lipo -create -output .build/aellus-universal .build/aellus-darwin-arm64 .build/aellus-darwin-amd64
-lipo -info .build/aellus-universal
+# build_app <goarch>：编译、打包、签名单个架构的 .app。
+build_app() {
+  local goarch="$1"
+  local label="$(arch_label "$goarch")"
+  local host_label="$(arch_label "$HOST_ARCH")"
 
-echo ">> [4/4] 打包成可双击的 dist/Aellus.app（主可执行文件直接是通用二进制）"
-rm -rf dist/Aellus.app
-mkdir -p dist/Aellus.app/Contents/MacOS dist/Aellus.app/Contents/Resources
-cat > dist/Aellus.app/Contents/Info.plist << 'PLIST'
+  # 命名：本机架构无后缀；非本机架构追加 -<label>（如 Aellus-arm64 / Aellus-x86_64）
+  local app_name="Aellus"
+  if [ "$label" != "$host_label" ]; then
+    app_name="Aellus-${label}"
+  fi
+  local app_dir="dist/${app_name}.app"
+
+  echo ""
+  echo ">> 编译 ${goarch}（本机 ${HOST_ARCH} → ${app_name}.app）"
+  GOOS=darwin GOARCH="${goarch}" CGO_ENABLED=1 \
+    go build -trimpath -ldflags="-s -w" -o ".build/aellus-${goarch}" .
+
+  rm -rf "${app_dir}"
+  mkdir -p "${app_dir}/Contents/MacOS" "${app_dir}/Contents/Resources"
+
+  cat > "${app_dir}/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -73,30 +95,40 @@ cat > dist/Aellus.app/Contents/Info.plist << 'PLIST'
 </dict>
 </plist>
 PLIST
-cp .build/aellus-universal dist/Aellus.app/Contents/MacOS/aellus
-chmod +x dist/Aellus.app/Contents/MacOS/aellus
-# 应用图标：从项目根 aellus.icns 拷进 Resources/（Info.plist 的 CFBundleIconFile 已指向它）
-if [ -f aellus.icns ]; then
-  cp aellus.icns dist/Aellus.app/Contents/Resources/aellus.icns
-  echo "    已拷贝 aellus.icns 到 Resources/（应用图标）"
-else
-  echo "    [警告] 未找到 aellus.icns，将以默认图标打包"
-fi
-# 刷新图标缓存，确保 Finder/Dock 立即生效
-touch dist/Aellus.app
-# 兜底：删除可能残留的 AppleDouble 副文件
-find dist/Aellus.app -name '._*' -delete 2>/dev/null || true
 
-echo ">> 代码签名（ad-hoc + 强化运行时）—— 这是 macOS 26 菜单栏图标能出现的前提"
-# --force 覆盖、--deep 递归签名内部组件、--sign - 为 ad-hoc、--options runtime 开启强化运行时
-codesign --force --deep --sign - --options runtime dist/Aellus.app
-echo "    签名完成"
+  # 可执行文件名必须与 Info.plist 的 CFBundleExecutable 完全一致（含大小写），
+  # 否则 macOS 13 上通知授权（usernoted）无法识别 app，requestAuthorization 返回
+  # UNErrorDomain Code=1 (NotificationsNotAllowed)。
+  cp ".build/aellus-${goarch}" "${app_dir}/Contents/MacOS/Aellus"
+  chmod +x "${app_dir}/Contents/MacOS/Aellus"
 
-echo ">> 清理中间产物（单架构二进制与 universal 已被合并进 dist/Aellus.app，留着无用）"
-rm -f .build/aellus-darwin-arm64 .build/aellus-darwin-amd64 .build/aellus-universal
+  # 应用图标：从项目根 aellus.icns 拷进 Resources/（Info.plist 的 CFBundleIconFile 已指向它）
+  if [ -f aellus.icns ]; then
+    cp aellus.icns "${app_dir}/Contents/Resources/aellus.icns"
+  else
+    echo "    [警告] 未找到 aellus.icns，将以默认图标打包"
+  fi
+  # 刷新图标缓存，确保 Finder/Dock 立即生效
+  touch "${app_dir}"
+  # 兜底：删除可能残留的 AppleDouble 副文件
+  find "${app_dir}" -name '._*' -delete 2>/dev/null || true
+
+  # --force 覆盖、--deep 递归签名内部组件、--sign - 为 ad-hoc、--options runtime 开启强化运行时
+  codesign --force --deep --sign - --options runtime "${app_dir}"
+  echo "    ${app_name}.app 已生成并签名"
+}
+
+build_app arm64
+build_app amd64
+
+# 清理中间产物（单架构二进制已被打进各自 .app，留着无用）
+rm -f .build/aellus-arm64 .build/aellus-amd64
 echo "    已清理 .build/ 中间产物"
 
-echo "完成：dist/Aellus.app 已生成并签名"
+echo ""
+echo "完成，产物在 dist/："
+ls -d dist/*.app
+echo ""
 echo "首次运行请先移除 quarantine 再双击（本机生成的 app 通常已无 quarantine，保险起见执行一次）："
 echo "  xattr -dr com.apple.quarantine dist/Aellus.app"
-echo "双击 dist/Aellus.app 即可（顶部菜单栏出现 Aellus 图标，点开有『打开浏览器 / 退出』）。"
+echo "双击对应架构的 .app 即可（顶部菜单栏出现 Aellus 图标，点开有『打开浏览器 / 退出』）。"

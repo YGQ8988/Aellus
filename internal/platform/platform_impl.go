@@ -59,6 +59,17 @@ func (platformImpl) OwnersBaseDir(saveDir string) string {
 	return filepath.Join(saveDir, ".owners")
 }
 
+// LogsDir 桌面端：访问/操作日志集中存放到系统配置目录下的 logs/ 子目录，
+// 不再散落在 .app 同级目录（拖到 /Applications 后不会在系统目录里生成日志）。
+// 与 aellus-settings.json / owners 同级（系统配置目录/Aellus/logs/）。
+func (platformImpl) LogsDir() string {
+	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
+		return filepath.Join(configDir, "Aellus", "logs")
+	}
+	// 回退：取不到系统配置目录，退回 .app / 可执行文件同级（旧行为）
+	return app.ResolveBaseDir()
+}
+
 // PickFolderDialog 弹出系统原生"选择文件夹"对话框，返回选中的绝对路径；用户取消返回空串。
 //   - Windows：进程内调用 SHBrowseForFolderW（pickdir_windows.go），不启动外部进程
 //   - macOS：osascript choose folder（原生对话框）

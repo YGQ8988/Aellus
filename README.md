@@ -20,9 +20,9 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 ## ✨ 功能特性
 
 - **上传 / 读取 / 下载**：手机或 PC 浏览器一键发送文件到主机，或浏览已上传文件并下载
-- **按设备分目录**：上传时填设备名，文件自动归档到 `file-drops/<设备名>/`
+- **按设备分目录**：上传时填设备名（自动记忆，下次无需重复输入），文件自动归档到 `file-drops/<设备名>/`
 - **自动加时间戳**：文件名带精确到毫秒的时间戳，永不覆盖
-- **设备归属权限**：记录每个文件的上传来源，只能删除本设备上传的文件，他人上传的仅可下载
+- **设备归属权限**：以设备 ID + IP 记录上传来源，只能删除本设备上传的文件，他人上传的仅可下载
 - **图片 / 视频预览**：上传后即时预览，读取页缩略图可在线播放，全屏灯箱浏览
 - **批量打包下载**：勾选多个文件或整目录一键打包 zip
 - **响应式布局**：同时适配 PC 与手机浏览器
@@ -56,15 +56,15 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 **macOS：**
 ```bash
 chmod +x aellus-darwin-arm64    # Apple Silicon（M1/M2/M3）
-# 或 chmod +x aellus-darwin-amd64  # Intel
+# 或 chmod +x aellus-darwin-x86_64  # Intel
 ./aellus-darwin-arm64
 ```
 或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
 
 **Linux：**
 ```bash
-chmod +x aellus-linux-amd64
-./aellus-linux-amd64
+chmod +x aellus-linux-x86_64
+./aellus-linux-x86_64
 ```
 
 启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
@@ -92,17 +92,19 @@ Aellus 已启动 (Go 单文件版)
 
 | 产物 | 脚本 | 运行环境 | 说明 |
 |------|------|---------|------|
-| macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | 通用二进制（arm64+amd64），已签名 |
+| macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x86_64 独立打包，已签名 |
 | 全平台裸二进制 | `build-all.sh` | 任意平台 | 8 个目标：macOS / Windows / Linux 各架构 |
 | 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | x86 + arm，纯后台服务、无托盘 |
 
 ```bash
-bash build-mac.sh     # 打包 dist/Aellus.app
+bash build-mac.sh     # 打包 dist/Aellus.app（本机架构）+ dist/Aellus-{arm64,x86_64}.app（非本机架构）
 bash build-all.sh     # 打包 dist/aellus-{os}-{arch} 共 8 个裸二进制
 bash build-fnos.sh    # 打包 dist/Aellus-*.fpk
 ```
 
 > `build-all.sh` 产物直接输出到 `dist/`；`build-mac.sh` 与 `build-fnos.sh` 共用 `.build/` 中间目录，**不能并行执行**（`build-fnos.sh` 结束时会清理 `.build/`），需串行运行。
+>
+> `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
 >
 > fpk 构建通过 `-tags fpk` 选择 `internal/platform/platform_fpks.go`（headless 实现），显式排除所有桌面代码（系统托盘 / 原生通知 / 原生文件夹选择 / systray 依赖）；桌面端构建不加该标签，使用 `platform_impl.go`，保持托盘与通知体验。
 
@@ -166,6 +168,11 @@ aellus/
 ├── build-all.sh                  # 全平台裸二进制构建脚本
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本
 ├── aellus.icns                   # macOS 应用图标
+├── winres/                       # Windows 图标相关（源图标 + 工具脚本）
+│   ├── aellus.ico                # Windows 应用图标（多尺寸，go-winres 打包进 exe）
+│   ├── make_ico.py               # 图标生成工具：PNG → 多尺寸 ICO（改图标时用）
+│   └── check_pe_icon.py          # 校验脚本：检查 exe 是否含图标/版本资源
+├── rsrc_windows_{amd64,arm64,386}.syso  # Windows 图标/清单/版本资源（go build 在根目录自动链接）
 ├── fnos/                         # 飞牛 fnOS 打包资源（manifest / config / cmd）
 └── README.md
 ```
@@ -186,9 +193,24 @@ aellus/
 
 ## ⚙️ 配置说明
 
-### 保存目录持久化
+### 文件保存目录（设置与限制）
 
-桌面端用户在首页设置里修改的保存路径，会写入**系统配置目录**下的 `aellus-settings.json`，重启自动生效：
+保存目录在**飞牛**与**非飞牛（桌面端）**设备上的设置方式与限制不同：
+
+| 维度 | 非飞牛（桌面端） | 飞牛（fnOS） |
+|------|----------------|-------------|
+| 默认目录 | 桌面 `~/Desktop/file-drops` | 飞牛「应用设置 → 授权目录」注入 |
+| 修改方式 | 首页设置：输入绝对路径 / 系统目录选择器 | 首页设置：从已授权目录下拉选择 |
+| 可修改来源 | 仅本机访问（localhost / 本机 IP） | 局域网任意设备（限授权范围内） |
+| 边界限制 | 无（用户自主决定落盘位置） | 强制落在授权目录树内，越界返回 403 |
+| 持久化 | 写入 `aellus-settings.json`，重启生效 | 不持久化，重启回到飞牛注入值 |
+
+- **非飞牛（桌面端）**：默认保存在桌面 `file-drops/`，可在首页「设置 → 文件保存路径」改成任意绝对路径或用系统目录选择器选取；修改仅本机可操作，持久化到系统配置目录的 `aellus-settings.json`，重启后仍生效。
+- **飞牛（fnOS）**：保存目录完全由飞牛授权接管——管理员在飞牛「系统设置 → 应用 → Aellus → 访问权限」中授权目录，应用通过官方 `trim.file.getSharedAccessibleFolders` 接口读取授权列表，前端以下拉方式选择，且强制落盘目录位于授权目录树内（越界拒绝）。修改不持久化，重启回到飞牛注入的默认目录。
+
+### 数据持久化
+
+桌面端用户数据统一存放在**系统配置目录**下（删除 / 重装程序不丢失）：
 
 | 平台 | 配置目录 |
 |------|---------|
@@ -196,7 +218,14 @@ aellus/
 | Windows | `%APPDATA%\Aellus\` |
 | Linux | `~/.config/Aellus/` |
 
-归属 manifest（记录文件上传来源）也集中存放在该目录下的 `owners/` 子目录，不再散落在保存目录里污染用户可见文件。旧版散落的数据会在启动时自动迁移。
+| 文件 / 目录 | 作用 |
+|------------|------|
+| `aellus-settings.json` | 保存目录配置，重启自动生效 |
+| `owners/` | 文件上传来源归属（删除权限判定依据） |
+| `devices.json` | 设备名映射（记住每个设备填过的名字） |
+| `logs/` | 访问日志 `access.log` + 操作日志 `operation.log` |
+
+旧版散落在保存目录里的归属数据会在启动时自动迁移到集中目录。
 
 ### 环境变量
 
@@ -235,7 +264,7 @@ const (
 
 - **路径穿越防护**：所有目录名、文件名参数均经过校验——禁止 `/`、`\`，`..` 越界即拒绝，确保路径始终限定在保存目录范围内
 - **设备名过滤**：仅保留字母、数字、中文、`-`、`_`，其余字符自动剔除
-- **设备归属权限**：每个文件记录上传来源设备，仅本设备上传的文件可删除，他人上传的仅可下载，避免误删
+- **设备归属权限**：每个文件记录上传来源（设备 ID + IP），仅本设备上传的文件可删除，他人上传的仅可下载，避免误删
 - **飞牛授权目录**：fpk 端强制保存目录必须落在飞牛授权目录树内，由飞牛注入边界
 - **仅局域网可用**：服务监听 `0.0.0.0` 但不暴露到公网，需在同一局域网内访问
 - **桌面端无身份认证**：当前版本面向可信局域网环境，未设登录鉴权，请勿在公共网络使用

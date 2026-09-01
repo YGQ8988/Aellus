@@ -130,12 +130,62 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // ---------------- 设备 ID（删除归属判定用） ----------------
+  // 首次访问生成 UUID 存 localStorage，之后所有接口请求头自动携带 Deviceid，
+  // 服务端据此（连同 IP）判定文件是否可删，替代原 UA 设备签名。
+  function uuidv4() {
+    if (window.crypto && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = (Math.random() * 16) | 0;
+      var v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  function getDeviceID() {
+    try {
+      var id = localStorage.getItem('aellus_device_id');
+      if (id) return id;
+      id = uuidv4();
+      localStorage.setItem('aellus_device_id', id);
+      return id;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头
+  var origFetch = window.fetch;
+  window.fetch = function (url, options) {
+    options = options || {};
+    var id = getDeviceID();
+    if (id) {
+      var headers = options.headers;
+      if (headers instanceof Headers) {
+        if (!headers.has('Deviceid')) headers.set('Deviceid', id);
+      } else {
+        var h = {};
+        if (headers && typeof headers === 'object') {
+          for (var k in headers) {
+            if (Object.prototype.hasOwnProperty.call(headers, k)) h[k] = headers[k];
+          }
+        }
+        h['Deviceid'] = id;
+        options.headers = h;
+      }
+    }
+    return origFetch.call(this, url, options);
+  };
+
   // 暴露到全局：同时挂到 window.ui 命名空间与顶层全局，
   // 兼容以裸名（toast() / confirmDialog()）调用的业务代码。
-  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll };
+  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll, getDeviceID: getDeviceID };
   window.toast = toast;
   window.confirmDialog = confirmDialog;
   window.escapeHtml = escapeHtml;
   window.lockScroll = lockScroll;
   window.unlockScroll = unlockScroll;
+  window.getDeviceID = getDeviceID;
 })();

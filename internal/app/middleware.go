@@ -34,7 +34,7 @@ func (a *App) withLog(next http.Handler) http.Handler {
 		if status == 0 {
 			status = http.StatusOK
 		}
-		a.logAccess(realIP(r), r.Method, r.URL.Path, strconv.Itoa(status), r.UserAgent())
+		a.logAccess(realIP(r), r.Method, r.URL.Path, strconv.Itoa(status), deviceID(r))
 	})
 }
 

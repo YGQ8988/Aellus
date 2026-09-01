@@ -19,6 +19,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"persistSaveDir": a.platform.PersistSaveDirAllowed(), // fpk 端为 false：路径不持久化，重启回到飞牛注入值
 		"hasTrim":        hasTrimAPI(),                       // fpk（飞牛）环境标识：前端据此隐藏「默认保存在电脑桌面」等桌面专属文案
 		"isLocal":        isLocalRequest(r),                  // 访问来源 IP 是否等于服务 IP（本机访问）：前端据此显隐「文件保存路径」模块
+		"deviceName":     a.deviceNameOf(deviceID(r)),        // 当前设备 ID 对应的上次设备名（供上传页自动填充）
 	})
 }
 
