@@ -26,4 +26,4 @@ aellus-drops/
 tools/
 
 # fnOS 打包目录中的编译产物（配置文件本身应提交）
-fnos/app/aellus
+fnos/app/aellus*

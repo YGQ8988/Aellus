@@ -25,7 +25,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"saveDirDisplay": saveDirDisplay,
 		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
-		"isLocal":        isLocalRequest(r),                  // 访问来源 IP 是否等于服务 IP（本机访问）：前端据此显隐「文件保存路径」模块
+		"isLocal":        a.canManage(r),                      // 是否有删除/修改保存目录权限（飞牛应用按 isStandaloneWeb=false、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
 		"deviceName":     a.deviceNameOf(deviceID(r)),        // 当前设备 ID 对应的上次设备名（供上传页自动填充）
 	})
 }
@@ -146,10 +146,10 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
 		return
 	}
-	// 仅本机访问（来源 IP 等于服务 IP，即飞牛桌面 iframe 在本机加载、或桌面端本机）可修改保存路径，
-	// 与删除逻辑保持一致；飞牛里装的浏览器（Docker 容器网段）、局域网其他设备均不可改。
-	if !isLocalRequest(r) {
-		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "仅本机可修改保存路径"})
+	// 修改保存路径权限与删除一致（canManage）：
+	// 飞牛应用在门户 iframe 内（isStandaloneWeb=false）可改；独立网页直连、非飞牛环境非本机均不可改。
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "无权限修改保存路径"})
 		return
 	}
 	var req struct {

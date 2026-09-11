@@ -178,25 +178,26 @@
     } catch (e) {}
   })();
 
-  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头。
+  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头；并上报 isStandaloneWeb（飞牛应用
+  // 权限判定用：false=内嵌飞牛门户 iframe 才有删除/设置权限，true=独立网页直连拒绝）。
   var origFetch = window.fetch;
   window.fetch = function (url, options) {
     options = options || {};
     var id = getDeviceID();
-    if (id) {
-      var headers = options.headers;
-      if (headers instanceof Headers) {
-        if (!headers.has('Deviceid')) headers.set('Deviceid', id);
-      } else {
-        var h = {};
-        if (headers && typeof headers === 'object') {
-          for (var k in headers) {
-            if (Object.prototype.hasOwnProperty.call(headers, k)) h[k] = headers[k];
-          }
+    var headers = options.headers;
+    if (headers instanceof Headers) {
+      if (id && !headers.has('Deviceid')) headers.set('Deviceid', id);
+      if (!headers.has('X-Aellus-Standalone')) headers.set('X-Aellus-Standalone', String(isStandaloneWeb()));
+    } else {
+      var h = {};
+      if (headers && typeof headers === 'object') {
+        for (var k in headers) {
+          if (Object.prototype.hasOwnProperty.call(headers, k)) h[k] = headers[k];
         }
-        h['Deviceid'] = id;
-        options.headers = h;
       }
+      if (id && !('Deviceid' in h)) h['Deviceid'] = id;
+      if (!('X-Aellus-Standalone' in h)) h['X-Aellus-Standalone'] = String(isStandaloneWeb());
+      options.headers = h;
     }
     return origFetch.call(window, url, options);
   };
