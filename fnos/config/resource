@@ -5,5 +5,9 @@
         "name": "aellus/drops"
       }
     ]
-  }
+  },
+  "api-scope": [
+    "trim.file.sharedAccess",
+    "trim.file.path"
+  ]
 }

@@ -186,22 +186,8 @@ func ListenStrict(port int) (net.Listener, int) {
 	return ln, port
 }
 
-// clientIP 取请求客户端 IP（去端口），与记录归属时一致。
-func clientIP(r *http.Request) string {
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		return strings.TrimSpace(strings.Split(xff, ",")[0])
-	}
-	host := r.RemoteAddr
-	if i := strings.LastIndex(host, ":"); i > 0 && strings.Count(host, ":") == 1 {
-		host = host[:i]
-	}
-	return host
-}
-
 // deviceID 取请求携带的设备 ID（前端首次访问时生成 UUID 存 localStorage，
-// 之后所有接口请求头携带 Deviceid）。用于删除归属判定（IP 变化后的兜底，
-// 替代原 UA 设备签名）。
+// 之后所有接口请求头携带 Deviceid）。用于设备名映射与访问日志记录。
 func deviceID(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("Deviceid"))
 }
@@ -218,7 +204,7 @@ func realIP(r *http.Request) string {
 
 // remoteIP 从 RemoteAddr 解析对端 IP（去掉端口）。
 // 注意：只信 TCP 对端地址，不读 X-Forwarded-For 等请求头——头可被局域网内
-// 其他设备伪造，用它做"仅本机"判断会被绕过（归属判定另用 clientIP，不受影响）。
+// 其他设备伪造，用它做"仅本机"判断会被绕过。
 func remoteIP(r *http.Request) net.IP {
 	h, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

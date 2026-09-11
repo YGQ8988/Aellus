@@ -48,20 +48,19 @@ func (platformImpl) PickDirSupported() bool              { return true }
 func (platformImpl) PersistSaveDirAllowed() bool         { return true }
 func (platformImpl) EnforceAuthBoundary() bool           { return false }
 
-// OwnersBaseDir 桌面端：归属 manifest 集中存放到系统配置目录下的 owners/ 子目录，
-// 不再散落在用户保存目录里（避免与上传文件混在一起被用户看到）。
-// 与 aellus-settings.json 同级（系统配置目录/Aellus/owners/）。
-func (platformImpl) OwnersBaseDir(saveDir string) string {
+// ConfigBaseDir 桌面端：配置数据统一存放到系统配置目录下的 Aellus/ 子目录，
+// 与 aellus-settings.json 同级，删除/重装程序不丢失。
+func (platformImpl) ConfigBaseDir(saveDir string) string {
 	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
-		return filepath.Join(configDir, "Aellus", "owners")
+		return filepath.Join(configDir, "Aellus")
 	}
-	// 回退：取不到系统配置目录，用保存目录下的 .owners 子目录（隐藏，不污染可见文件）
-	return filepath.Join(saveDir, ".owners")
+	// 回退：取不到系统配置目录，用保存目录
+	return saveDir
 }
 
 // LogsDir 桌面端：访问/操作日志集中存放到系统配置目录下的 logs/ 子目录，
 // 不再散落在 .app 同级目录（拖到 /Applications 后不会在系统目录里生成日志）。
-// 与 aellus-settings.json / owners 同级（系统配置目录/Aellus/logs/）。
+// 与 aellus-settings.json 同级（系统配置目录/Aellus/logs/）。
 func (platformImpl) LogsDir() string {
 	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
 		return filepath.Join(configDir, "Aellus", "logs")

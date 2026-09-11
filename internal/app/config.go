@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // === 配置与路径纯函数 ===
@@ -72,6 +73,11 @@ func bootDefaultSaveDir() string {
 // 取不到配置目录时回退到可执行文件同级（ResolveBaseDir），保证可用。
 
 func settingsConfPath() string {
+	// 飞牛 fpk：配置文件写到飞牛私有运行时数据目录（TRIM_PKGVAR，位于 /vol 持久卷），
+	// 应用重启 / NAS 重启后不丢失。防御式校验：必须以 /vol 开头才使用。
+	if v := os.Getenv("TRIM_PKGVAR"); v != "" && strings.HasPrefix(v, "/vol") {
+		return filepath.Join(v, SettingsFile)
+	}
 	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
 		return filepath.Join(configDir, "Aellus", SettingsFile)
 	}

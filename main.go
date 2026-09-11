@@ -64,7 +64,7 @@ func main() {
 	}
 
 	// 1) 数据目录解析
-	// 日志目录：与 settings/owners 统一到系统配置目录，拖到 /Applications 不再污染系统目录。
+	// 日志目录：与 settings 统一到系统配置目录，拖到 /Applications 不再污染系统目录。
 	baseDir := p.LogsDir()
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		// 系统配置目录不可写（罕见），回退到 .app / 可执行文件同级（旧行为）
@@ -76,12 +76,16 @@ func main() {
 	if d := os.Getenv("AELLUS_SAVE_DIR"); d != "" {
 		saveParent = d
 	}
-	// 桌面端才允许持久化用户选择的保存目录（fpk 端不读本地配置，路径完全由飞牛授权决定）
+	// 持久化保存目录（桌面端 + 飞牛端都持久化到本地配置，重启后继续使用设置过的路径）
 	if p.PersistSaveDirAllowed() {
 		// 一次性迁移：把旧版残留在二进制同级的 aellus-settings.json 搬到系统配置目录
 		app.MigrateLegacySettings()
 		if cfgDir := app.LoadSaveDirConfig(); cfgDir != "" {
-			saveParent = cfgDir
+			// 飞牛端：持久化路径必须仍落在当前授权目录树内（管理员可能已在应用设置里移除授权），
+			// 否则回退到注入的默认目录（AELLUS_SAVE_DIR / 共享目录），避免使用已失效的授权路径。
+			if !p.EnforceAuthBoundary() || app.IsPersistedSaveDirValid(cfgDir) {
+				saveParent = cfgDir
+			}
 		}
 	}
 
@@ -111,12 +115,6 @@ func main() {
 		BaseDir:     baseDir,
 		SaveDir:     saveParent,
 	})
-
-	// 3.5) 桌面端：一次性迁移旧版散落在保存目录里的归属 manifest 到集中目录
-	//      （旧版把 <sha1>.json 直接写在 saveDir 里，与上传文件混在一起；现在集中到系统配置目录）
-	if p.PersistSaveDirAllowed() {
-		app.MigrateLegacyOwners(saveParent, p.OwnersBaseDir(saveParent))
-	}
 
 	// 4) 局域网 IP + 端口（被占用自动 +1）
 	//    端口优先级：AELLUS_PORT 环境变量（飞牛 cmd/main 注入）> DefaultPort

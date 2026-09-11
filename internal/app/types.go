@@ -23,10 +23,11 @@ type DirInfo struct {
 	Count     int    `json:"count"`     // 目录下（仅一层）非隐藏文件数量
 	Size      int64  `json:"size"`      // 目录下非隐藏文件总大小（字节）
 	Mtime     int64  `json:"mtime"`     // 目录下最新修改时间（Unix 时间戳）
-	Deletable bool   `json:"deletable"` // 当前请求是否可删除该目录（服务端按 IP/UA 归属判定）
+	Deletable bool   `json:"deletable"` // 当前请求是否可删除该目录（桌面端本机 / 飞牛环境内）
 }
 type DirsResp struct {
-	Dirs []DirInfo `json:"dirs"`
+	Dirs      []DirInfo `json:"dirs"`
+	CanDelete bool      `json:"canDelete"` // 当前请求是否可删除（本机访问），前端据此显隐批量删除按钮
 }
 
 // —— 文件列表返回 ——
@@ -36,12 +37,13 @@ type FileInfo struct {
 	Mtime     int64  `json:"mtime"`     // 修改时间（Unix 时间戳，int64，前端再格式化成可读时间）
 	IsDir     bool   `json:"isDir"`     // true 表示该项是一个子目录（可继续进入）
 	Count     int    `json:"count"`     // 文件夹内文件总数（仅文件夹有意义，文件为 0）
-	Deletable bool   `json:"deletable"` // 当前请求是否可删除该项（服务端按 IP/UA 归属判定）
+	Deletable bool   `json:"deletable"` // 当前请求是否可删除该项（桌面端本机 / 飞牛环境内）
 }
 type FilesResp struct {
-	Dir   string     `json:"dir"`
-	Files []FileInfo `json:"files"`
-	Error string     `json:"error,omitempty"` // 出错时填充，前端 browse.js 会读这个字段
+	Dir       string     `json:"dir"`
+	Files     []FileInfo `json:"files"`
+	CanDelete bool       `json:"canDelete"`        // 当前请求是否可删除（本机访问），前端据此显隐批量删除按钮
+	Error     string     `json:"error,omitempty"` // 出错时填充，前端 browse.js 会读这个字段
 }
 
 // —— 批量下载请求体 ——

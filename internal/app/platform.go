@@ -31,13 +31,13 @@ type Platform interface {
 	// 桌面端无此限制（false，用户自主决定落盘位置）。
 	EnforceAuthBoundary() bool
 
-	// OwnersBaseDir 返回归属 manifest 的存放根目录。
-	//   - 桌面端：系统配置目录下的 owners/ 子目录（与 aellus-settings.json 同级），不污染保存目录；
-	//   - fpk 端：飞牛私有运行时数据目录（TRIM_PKGVAR/owners），不污染用户共享目录。
-	OwnersBaseDir(saveDir string) string
+	// ConfigBaseDir 返回配置数据根目录（设备名映射 devices.json 等数据文件所在目录）。
+	//   - 桌面端：系统配置目录下的 Aellus/ 子目录（与 aellus-settings.json 同级）；
+	//   - fpk 端：飞牛私有运行时数据目录（TRIM_PKGVAR）。
+	ConfigBaseDir(saveDir string) string
 
 	// LogsDir 返回访问日志 / 操作日志的存放目录。
-	//   - 桌面端：系统配置目录下的 logs/ 子目录（与 settings/owners 一致），不污染 .app 同级目录；
+	//   - 桌面端：系统配置目录下的 logs/ 子目录（与 settings 一致），不污染 .app 同级目录；
 	//   - fpk 端：飞牛私有运行时数据目录（TRIM_PKGVAR/logs），不写入应用安装目录。
 	LogsDir() string
 }
