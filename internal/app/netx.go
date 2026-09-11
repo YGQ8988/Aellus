@@ -260,3 +260,25 @@ func isLocalRequest(r *http.Request) bool {
 	}
 	return isLocalIP(remoteIP(r))
 }
+
+// canManage 判断请求是否有「删除文件 / 修改保存目录」权限（前端按钮显隐与服务端强制一致）。
+//
+// 双通道判定：
+//  1. 飞牛应用（fpk 构建，EnforceAuthBoundary()==true）：前端读取飞牛 SDK 的
+//     isStandaloneWeb 并通过 X-Aellus-Standalone 请求头上报——
+//     false（页面内嵌在飞牛门户 iframe 中，用户经飞牛账号体系进入）→ 有权限；
+//     true（独立网页直连，绕过门户）→ 拒绝；头缺失（旧前端缓存 / 脚本直连）→
+//     保守回退为仅本机判定。
+//  2. 非飞牛应用（桌面构建）：保持仅本机（isLocalRequest），不读该头。
+func (a *App) canManage(r *http.Request) bool {
+	if a.platform.EnforceAuthBoundary() {
+		switch strings.ToLower(strings.TrimSpace(r.Header.Get("X-Aellus-Standalone"))) {
+		case "false":
+			return true
+		case "true":
+			return false
+		}
+		return isLocalRequest(r)
+	}
+	return isLocalRequest(r)
+}

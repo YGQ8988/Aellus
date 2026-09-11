@@ -241,7 +241,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 			// 递归统计该目录的总大小、文件数、最新修改时间
 			size, count, mtime := dirStats(filepath.Join(a.getSaveDir(), e.Name()))
 			dirs = append(dirs, DirInfo{Name: e.Name(), Count: count, Size: size, Mtime: mtime,
-				Deletable: isLocalRequest(r)})
+				Deletable: a.canManage(r)})
 		}
 	}
 	// 根目录（未命名设备）下直接存放的文件，也作为一个目录项展示；
@@ -264,7 +264,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 	if rootCount > 0 {
 		dirs = append(dirs, DirInfo{Name: "", Count: int(rootCount), Size: rootSize, Mtime: rootMtime})
 	}
-	a.writeJSON(w, http.StatusOK, DirsResp{Dirs: dirs, CanDelete: isLocalRequest(r)})
+	a.writeJSON(w, http.StatusOK, DirsResp{Dirs: dirs, CanDelete: a.canManage(r)})
 }
 
 // handleFiles GET /api/files?dir=xxx 列出某目录下的文件与子目录。
@@ -298,7 +298,7 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 			Mtime:     info.ModTime().Unix(),
 			IsDir:     e.IsDir(),
 			Count:     0,
-			Deletable: isLocalRequest(r),
+			Deletable: a.canManage(r),
 		}
 		// 文件夹：递归计算总大小、文件数、最新修改时间
 		if e.IsDir() {
@@ -317,7 +317,7 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 		return files[i].Mtime > files[j].Mtime
 	})
 
-	a.writeJSON(w, http.StatusOK, FilesResp{Dir: dir, Files: files, CanDelete: isLocalRequest(r)})
+	a.writeJSON(w, http.StatusOK, FilesResp{Dir: dir, Files: files, CanDelete: a.canManage(r)})
 }
 
 // handleDownload GET /api/download?dir=xxx&file=xxx[&inline=1]
@@ -515,10 +515,11 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	// 删除权限：仅本机访问（来源 IP 等于服务 IP，即飞牛桌面 iframe 在本机加载、或桌面端本机）可删。
-	// 飞牛里装的浏览器（Docker 容器网段 172.x）、局域网其他设备访问来源 IP 非本机，禁止删除。
-	if !isLocalRequest(r) {
-		a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "仅本机可删除文件"})
+	// 删除权限：双通道判定（canManage）——
+	//   - 飞牛应用：X-Aellus-Standalone=false（页面内嵌飞牛门户 iframe）有权限；true（独立网页直连）拒绝；
+	//   - 非飞牛应用 / 头缺失：仅本机（来源 IP 等于服务 IP）可删。
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "无删除权限"})
 		return
 	}
 	// 用 RemoveAll 同时支持文件与目录（目录递归删除）。
