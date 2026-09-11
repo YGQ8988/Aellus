@@ -3,8 +3,17 @@
 LOG_FILE="${TRIM_PKGVAR}/info.log"
 PID_FILE="${TRIM_PKGVAR}/app.pid"
 
-# 每个 fpk 包只含对应架构的二进制（manifest 的 platform 字段限制安装目标），统一用 aellus
-BIN="${TRIM_APPDEST}/aellus"
+# 通用包（platform=all）同时携带 x86_64 / aarch64 两个二进制，按机器架构选择；
+# 兼容旧版单架构包：若找不到对应架构文件且存在 aellus 则回退使用。
+MACHINE_ARCH="$(uname -m)"
+case "${MACHINE_ARCH}" in
+  x86_64|amd64)  BIN="${TRIM_APPDEST}/aellus-x86_64" ;;
+  aarch64|arm64) BIN="${TRIM_APPDEST}/aellus-aarch64" ;;
+  *)             BIN="${TRIM_APPDEST}/aellus" ;;
+esac
+if [ ! -x "${BIN}" ] && [ -x "${TRIM_APPDEST}/aellus" ]; then
+  BIN="${TRIM_APPDEST}/aellus"
+fi
 
 if [ ! -x "${BIN}" ]; then
   echo "二进制不存在或不可执行: ${BIN}" > "${TRIM_TEMP_LOGFILE}"
