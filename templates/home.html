@@ -146,27 +146,27 @@
     msg.className='settings-msg'; msg.textContent='';
     closeDirPopup();
     fetch('/api/settings').then(r=>r.json()).then(d=>{
-      // 是否可编辑保存路径：飞牛端（在飞牛系统里打开）或桌面端本机访问
-      var canEdit = d.hasTrim || d.isLocal;
+      // 是否可编辑保存路径：仅本机访问（与删除逻辑一致，飞牛里的浏览器/局域网设备不可改）
+      var canEdit = d.isLocal;
       // 标题：可编辑为「设置」，否则为「关于Aellus」（移动端标题「打赏」不变）
       var titlePc=document.querySelector('.set-title-pc');
       if(titlePc){ titlePc.textContent = canEdit ? '设置' : '关于Aellus'; }
       var pathSec=document.querySelector('.settings-sec--path');
       var sep=document.querySelector('.separator');
-      // 飞牛端（在飞牛系统里打开）或桌面端本机访问时展示「文件保存路径」模块，否则隐藏
+      // 仅本机访问时展示「文件保存路径」模块，否则隐藏
       if(canEdit){
         if(pathSec){ pathSec.style.display=''; }
         if(sep){ sep.style.display=''; }
         var hidden=document.getElementById('saveDirDisplay');
         hidden.value=d.saveDir||''; hidden.dataset.path=d.saveDir||'';
+        hidden.dataset.display=d.saveDirDisplay||d.saveDir||'';
         // 未修改路径（仍是默认）则不展示「恢复默认」按钮；改过路径才展示
         document.getElementById('resetDirBtn').style.display = d.isDefault ? 'none' : '';
-        // 提示文案：fpk 端（飞牛授权管理）不持久化路径——重启回到飞牛注入值；
-        // 桌面端用户自主决定，修改后重启保留。
+        // 提示文案：飞牛端保存目录由授权目录决定；桌面端用户自主决定，修改后重启保留。
         var tip=document.getElementById('saveDirTip');
         if(tip){
-          if(d.persistSaveDir===false){
-            tip.textContent='保存路径由飞牛授权目录决定（可在已授权目录及其子目录中选择），修改仅当前运行生效，重启后回到飞牛授权目录。添加 / 移除授权请在飞牛「应用设置 → 授权目录」操作。';
+          if(d.hasTrim){
+            tip.textContent='保存路径由飞牛授权目录决定（可在已授权目录及其子目录中选择），修改后重启保留。添加 / 移除授权请在飞牛「应用设置 → 授权目录」操作。';
           } else {
             tip.textContent='接收到的文件将保存到该目录（修改后立即生效，重启后保留）。';
           }
@@ -206,16 +206,20 @@
     }
     if(trigger){ trigger.setAttribute('aria-expanded','false'); }
   }
-  // 把 hidden input 上的当前路径同步到 trigger 上的可见文案
-  function renderDirTrigger(currentPath){
-    var path=currentPath||document.getElementById('saveDirDisplay').dataset.path||'';
+  // 把 hidden input 上的当前路径同步到 trigger 上的可见文案。
+  // displayPath 为语义化展示路径（飞牛端 /vol1/... 的转换结果），input 仍用内部路径。
+  function renderDirTrigger(currentPath, displayPath){
+    var hidden=document.getElementById('saveDirDisplay');
+    var path=currentPath||(hidden?hidden.dataset.path:'')||'';
+    var disp=displayPath||(hidden?hidden.dataset.display:'')||path;
     var trig=document.getElementById('dirTriggerPath');
-    if(trig){ trig.textContent = path || '加载中…'; }
+    if(trig){ trig.textContent = disp || '加载中…'; }
     var inp=document.getElementById('dirInput');
     if(inp){ inp.value=path; }
   }
-  // 在 popup 里渲染一组路径选项；每一项点击 -> 选中、收 popup、触发保存
-  function renderDirOptions(paths, currentPath){
+  // 在 popup 里渲染一组路径选项；每一项点击 -> 选中、收 popup、触发保存。
+  // labels 为内部路径 -> 语义化展示路径映射（飞牛端 /vol1/... 转换结果），仅用于展示。
+  function renderDirOptions(paths, currentPath, labels){
     var popup=document.getElementById('dirPopup');
     popup.innerHTML='';
     if(!paths.length){
@@ -225,6 +229,7 @@
       popup.appendChild(empty);
       return;
     }
+    labels = labels || {};
     var known={};
     var makeOpt=function(val){
       if(known[val]) return;
@@ -232,12 +237,12 @@
       opt.className='dir-option';
       opt.setAttribute('role','option');
       opt.dataset.path=val;
-      opt.textContent=val;
+      opt.textContent=labels[val]||val;
       if(val===currentPath){ opt.classList.add('selected'); }
       opt.addEventListener('click', function(){
         var hidden=document.getElementById('saveDirDisplay');
-        hidden.value=val; hidden.dataset.path=val;
-        renderDirTrigger(val);
+        hidden.value=val; hidden.dataset.path=val; hidden.dataset.display=labels[val]||val;
+        renderDirTrigger(val, labels[val]||val);
         Array.prototype.forEach.call(popup.querySelectorAll('.dir-option'), function(o){
           o.classList.toggle('selected', o.dataset.path===val);
         });
@@ -269,10 +274,11 @@
     fetch('/api/set-savedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:dir})})
       .then(r=>r.json()).then(d=>{
         if(d.ok){
-          msg.className='settings-msg show ok'; msg.textContent='已保存：'+d.saveDir;
+          var disp=d.saveDirDisplay||d.saveDir;
+          msg.className='settings-msg show ok'; msg.textContent='已保存：'+disp;
           var hidden=document.getElementById('saveDirDisplay');
-          hidden.value=d.saveDir; hidden.dataset.path=d.saveDir;
-          renderDirTrigger(d.saveDir);
+          hidden.value=d.saveDir; hidden.dataset.path=d.saveDir; hidden.dataset.display=disp;
+          renderDirTrigger(d.saveDir, disp);
           var popup=document.getElementById('dirPopup');
           if(popup){ Array.prototype.forEach.call(popup.querySelectorAll('.dir-option'), function(o){
             o.classList.toggle('selected', o.dataset.path===d.saveDir);
@@ -290,9 +296,10 @@
     fetch('/api/set-savedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:''})})
       .then(r=>r.json()).then(d=>{
         if(d.ok){
-          msg.className='settings-msg show ok'; msg.textContent='已恢复默认：'+d.saveDir;
-          hidden.value=d.saveDir; hidden.dataset.path=d.saveDir;
-          renderDirTrigger(d.saveDir);
+          var disp=d.saveDirDisplay||d.saveDir;
+          msg.className='settings-msg show ok'; msg.textContent='已恢复默认：'+disp;
+          hidden.value=d.saveDir; hidden.dataset.path=d.saveDir; hidden.dataset.display=disp;
+          renderDirTrigger(d.saveDir, disp);
           var popup=document.getElementById('dirPopup');
           if(popup){ Array.prototype.forEach.call(popup.querySelectorAll('.dir-option'), function(o){
             o.classList.toggle('selected', o.dataset.path===d.saveDir);
@@ -315,6 +322,7 @@
     if(!hidden) return;
     var cur=(s&&s.saveDir)||'';
     hidden.value=cur; hidden.dataset.path=cur;
+    hidden.dataset.display=(s&&s.saveDirDisplay)||cur;
     // 初始：下拉模式加载中
     if(popup){ popup.innerHTML='<div class="dir-empty">加载中…</div>'; popup.hidden=true; }
     if(trigger){ trigger.style.display=''; }
@@ -341,13 +349,13 @@
         if(tip){ tip.textContent='飞牛尚未向 Aellus 授权任何共享目录。请在飞牛「应用设置 → 授权目录」中授权后，再回到此处选择保存位置。'; }
         return;
       }
-      renderDirTrigger(cur);
+      renderDirTrigger(cur, (d&&d.pathLabels&&d.pathLabels[cur])||(s&&s.saveDirDisplay)||cur);
       // 只展示授权根目录，不展开子目录（用户在飞牛端授权的是根目录，选根目录即可）
       var all = roots.slice();
       // 如果当前保存目录不在授权列表里（如 fnOS 默认 /vol1/@appcenter/Aellus/file-drops），
       // 追加为合成项，保证总是能选中并显示当前路径。
       if(cur && all.indexOf(cur)===-1){ all.push(cur); }
-      renderDirOptions(all, cur);
+      renderDirOptions(all, cur, (d&&d.pathLabels)||{});
     }).catch(function(){
       if(popup){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; }
     });

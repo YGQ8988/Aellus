@@ -237,11 +237,24 @@ body.home .container { flex: 1 0 0; width: 100%; display: flex; flex-direction: 
   .qr-list { flex-wrap: nowrap; }
   .qr-card { flex: 1; }
   .home-grid { grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .lan-addr-bar { width: auto; }
+}
+
+/* 宽且高（桌面大窗口）：大卡片 */
+@media (min-width: 768px) and (min-height: 720px) {
   .entry { padding: 48px 28px; }
   .entry .icon { width: 56px; height: 56px; margin-bottom: 20px; }
   .entry .title { font-size: 26px; }
   .entry .desc { font-size: 15px; margin-top: 12px; }
-  .lan-addr-bar { width: auto; }
+}
+
+/* 宽但矮（飞牛门户 iframe 等）：小卡片，首帧即小尺寸避免闪烁 */
+@media (min-width: 768px) and (max-height: 720px) {
+  .entry { padding: 20px 18px; }
+  .entry .icon { width: 36px; height: 36px; margin: 0 auto 10px; }
+  .entry .title { font-size: 17px; }
+  .entry .desc { font-size: 13px; margin-top: 6px; }
+  .home-grid { gap: 12px; }
 }
 
 .qr-inner { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 12px; align-items: center; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg); padding: 22px 20px; }

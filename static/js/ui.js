@@ -130,7 +130,7 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  // ---------------- 设备 ID（删除归属判定用） ----------------
+  // ---------------- 设备 ID（设备名映射 / 访问日志用） ----------------
   // 首次访问生成 UUID 存 localStorage，之后所有接口请求头自动携带 Deviceid，
   // 服务端据此（连同 IP）判定文件是否可删，替代原 UA 设备签名。
   function uuidv4() {
@@ -156,7 +156,29 @@
     }
   }
 
-  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头
+  // 飞牛运行环境判定：加载飞牛官方 SDK（@trimjs/web-app），用其 isStandaloneWeb 属性
+  // 判断当前页面是否「独立浏览器」（true = 独立浏览器，false = 飞牛桌面 iframe 内嵌）。
+  // 该值只在浏览器端使用（不再通过请求头传服务端），服务端删除权限改由来源 IP 判定。
+  // 时序：isStandaloneWeb 需等 SDK ready()（initPromise）完成后才可靠，故先按同步的
+  // window.parent === window 兜底（与 SDK 底层实现一致），SDK ready 后再用官方值覆盖。
+  var trimStandalone = null; // null=SDK 未就绪；之后为 SDK isStandaloneWeb 的真实布尔值
+  function isStandaloneWeb() {
+    return trimStandalone === null ? (window.parent === window) : trimStandalone;
+  }
+  (function initTrimSDK() {
+    try {
+      import('/static/js/trim-web-app.js').then(function (mod) {
+        var sdk = new mod.TrimApp();
+        return sdk.ready().then(function () {
+          trimStandalone = !!sdk.isStandaloneWeb;
+        });
+      }).catch(function () {
+        // SDK 加载/初始化失败：保留同步兜底判断（window.parent === window）
+      });
+    } catch (e) {}
+  })();
+
+  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头。
   var origFetch = window.fetch;
   window.fetch = function (url, options) {
     options = options || {};
@@ -176,16 +198,27 @@
         options.headers = h;
       }
     }
-    return origFetch.call(this, url, options);
+    return origFetch.call(window, url, options);
   };
+
+  // 诊断日志：控制台输出本机 IP（当前访问设备）与服务端 IP（运行 Aellus 的设备），
+  // 便于排查删除权限等「本机 / 飞牛环境」判定问题（打开浏览器开发者工具控制台可见）。
+  try {
+    fetch('/api/addr').then(function(r){ return r.json(); }).then(function(d){
+      console.log('[Aellus] 本机 IP（当前访问设备）: ' + (d.clientIP || '未知'));
+      console.log('[Aellus] 服务端 IP（运行 Aellus 的设备）: ' + (d.ip || '未知'));
+      console.log('[Aellus] 服务端运行环境: ' + (d.platform || '未知'));
+    }).catch(function(){});
+  } catch (e) {}
 
   // 暴露到全局：同时挂到 window.ui 命名空间与顶层全局，
   // 兼容以裸名（toast() / confirmDialog()）调用的业务代码。
-  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll, getDeviceID: getDeviceID };
+  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll, getDeviceID: getDeviceID, isStandaloneWeb: isStandaloneWeb };
   window.toast = toast;
   window.confirmDialog = confirmDialog;
   window.escapeHtml = escapeHtml;
   window.lockScroll = lockScroll;
   window.unlockScroll = unlockScroll;
   window.getDeviceID = getDeviceID;
+  window.isStandaloneWeb = isStandaloneWeb;
 })();

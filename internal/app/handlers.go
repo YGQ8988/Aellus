@@ -49,8 +49,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	mr := multipart.NewReader(r.Body, boundary)
 
 	device := "default"
-	upIP := clientIP(r)     // 上传来源 IP（同一设备换任何浏览器都一致）
-	upDevID := deviceID(r)  // 上传来源设备 ID（IP 变化后的兜底）
+	upDevID := deviceID(r) // 设备 ID（供设备名映射记录）
 	var rels []string                      // 所有文件的相对路径，按出现顺序收集
 	var scratch bytes.Buffer
 	buf := make([]byte, 1<<20) // 1MB 缓冲区，分块写入
@@ -132,8 +131,6 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusInternalServerError, UploadResp{OK: false})
 		return
 	}
-	// 记录设备目录归属（首个上传者为准，不覆盖）
-	a.recordOwner(a.getSaveDir(), device, upIP, upDevID)
 	// 记录设备名映射（供下次上传页自动填充，换浏览器/清 localStorage 也能取回）
 	a.recordDeviceName(upDevID, device)
 
@@ -180,21 +177,6 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			src.Close()
 			dst.Close()
 			os.Remove(pf.tmpPath)
-		}
-
-		// 记录本项归属（文件级）：文件记在其所在目录的 manifest；
-		// 文件夹上传（rawName 含层级）时，逐级把新出现的文件夹也记为本次上传来源。
-		a.recordOwner(filepath.Dir(dstPath), filepath.Base(dstPath), upIP, upDevID)
-		if rel := strings.ReplaceAll(rawName, "\\", "/"); strings.Contains(rel, "/") {
-			segs := strings.Split(rel, "/")
-			acc := deviceDir
-			for _, seg := range segs[:len(segs)-1] {
-				if seg == "" {
-					continue
-				}
-				acc = filepath.Join(acc, seg)
-				a.recordOwner(filepath.Dir(acc), filepath.Base(acc), upIP, upDevID)
-			}
 		}
 
 		info, _ := os.Stat(dstPath)
@@ -251,7 +233,6 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 	dirs := []DirInfo{} // 用空切片而非 nil，确保 JSON 输出为 [] 而非 null
 	entries, err := os.ReadDir(a.getSaveDir())
 	if err == nil {
-		meIP, meDevID := clientIP(r), deviceID(r)
 		for _, e := range entries {
 			// 过滤：只要目录，且跳过以 "." 开头的隐藏目录
 			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
@@ -260,7 +241,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 			// 递归统计该目录的总大小、文件数、最新修改时间
 			size, count, mtime := dirStats(filepath.Join(a.getSaveDir(), e.Name()))
 			dirs = append(dirs, DirInfo{Name: e.Name(), Count: count, Size: size, Mtime: mtime,
-				Deletable: deletable(a.ownerOf(a.getSaveDir(), e.Name()), meIP, meDevID)})
+				Deletable: isLocalRequest(r)})
 		}
 	}
 	// 根目录（未命名设备）下直接存放的文件，也作为一个目录项展示；
@@ -283,7 +264,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 	if rootCount > 0 {
 		dirs = append(dirs, DirInfo{Name: "", Count: int(rootCount), Size: rootSize, Mtime: rootMtime})
 	}
-	a.writeJSON(w, http.StatusOK, DirsResp{Dirs: dirs})
+	a.writeJSON(w, http.StatusOK, DirsResp{Dirs: dirs, CanDelete: isLocalRequest(r)})
 }
 
 // handleFiles GET /api/files?dir=xxx 列出某目录下的文件与子目录。
@@ -302,7 +283,6 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meIP, meDevID := clientIP(r), deviceID(r)
 	files := []FileInfo{} // 空切片，确保无内容时输出 [] 而非 null
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".") {
@@ -318,7 +298,7 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 			Mtime:     info.ModTime().Unix(),
 			IsDir:     e.IsDir(),
 			Count:     0,
-			Deletable: deletable(a.ownerOf(dirAbs, e.Name()), meIP, meDevID),
+			Deletable: isLocalRequest(r),
 		}
 		// 文件夹：递归计算总大小、文件数、最新修改时间
 		if e.IsDir() {
@@ -337,7 +317,7 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 		return files[i].Mtime > files[j].Mtime
 	})
 
-	a.writeJSON(w, http.StatusOK, FilesResp{Dir: dir, Files: files})
+	a.writeJSON(w, http.StatusOK, FilesResp{Dir: dir, Files: files, CanDelete: isLocalRequest(r)})
 }
 
 // handleDownload GET /api/download?dir=xxx&file=xxx[&inline=1]
@@ -535,10 +515,10 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	// 设备归属校验：目标项由其上传来源独占删除权（同 IP 或同 UA 签名可删；旧数据放行）。
-	meIP, meDevID := clientIP(r), deviceID(r)
-	if !deletable(a.ownerOf(dirAbs, req.File), meIP, meDevID) {
-		a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "其他设备上传的内容，仅可下载不可删除"})
+	// 删除权限：仅本机访问（来源 IP 等于服务 IP，即飞牛桌面 iframe 在本机加载、或桌面端本机）可删。
+	// 飞牛里装的浏览器（Docker 容器网段 172.x）、局域网其他设备访问来源 IP 非本机，禁止删除。
+	if !isLocalRequest(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "仅本机可删除文件"})
 		return
 	}
 	// 用 RemoveAll 同时支持文件与目录（目录递归删除）。
@@ -546,7 +526,6 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "删除失败"})
 		return
 	}
-	a.removeOwner(dirAbs, req.File) // 同步清理 manifest 中的归属记录
 	a.logOp(fmt.Sprintf("删除 目录=%s 目标=%s", req.Dir, req.File))
 	a.writeJSON(w, http.StatusOK, map[string]string{"ok": "1"})
 }

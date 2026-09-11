@@ -46,11 +46,11 @@ func (fpkPlatform) PickDirSupported() bool { return false }
 // PickFolderDialog fpk 不支持原生目录选择，返回空串占位。
 func (fpkPlatform) PickFolderDialog() string { return "" }
 
-// PersistSaveDirAllowed fpk 端【不允许】把保存目录持久化到本地配置文件。
-// 文件落盘位置完全由飞牛授权决定（cmd/main 注入的 AELLUS_SAVE_DIR +
-// 官方 API trim.file.getSharedAccessibleFolders 返回的授权目录树）；
-// 改路径只影响当前运行实例，重启后回到飞牛注入值，避免本地文件污染授权语义。
-func (fpkPlatform) PersistSaveDirAllowed() bool { return false }
+// PersistSaveDirAllowed fpk 端【允许】把保存目录持久化到本地配置文件。
+// 配置文件写到飞牛私有运行时数据目录（TRIM_PKGVAR，/vol 持久卷），重启后保留；
+// 启动加载时仍会校验持久化路径是否落在当前授权目录树内（见 main 的
+// IsPersistedSaveDirValid），授权被移除则回退到飞牛注入的默认目录，不污染授权语义。
+func (fpkPlatform) PersistSaveDirAllowed() bool { return true }
 
 // EnforceAuthBoundary fpk 端强制"保存目录必须落在飞牛授权目录树内"。
 // 飞牛应用设置中授权的目录（经 TRIM_DATA_ACCESSIBLE_PATHS /
@@ -58,29 +58,18 @@ func (fpkPlatform) PersistSaveDirAllowed() bool { return false }
 // web 只能在已授权目录（含其子树）内选，不能跳出授权边界、不能写任意路径。
 func (fpkPlatform) EnforceAuthBoundary() bool { return true }
 
-// OwnersBaseDir fpk 端：归属 manifest 集中存放到飞牛私有运行时数据目录，
-// 不再散落在用户共享目录里生成 .aellus-owners 隐藏文件。
-//
-// 优先级：
-//   1. AELLUS_OWNERS_DIR —— cmd/main 在 TRIM_PKGVAR 非空且以 /vol 开头时注入
-//      （TRIM_PKGVAR = /vol[x]/@appdata/[appname]，官方「运行时动态数据、卸载保留」目录）
-//   2. 回退 TRIM_PKGVAR/owners（若变量已设但未注入 AELLUS_OWNERS_DIR）
-//   3. 最终兜底：应用可执行文件目录下的 .owners（防御式，避免 TRIM_PKGVAR 异常时误写系统根）
-//
+// ConfigBaseDir fpk 端：配置数据存放到飞牛私有运行时数据目录（TRIM_PKGVAR）。
 // 防御式校验：文档要求使用路径变量前必须校验非空且以 /vol 开头，否则不使用，
 // 防止对系统根目录造成灾难性写入。
-func (fpkPlatform) OwnersBaseDir(saveDir string) string {
-	if d := os.Getenv("AELLUS_OWNERS_DIR"); d != "" {
-		return d
-	}
+func (fpkPlatform) ConfigBaseDir(saveDir string) string {
 	if v := os.Getenv("TRIM_PKGVAR"); v != "" && strings.HasPrefix(v, "/vol") {
-		return filepath.Join(v, "owners")
+		return v
 	}
-	// 兜底：用可执行文件所在目录下的 .owners（与二进制同生命周期，不会污染共享目录）
+	// 兜底：可执行文件所在目录
 	if exe, err := os.Executable(); err == nil {
-		return filepath.Join(filepath.Dir(exe), ".owners")
+		return filepath.Dir(exe)
 	}
-	return ".owners"
+	return "."
 }
 
 // LogsDir fpk 端：访问/操作日志存放到飞牛私有运行时数据目录，不写入应用安装目录。

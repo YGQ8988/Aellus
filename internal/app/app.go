@@ -18,7 +18,6 @@ const (
 	DefaultPort   = 8000                                      // 默认端口；被占用时自动尝试 8001、8002……
 	SettingsFile  = "aellus-settings.json"                    // 保存目录持久化配置文件名
 	SaveDirName   = saveDirName                               // 导出别名（config.go 等同包文件直接用小写 saveDirName 即可）
-	ownersFile    = ".aellus-owners"                          // 归属 manifest 文件名（旧版散落模式）
 	trimAPISocket = "/var/run/trim_open_gateway_apiscope.socket" // 飞牛开放 API 后端网关 Unix Socket
 )
 
@@ -46,7 +45,7 @@ type App struct {
 	accessLogPath    string     // 访问日志路径
 	operationLogPath string     // 操作日志路径
 	logMu            sync.Mutex // 日志并发追加写锁
-	ownerMu          sync.Mutex // 归属 manifest 读改写锁
+	ownerMu          sync.Mutex // 设备名映射（devices.json）读改写锁
 }
 
 // New 构造 App：注入平台实现与 embed 资源，解析模板，记录日志路径。
@@ -85,10 +84,20 @@ func (a *App) Serve(ln net.Listener, port int) {
 	// 不依赖启动时 GetLANIP 的快照。
 	mux.HandleFunc("/api/addr", func(w http.ResponseWriter, r *http.Request) {
 		curIP := GetLANIP()
+		clientIP := ""
+		if ip := remoteIP(r); ip != nil {
+			clientIP = ip.String()
+		}
+		platform := "桌面端（macOS / Windows / Linux）"
+		if a.platform.EnforceAuthBoundary() {
+			platform = "飞牛 fnOS"
+		}
 		a.writeJSON(w, http.StatusOK, map[string]string{
-			"ip":   curIP,
-			"port": strconv.Itoa(port),
-			"url":  "http://" + curIP + ":" + strconv.Itoa(port),
+			"ip":       curIP,
+			"port":     strconv.Itoa(port),
+			"url":      "http://" + curIP + ":" + strconv.Itoa(port),
+			"clientIP": clientIP,
+			"platform": platform,
 		})
 	})
 	go func() {

@@ -12,7 +12,7 @@ let currentDir = '';
 let allDirs = []; // 最近一次 /api/dirs 返回的目录列表，用于决定面包屑是否显示「目录」层级
 let previewFiles = []; // [{name, previewUrl, ext, deletable}, ...] 当前目录可预览文件
 let lbIndex = 0;       // 灯箱当前索引
-// 某项是否可删：服务端已按「上传来源 IP/UA 签名」算好并返回 deletable 字段，前端直接使用。
+// 某项是否可删：服务端已按「桌面端本机 / 飞牛环境内」算好并返回 deletable 字段，前端直接使用。
 const canDel = d => !!(d && d.deletable);
 
 function show(view) {
@@ -58,6 +58,8 @@ async function loadDirs(autoEnter = true) {
     // 显示目录页批量操作栏，重置全选
     $('dirsBatchBar').style.display = 'flex';
     $('selectAllDirs').checked = false;
+    // 无删除权限（非本机访问）时直接隐藏批量删除按钮，不显示置灰态
+    $('btnDelDirs').style.display = data.canDelete ? '' : 'none';
     updateSelectedCount();
     // 刷新/重入时：若 sessionStorage 里保存了当前目录路径（且等于某个根目录或它的子路径），
     // 直接恢复到该目录，避免多目录场景刷新后回到目录选择页。
@@ -118,6 +120,8 @@ async function openDir(path) {
     // 显示批量操作栏，重置选中状态
     $('batchBar').style.display = 'flex';
     $('selectAll').checked = false;
+    // 无删除权限（非本机访问）时直接隐藏批量删除按钮，不显示置灰态
+    $('btnDelSelected').style.display = data.canDelete ? '' : 'none';
     updateSelectedCount();
     buildBreadcrumb();
   } catch (e) {
@@ -218,6 +222,7 @@ function renderFile(f) {
         </div>
         <div class="file-actions">
           <a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>
+          ${previewable ? '<a class="pv-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); openLightboxFromEl(this)">预览</a>' : ''}
           ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDelete(this)">删除</a>' : ''}
         </div>
       </div>

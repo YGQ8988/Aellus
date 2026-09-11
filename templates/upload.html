@@ -54,7 +54,7 @@
       </div>
 
       <div class="tip">
-        <span id="tipSaveLoc">文件自动保存到设置目录 <b>file-drops/&lt;设备名&gt;/</b> 目录<br></span>
+        <span id="tipSaveLoc">文件自动保存到「管理员」设置目录 <b>/&lt;设备名&gt;/</b> 目录下<br></span>
         文件名自动加时间戳，不会覆盖
       </div>
     </div>
@@ -77,15 +77,5 @@
 
   <script src="/static/js/ui.js"></script>
   <script src="/static/js/upload.js"></script>
-  <script>
-  // fpk（飞牛）端：隐藏「文件自动保存到设置目录」这句（NAS 上无桌面概念，落盘到飞牛授权目录）
-  document.addEventListener('DOMContentLoaded', function(){
-    var loc = document.getElementById('tipSaveLoc');
-    if(!loc) return;
-    fetch('/api/settings').then(function(r){return r.json();}).then(function(d){
-      if(d && d.hasTrim){ loc.style.display = 'none'; }
-    }).catch(function(){});
-  });
-  </script>
 </body>
 </html>

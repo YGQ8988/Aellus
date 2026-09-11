@@ -13,11 +13,18 @@ import (
 // handleSettings GET /api/settings 返回当前文件保存路径及是否为默认路径。
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	cur := a.getSaveDir()
+	saveDirDisplay := cur
+	// 飞牛环境：把内部路径 /vol1/... 转成语义化展示路径（如「存储空间1/admin 的文件/photo」）。
+	if a.platform.EnforceAuthBoundary() {
+		if m := trimConvertPaths([]string{cur}); m[cur] != "" {
+			saveDirDisplay = m[cur]
+		}
+	}
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"saveDir":        cur,
+		"saveDirDisplay": saveDirDisplay,
 		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
-		"persistSaveDir": a.platform.PersistSaveDirAllowed(), // fpk 端为 false：路径不持久化，重启回到飞牛注入值
-		"hasTrim":        hasTrimAPI(),                       // fpk（飞牛）环境标识：前端据此隐藏「默认保存在电脑桌面」等桌面专属文案
+		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
 		"isLocal":        isLocalRequest(r),                  // 访问来源 IP 是否等于服务 IP（本机访问）：前端据此显隐「文件保存路径」模块
 		"deviceName":     a.deviceNameOf(deviceID(r)),        // 当前设备 ID 对应的上次设备名（供上传页自动填充）
 	})
@@ -27,9 +34,16 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 // 优先通过飞牛官方后端 API（trim.file.getSharedAccessibleFolders，Unix socket + TRIM_API_TOKEN）
 // 查询管理员在应用设置中授权的目录；非飞牛环境回退到环境变量。
 func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
+	paths := authorizedSavePaths()
+	labels := map[string]string{}
+	// 飞牛环境：把授权目录内部路径转成语义化展示路径，供设置页面下拉展示。
+	if a.platform.EnforceAuthBoundary() {
+		labels = trimConvertPaths(paths)
+	}
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"paths":   authorizedSavePaths(),
-		"hasTrim": hasTrimAPI(),
+		"paths":      paths,
+		"pathLabels": labels,
+		"hasTrim":    a.platform.EnforceAuthBoundary(),
 	})
 }
 
@@ -118,22 +132,23 @@ func (a *App) resolvePickedDir(name string) string {
 
 // handleSetSaveDir POST /api/set-savedir 修改文件保存路径。
 // body: {"dir": "/abs/path"}；dir 为空则恢复默认（桌面 file-drops / fnOS 授权共享目录）。
-// 注意：允许局域网任意设备修改保存路径（如手机点选飞牛授权目录），不做"仅本机"限制。
+// 权限与删除逻辑一致：仅本机访问（飞牛桌面 iframe 在本机加载 / 桌面端本机）可改，
+// 飞牛里装的浏览器、局域网其他设备均不可改。
 //
 // 平台差异（由 Platform.EnforceAuthBoundary / PersistSaveDirAllowed 控制）：
 //   - 桌面端：可存任意绝对路径，并持久化到 aellus-settings.json（用户自主决定落盘位置）。
 //   - fpk 端：保存目录【完全由飞牛授权做主】——dir 必须落在飞牛授权目录树内
-//     （authorizedSavePaths，含授权根本身及其子树），否则拒绝；且【不】持久化到本地
-//     文件，重启后回到飞牛启动脚本注入的 AELLUS_SAVE_DIR，避免污染授权语义。
+//     （authorizedSavePaths，含授权根本身及其子树），否则拒绝；同样持久化到本地配置
+//     （TRIM_PKGVAR 持久卷），重启后继续使用，但加载时会再次校验是否仍在授权目录内，
+//     授权被移除则回退到飞牛启动脚本注入的 AELLUS_SAVE_DIR。
 func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
 		return
 	}
-	// 桌面端（非飞牛）要求来源 IP 等于服务 IP（仅本机可改），防止局域网任意设备篡改落盘位置。
-	// 飞牛端不限来源 IP——保存路径必须落在飞牛授权目录树内（EnforceAuthBoundary + 授权校验），
-	// 攻击者最多把路径改成另一个已授权目录，危害有限；飞牛端远程访问可在授权范围内选目录。
-	if !a.platform.EnforceAuthBoundary() && !isLocalRequest(r) {
+	// 仅本机访问（来源 IP 等于服务 IP，即飞牛桌面 iframe 在本机加载、或桌面端本机）可修改保存路径，
+	// 与删除逻辑保持一致；飞牛里装的浏览器（Docker 容器网段）、局域网其他设备均不可改。
+	if !isLocalRequest(r) {
 		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "仅本机可修改保存路径"})
 		return
 	}
@@ -210,11 +225,19 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	}
 	os.Remove(test)
 	a.setSaveDir(dir)
-	// 仅桌面端持久化到本地配置文件；fpk 端不持久化（路径由飞牛授权决定，重启回注入值）。
+	// 持久化保存目录到本地配置（桌面端 + 飞牛端都持久化）；飞牛端写到 TRIM_PKGVAR 持久卷，
+	// 重启加载时再校验是否仍在授权目录内（见 main 的 IsPersistedSaveDirValid）。
 	if a.platform.PersistSaveDirAllowed() {
 		_ = SaveSaveDirConfig(dir)
 	}
-	a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "saveDir": dir})
+	saveDirDisplay := dir
+	// 飞牛环境：返回语义化展示路径，供设置页面展示（避免暴露 /vol1/... 内部路径）。
+	if a.platform.EnforceAuthBoundary() {
+		if m := trimConvertPaths([]string{dir}); m[dir] != "" {
+			saveDirDisplay = m[dir]
+		}
+	}
+	a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "saveDir": dir, "saveDirDisplay": saveDirDisplay})
 }
 
 // handlePickDir 调用系统原生"选取文件夹"对话框，返回用户选择的绝对路径。

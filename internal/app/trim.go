@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -17,32 +18,25 @@ import (
 
 // === 飞牛开放 API 与授权目录（纯函数，无 App 状态） ===
 
-// hasTrimAPI 是否具备飞牛开放 API 接入环境（token 存在且 socket 可达）。
-func hasTrimAPI() bool {
-	if os.Getenv("TRIM_API_TOKEN") == "" {
-		return false
-	}
-	_, err := os.Stat(trimAPISocket)
-	return err == nil
-}
-
-// authorizedSavePaths 返回当前应用可访问的授权目录：
-// 优先调用飞牛官方后端 API trim.file.getSharedAccessibleFolders 查询共享授权目录；
-// 调用失败（非飞牛环境 / token 缺失 / socket 不存在 / 接口报错）时回退到环境变量
-// TRIM_DATA_ACCESSIBLE_PATHS / TRIM_DATA_SHARE_PATHS。
+// authorizedSavePaths 返回当前应用可访问的授权目录（去重后的真实绝对路径）：
+// 合并两个来源——飞牛官方 API trim.file.getSharedAccessibleFolders 查询的共享授权目录，
+// 以及环境变量 TRIM_DATA_ACCESSIBLE_PATHS / TRIM_DATA_SHARE_PATHS（data-share 共享目录 +
+// 管理员在应用设置授权的目录）。两者可能只覆盖部分目录，合并取并集再按真实路径去重，
+// 避免「API 只返回 1 个目录时漏掉应用设置里授权的其它目录」。
 func authorizedSavePaths() []string {
-	var raw []string
-	if paths, err := trimQuerySharedFolders(); err == nil && len(paths) > 0 {
-		raw = paths
-	} else {
-		for _, key := range []string{"TRIM_DATA_ACCESSIBLE_PATHS", "TRIM_DATA_SHARE_PATHS"} {
-			if v := os.Getenv(key); v != "" {
-				raw = append(raw, splitPathList(v)...)
-			}
+	raw := []string{}
+	// 1) 官方 API 查询共享授权目录（失败静默，交给环境变量兜底）
+	if paths, err := trimQuerySharedFolders(); err == nil {
+		raw = append(raw, paths...)
+	}
+	// 2) 环境变量补充（data-share 共享目录 + 用户授权目录，冒号分隔）
+	for _, key := range []string{"TRIM_DATA_ACCESSIBLE_PATHS", "TRIM_DATA_SHARE_PATHS"} {
+		if v := os.Getenv(key); v != "" {
+			raw = append(raw, splitPathList(v)...)
 		}
 	}
-	// 解析每个授权根为真实绝对路径（跟随飞牛可能注入的软链，如 @appshare），
-	// 让边界校验对齐真实存储位置，避免软链绕过。
+	// 3) 解析每个授权根为真实绝对路径（跟随飞牛可能注入的软链，如 @appshare），
+	// 让边界校验对齐真实存储位置，避免软链绕过，同时去重。
 	seen := map[string]bool{}
 	var out []string
 	for _, p := range raw {
@@ -78,29 +72,102 @@ func withinAuthRoots(p string, roots []string) bool {
 	return false
 }
 
+// IsPersistedSaveDirValid 判断持久化的保存目录在飞牛授权边界下是否仍然有效。
+// 飞牛端要求路径仍落在授权目录树内（管理员可能在应用设置里移除授权，导致已持久化路径失效）；
+// 取不到任何授权目录时视为无效。桌面端无授权边界，调用方不应在非飞牛环境调用此函数。
+func IsPersistedSaveDirValid(dir string) bool {
+	roots := authorizedSavePaths()
+	if len(roots) == 0 {
+		return false
+	}
+	return withinAuthRoots(dir, roots)
+}
+
 // trimQuerySharedFolders 调用飞牛官方后端 API 查询共享授权目录（trim.file.getSharedAccessibleFolders，
 // Scope: trim.file.sharedAccess，要求 fnOS >= 1.2.0401、App >= 1.34.0）。
 func trimQuerySharedFolders() ([]string, error) {
-	data, err := trimBackendAPI("trim.file.getSharedAccessibleFolders", nil)
+	rawData, err := trimBackendAPI("trim.file.getSharedAccessibleFolders", nil)
 	if err != nil {
 		return nil, err
 	}
-	raw, ok := data["paths"].([]interface{})
-	if !ok {
-		return nil, errors.New("返回格式异常")
+	// data 可能是 {paths:[...]} 对象，也可能是直接的路径数组（不同飞牛版本实现差异），兼容解析。
+	var obj struct {
+		Paths []string `json:"paths"`
 	}
-	var out []string
-	for _, p := range raw {
-		if s, ok := p.(string); ok && s != "" {
-			out = append(out, s)
+	if err := json.Unmarshal(rawData, &obj); err == nil && obj.Paths != nil {
+		out := make([]string, 0, len(obj.Paths))
+		for _, s := range obj.Paths {
+			if s != "" {
+				out = append(out, s)
+			}
 		}
+		return out, nil
 	}
-	return out, nil
+	var arr []string
+	if err := json.Unmarshal(rawData, &arr); err == nil {
+		out := make([]string, 0, len(arr))
+		for _, s := range arr {
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out, nil
+	}
+	log.Printf("[trim] getSharedAccessibleFolders 返回结构无法解析: %s", string(rawData))
+	return nil, errors.New("返回格式异常")
+}
+
+// trimConvertPaths 调用飞牛后端 API trim.file.convertPath（Scope: trim.file.path）
+// 把内部路径（如 /vol1/1000/photo）转换成语义化展示路径（如「存储空间1/admin 的文件/photo」），
+// 供设置页面展示。返回 map[原始路径]语义路径；调用失败返回空 map（调用方回退展示原始路径）。
+// 要求 fnOS >= 1.2.0401、App >= 1.34.0。
+func trimConvertPaths(paths []string) map[string]string {
+	out := map[string]string{}
+	if len(paths) == 0 {
+		return out
+	}
+	rawData, err := trimBackendAPI("trim.file.convertPath", map[string]interface{}{
+		"path":     paths,
+		"language": "zh-CN",
+	})
+	if err != nil {
+		log.Printf("[trim] convertPath 失败（回退展示原始路径）: %v", err)
+		return out
+	}
+	// data 可能是 {status, result:[{path,semanticPath},...]} 对象，也可能是直接的 result 数组
+	// （不同飞牛版本实现有差异），两者都兼容解析。
+	type convItem struct {
+		Path         string `json:"path"`
+		SemanticPath string `json:"semanticPath"`
+	}
+	var obj struct {
+		Result []convItem `json:"result"`
+	}
+	if err := json.Unmarshal(rawData, &obj); err == nil && obj.Result != nil {
+		for _, it := range obj.Result {
+			if it.Path != "" && it.SemanticPath != "" {
+				out[it.Path] = it.SemanticPath
+			}
+		}
+		return out
+	}
+	var arr []convItem
+	if err := json.Unmarshal(rawData, &arr); err == nil {
+		for _, it := range arr {
+			if it.Path != "" && it.SemanticPath != "" {
+				out[it.Path] = it.SemanticPath
+			}
+		}
+		return out
+	}
+	log.Printf("[trim] convertPath 返回结构无法解析（回退展示原始路径）: %s", string(rawData))
+	return out
 }
 
 // trimBackendAPI 调用飞牛官方后端开放 API（POST /api/v1/trimapp，经 Unix Socket 访问）。
 // 认证：Authorization: Bearer <TRIM_API_TOKEN>（系统启动应用脚本时注入，每次调用现取，不持久化）。
-func trimBackendAPI(req string, data interface{}) (map[string]interface{}, error) {
+// 返回 data 字段的原始 JSON（不同接口的 data 结构不同，可能是对象或数组，交给调用方解析）。
+func trimBackendAPI(req string, data interface{}) (json.RawMessage, error) {
 	token := os.Getenv("TRIM_API_TOKEN")
 	if token == "" {
 		return nil, errors.New("TRIM_API_TOKEN 未设置")
@@ -132,9 +199,9 @@ func trimBackendAPI(req string, data interface{}) (map[string]interface{}, error
 	}
 	defer resp.Body.Close()
 	var out struct {
-		Code int                    `json:"code"`
-		Msg  string                 `json:"msg"`
-		Data map[string]interface{} `json:"data"`
+		Code int             `json:"code"`
+		Msg  string          `json:"msg"`
+		Data json.RawMessage `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, err

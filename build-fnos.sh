@@ -1,5 +1,6 @@
 #!/bin/bash
 # Aellus 飞牛 fnOS 版构建脚本（在项目根目录运行）
+# 打包 x86_64 与 arm64 两个架构的 fpk，供飞牛 NAS 按设备架构选装
 # 前置：本机有 Go（交叉编译纯标准库，无需 cgo）与 fnpack（tools/fnpack 或 PATH 中）
 set -e
 cd "$(dirname "$0")"
@@ -36,7 +37,7 @@ GOOS=linux GOARCH=amd64 go build -tags fpk -trimpath -ldflags="-s -w -X main.Ver
 GOOS=linux GOARCH=arm64 go build -tags fpk -trimpath -ldflags="-s -w -X main.Version=1.0.0" -o "${BUILD_TMP}/aellus-arm64" .
 echo "   amd64/arm64 编译完成"
 
-echo ">> [2/3] 打包 x86 版"
+echo ">> [2/3] 打包 x86_64 版"
 cp "${BUILD_TMP}/aellus-amd64" fnos/app/aellus
 chmod +x fnos/app/aellus
 sed -i.bak 's/^platform *= .*/platform              = x86/' fnos/manifest && rm -f fnos/manifest.bak
@@ -44,7 +45,7 @@ sed -i.bak 's/^platform *= .*/platform              = x86/' fnos/manifest && rm 
 # 当前 fnpack 版本固定产出 Aellus.fpk（不带版本/平台），需手动重命名以免被下一轮覆盖
 mv Aellus.fpk "dist/Aellus-1.0.0-x86_64.fpk"
 
-echo ">> [3/3] 打包 arm 版"
+echo ">> [3/3] 打包 arm64 版"
 cp "${BUILD_TMP}/aellus-arm64" fnos/app/aellus
 chmod +x fnos/app/aellus
 sed -i.bak 's/^platform *= .*/platform              = arm/' fnos/manifest && rm -f fnos/manifest.bak
