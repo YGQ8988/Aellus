@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,8 +26,8 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"saveDirDisplay": saveDirDisplay,
 		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
-		"isLocal":        a.canManage(r),                      // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
-		"deviceName":     a.deviceNameOf(deviceID(r)),        // 当前设备 ID 对应的上次设备名（供上传页自动填充）
+		"isLocal":        a.canManage(r),                   // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
+		"deviceName":     a.deviceNameOf(deviceID(r)),      // 当前设备 ID 对应的上次设备名（供上传页自动填充）
 	})
 }
 
@@ -170,8 +171,8 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
 		return
 	}
-	// 修改保存路径权限与删除一致（canManage）：
-	// 飞牛应用在门户 iframe 内（isStandaloneWeb=false）可改；独立网页直连、非飞牛环境非本机均不可改。
+	// 修改保存路径权限与删除一致（见 canManage）：
+	// 飞牛端需经门户（网关注入身份头）修改，桌面端需来自本机；局域网设备直连一律拒绝。
 	if !a.canManage(r) {
 		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "无权限修改保存路径"})
 		return
@@ -179,7 +180,8 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Dir string `json:"dir"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// 限长读取：与其它 POST 接口一致，避免超大请求体撑内存。
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		a.writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "请求格式错误"})
 		return
 	}

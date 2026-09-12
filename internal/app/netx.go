@@ -123,16 +123,30 @@ func lanPriority(ip net.IP) (int, bool) {
 	return 0, false
 }
 
-// isVirtualIface 判断是否为隧道 / 虚拟网卡（VPN、容器、虚拟机网桥等）。
+// isVirtualIface 判断是否为隧道 / 虚拟 / 网桥网卡（VPN、容器、虚拟机网络等）。
+//
+// 两个用途：
+//  1. GetLANIP 选局域网地址时跳过它们（局域网其它设备直连不到）；
+//  2. isLocalIP 判定「本机来源」时跳过它们（容器流量不算本机，见该函数注释）。
+//
+// 名单覆盖常见命名：Linux 网桥/Docker（docker0、br-<id>、veth*）、飞牛/群晖类网桥
+// （vbr*、ovs*）、libvirt（virbr*）、K8s/容器运行时（cni*、flannel*、cali*、kube*）、
+// VM（vmnet*、vboxnet*、vmbr*、vmenet*）、VPN/隧道（utun*、tun*、wg*、tailscale*、zt*）。
+// 物理网卡名（en0、eth0、ens*、wlan0、bond0…）不受影响。
 func isVirtualIface(name string) bool {
 	n := strings.ToLower(name)
-	prefixes := []string{"lo", "utun", "tun", "tap", "ppp", "ipsec", "wg", "vpn", "zt", "tailscale", "fl0", "awdl", "llw", "p2p", "anpi"}
+	prefixes := []string{
+		"lo", "utun", "tun", "tap", "ppp", "ipsec", "wg", "vpn", "zt", "tailscale",
+		"fl0", "awdl", "llw", "p2p", "anpi",
+		// 容器 / 网桥 / 虚拟网络（Linux 为主，NAS 上常见）
+		"br-", "vbr", "ovs", "virbr", "cni", "flannel", "cali", "kube", "vmenet", "vmbr",
+	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(n, p) {
 			return true
 		}
 	}
-	contains := []string{"vboxnet", "vmnet", "docker", "bridge", "veth", "ovpn"}
+	contains := []string{"vboxnet", "vmnet", "docker", "bridge", "veth", "ovpn", "nerdctl", "lxcbr", "multipass"}
 	for _, c := range contains {
 		if strings.Contains(n, c) {
 			return true
@@ -207,7 +221,12 @@ func remoteIP(r *http.Request) net.IP {
 	return net.ParseIP(h)
 }
 
-// isLocalIP 判断 IP 是否为本机：回环地址，或本机任意网卡上的地址。
+// isLocalIP 判断 IP 是否为本机：回环地址，或本机【物理】网卡上的地址。
+//
+// 注意：虚拟 / 网桥 / 隧道网卡上的地址不算本机。容器（Docker/containerd）、虚拟机、
+// VPN 的流量出到主机时，源地址就是主机网桥上那个网关地址（如 172.17.0.1、br-xxxx），
+// 若把它当作「本机」，容器里的进程就能直接拿到删除 / 改保存目录权限——而它并不是
+// 「运行应用的这台电脑上的用户」。回环地址仍然算本机（本机浏览器访问 127.0.0.1）。
 func isLocalIP(ip net.IP) bool {
 	if ip == nil {
 		return false
@@ -220,6 +239,9 @@ func isLocalIP(ip net.IP) bool {
 		return false
 	}
 	for _, iface := range ifaces {
+		if isVirtualIface(iface.Name) {
+			continue // 物理网卡之外的地址一律不算本机
+		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue

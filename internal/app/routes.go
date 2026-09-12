@@ -48,8 +48,4 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/listdir", a.handleListDir)
 	mux.HandleFunc("/api/set-savedir", a.requireTrustedClient(a.handleSetSaveDir))
 	mux.HandleFunc("/api/pick-dir", a.requireTrustedClient(a.handlePickDir))
-	// 飞牛开放 API 授权路由回调页（openAppAuth 的 redirectUri 指向本页）
-	mux.HandleFunc("/callback.html", func(w http.ResponseWriter, r *http.Request) {
-		a.servePage(w, r, "callback.html")
-	})
 }

@@ -4,12 +4,12 @@
 #   （macOS 需 cgo/Cocoa，只能在 Mac 本机构建）
 # 产物输出到 dist/，命名：aellus-<os>-<arch>[.exe]
 #
-# 用法：./build-all.sh [version]   （默认 1.0.0）
+# 用法：./build-all.sh [version]   （默认 1.0.1）
 set -e
 cd "$(dirname "$0")"
 mkdir -p dist
 
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.0.1}"
 LDFLAGS_BASE="-s -w -X main.Version=${VERSION}"
 
 # arch_out：产物命名用 x86_64（Unix 惯例）替代 goarch 的 amd64，其余保持。

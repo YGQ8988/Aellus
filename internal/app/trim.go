@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -218,7 +219,9 @@ func trimBackendAPI(req string, data interface{}) (json.RawMessage, error) {
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	// 限长读取：该响应来自本机飞牛的 Unix Socket 服务，正常很小；加个上限避免
+	// 对端异常/被攻破时用超大响应占内存。
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
 		return nil, err
 	}
 	if out.Code != 0 {

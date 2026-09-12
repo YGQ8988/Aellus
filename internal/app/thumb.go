@@ -91,6 +91,17 @@ func resizeBox(src image.Image, dw, dh int) *image.RGBA {
 	return dst
 }
 
+// 缩略图尺寸上限（防「放大式」内存耗尽）：
+//   - maxThumbWidth  ：客户端可指定的宽度上限，也是缩略图的目标宽度；
+//   - maxThumbHeight ：输出高度上限，超过则不做缩略、直接返回原文件。
+//
+// 配合 handleThumb 里「只缩小、不放大」的规则，输出像素数一定不超过源图像素数
+// （源图已由 maxPixels 限制在 4000 万像素内），内存因此有界。
+const (
+	maxThumbWidth  = 800
+	maxThumbHeight = 8000
+)
+
 // handleThumb GET /api/thumb?dir=xxx&file=xxx[&w=240]
 // 列表缩略图：仅对 jpeg/png/gif 做服务端缩放（标准库），其它格式原样返回原文件。
 // 用 Last-Modified + 304 缓存，文件不变时重复访问秒开、零流量。
@@ -134,7 +145,8 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 
 	width := 240
 	if q := r.URL.Query().Get("w"); q != "" {
-		if n, e := strconv.Atoi(q); e == nil && n > 0 && n <= 2000 {
+		// 客户端可指定宽度，但必须封顶：该值直接决定缩略图要分配多少内存。
+		if n, e := strconv.Atoi(q); e == nil && n > 0 && n <= maxThumbWidth {
 			width = n
 		}
 	}
@@ -178,10 +190,23 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		serveOriginal()
 		return
 	}
+	// 只缩小、不放大：源图宽度已经不超过目标宽度时直接返回原文件。
+	// 否则 1×100 这种极端长宽比的图会被放大成 240×24000（57600 倍像素），
+	// 一条免登录请求就能分配几百 MB ~ 几十 GB 内存，把进程撑死（DoS）。
+	if sw <= width {
+		serveOriginal()
+		return
+	}
 	dw := width
 	dh := dw * sh / sw
 	if dh <= 0 {
 		dh = 1
+	}
+	// 高度兜底：极端长宽比（如 800×40000）缩小后依然很高，直接返回原文件，
+	// 避免大块内存分配。此时输出像素仍受源图像素数约束。
+	if dh > maxThumbHeight {
+		serveOriginal()
+		return
 	}
 	thumb := resizeBox(img, dw, dh)
 

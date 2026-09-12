@@ -156,29 +156,11 @@
     }
   }
 
-  // 飞牛运行环境判定：加载飞牛官方 SDK（@trimjs/web-app），用其 isStandaloneWeb 属性
-  // 判断当前页面是否「独立浏览器」（true = 独立浏览器，false = 飞牛桌面 iframe 内嵌）。
-  // 该值仅用于前端展示判断；删除 / 设置权限由服务端判定（见 Go 端 canManage：
-  // 只认飞牛统一网关 Unix Socket 入口带来的可信头 X-Trim-Userid，前端无法伪造）。
-  // 时序：isStandaloneWeb 需等 SDK ready()（initPromise）完成后才可靠，故先按同步的
-  // window.parent === window 兜底（与 SDK 底层实现一致），SDK ready 后再用官方值覆盖。
-  var trimStandalone = null; // null=SDK 未就绪；之后为 SDK isStandaloneWeb 的真实布尔值
-  function isStandaloneWeb() {
-    return trimStandalone === null ? (window.parent === window) : trimStandalone;
-  }
-  (function initTrimSDK() {
-    try {
-      // 用 document.baseURI 解析：兼容飞牛统一网关的 /app/<appname>/ 前缀与裸端口直连。
-      import(new URL('static/js/trim-web-app.js', document.baseURI).href).then(function (mod) {
-        var sdk = new mod.TrimApp();
-        return sdk.ready().then(function () {
-          trimStandalone = !!sdk.isStandaloneWeb;
-        });
-      }).catch(function () {
-        // SDK 加载/初始化失败：保留同步兜底判断（window.parent === window）
-      });
-    } catch (e) {}
-  })();
+  // 说明：这里原本会预加载飞牛官方 SDK（static/js/trim-web-app.js）以读取其
+  // isStandaloneWeb 值，用于前端判断「当前是否为独立网页」。权限判定早已全部移到服务端
+  // （只认飞牛统一网关注入的身份头，或来自本机的请求，见 Go 端 canManage），该值现已
+  // 没有任何调用方，故整段删除：少加载一个第三方脚本，就少一份在应用同源里执行的外部代码。
+  // 请勿在此恢复「前端判定权限」——它可被伪造，服务端也不会采信。
 
   // 全局 fetch 拦截：自动给所有请求加 Deviceid 头（设备名映射 / 访问日志用）与
   // X-Aellus-Client 头（服务端据此拒绝跨站请求，见 Go 端 requireTrustedClient）。
@@ -216,12 +198,11 @@
 
   // 暴露到全局：同时挂到 window.ui 命名空间与顶层全局，
   // 兼容以裸名（toast() / confirmDialog()）调用的业务代码。
-  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll, getDeviceID: getDeviceID, isStandaloneWeb: isStandaloneWeb };
+  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll, getDeviceID: getDeviceID };
   window.toast = toast;
   window.confirmDialog = confirmDialog;
   window.escapeHtml = escapeHtml;
   window.lockScroll = lockScroll;
   window.unlockScroll = unlockScroll;
   window.getDeviceID = getDeviceID;
-  window.isStandaloneWeb = isStandaloneWeb;
 })();

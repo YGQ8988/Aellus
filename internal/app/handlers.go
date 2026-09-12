@@ -14,9 +14,68 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // === 路由处理 ===
+
+// uploadTempDirName 上传临时文件目录名（位于保存目录内，以 "." 开头因此不会出现在列表里）。
+const uploadTempDirName = ".aellus-tmp"
+
+// 上传表单里的文本字段上限：局域网内任何人可上传（设计如此），
+// 但文本字段如果不限长，就能用很小的请求撑爆服务端内存
+// （实测：20MB 的 rels 字段 → 服务端累计分配 325MB）。
+const (
+	maxDeviceFieldBytes = 4 << 10 // device 字段（设备名）
+	maxRelPathBytes     = 8 << 10 // 单个 rels 字段（相对路径，Linux PATH_MAX 为 4096）
+	maxRelEntries       = 20000   // rels 条数上限
+)
+
+// uploadTempDir 返回上传临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
+//
+// 为什么不用系统临时目录（os.TempDir / /tmp）：
+//   - 空间算错盘：上传期间占用的是系统盘/根分区（NAS 上通常很小），几十 GB 的上传
+//     会把它写满，导致系统级故障；保存目录那块的卷才是用户预期消耗空间的地方；
+//   - 必然多写一遍：临时目录与保存目录跨文件系统时 os.Rename 必然失败（EXDEV），
+//     只能整份复制 → 峰值磁盘占用 2× 文件大小、耗时翻倍。
+//
+// 该目录以 "." 开头，列表接口（/api/dirs、/api/files）天然过滤它，也无法通过 API
+// 下载 / 删除；上传临时文件在落盘前不可见。
+//
+// 返回空串表示保存目录不可用或该子目录是软链等异常，调用方回退系统临时目录（行为
+// 与改造前一致，至少能上传成功）。
+func (a *App) uploadTempDir() string {
+	dir := filepath.Join(a.getSaveDir(), uploadTempDirName)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return ""
+	}
+	// 防软链：该目录若被替换成指向外部的软链，临时文件就会写到保存目录之外。
+	if !realInside(a.getSaveDir(), dir) {
+		return ""
+	}
+	return dir
+}
+
+// cleanStaleUploadTemps 清理上传临时目录里的残留文件（进程被强杀时来不及删除的）。
+// 只删超过 6 小时的，避免误删正在传输的文件；只处理该目录下的普通文件。best-effort。
+func (a *App) cleanStaleUploadTemps(dir string) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-6 * time.Hour)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
 
 // handleUpload POST /upload 接收 multipart/form-data。
 //
@@ -50,7 +109,10 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	device := "default"
 	upDevID := deviceID(r) // 设备 ID（供设备名映射记录）
-	var rels []string                      // 所有文件的相对路径，按出现顺序收集
+	// 临时文件落地点（保存目录内隐藏子目录，失败时回退系统临时目录），并顺手清理上次残留。
+	tmpDir := a.uploadTempDir()
+	a.cleanStaleUploadTemps(tmpDir)
+	var rels []string // 所有文件的相对路径，按出现顺序收集
 	var scratch bytes.Buffer
 	buf := make([]byte, 1<<20) // 1MB 缓冲区，分块写入
 
@@ -87,15 +149,30 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case formName == "device":
 			scratch.Reset()
-			io.Copy(&scratch, part)
-			device = sanitizeDevice(strings.TrimSpace(scratch.String()))
+			// 限长读取：超长则整个字段丢弃（设备名保持 default），避免被用来撑内存。
+			if n, _ := io.CopyN(&scratch, part, maxDeviceFieldBytes+1); n <= maxDeviceFieldBytes {
+				device = sanitizeDevice(strings.TrimSpace(scratch.String()))
+			}
+			part.Close()
 		case formName == "rels":
+			if len(rels) >= maxRelEntries {
+				part.Close()
+				continue
+			}
 			scratch.Reset()
-			io.Copy(&scratch, part)
+			// 限长读取：超长则记为无效（该文件回退用 multipart 文件名），
+			// 而不是把截断后的路径当文件名用。
+			n, _ := io.CopyN(&scratch, part, maxRelPathBytes+1)
+			part.Close()
+			if n > maxRelPathBytes {
+				rels = append(rels, "")
+				continue
+			}
 			rels = append(rels, scratch.String())
 		case formName == "files" && fileName != "":
-			// 先把文件内容流式写入临时文件（不限制大小），之后再用 rels 配对重命名。
-			tmp, terr := os.CreateTemp("", "aellus-upload-*")
+			// 先把文件内容流式写入临时文件（内容不限大小），之后再用 rels 配对重命名。
+			// 临时文件放保存目录内的隐藏子目录（同盘 rename、空间算对盘），不可用时回退系统临时目录。
+			tmp, terr := os.CreateTemp(tmpDir, "aellus-upload-*")
 			if terr != nil {
 				part.Close()
 				cleanupPending()

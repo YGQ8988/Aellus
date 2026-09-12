@@ -10,6 +10,9 @@ import (
 
 // === 路径安全纯函数（无状态，可被任意包安全调用） ===
 
+// maxDeviceNameRunes 设备名（即顶层目录名）的字符数上限。
+const maxDeviceNameRunes = 64
+
 // sanitizeDevice 设备名安全过滤：只保留 字母、数字、中文、-、_
 // 空值或过滤后为空时回退到 "default"——即用户没填设备名上传时，文件归入 default 子目录。
 // 这一步防止设备名里塞入路径分隔符等危险字符。
@@ -24,7 +27,12 @@ func sanitizeDevice(name string) string {
 	if b.Len() == 0 {
 		return "default"
 	}
-	return b.String()
+	s := b.String()
+	// 目录名长度上限：超长名字会导致 mkdir / 落盘失败，且没有任何正当用途。
+	if rs := []rune(s); len(rs) > maxDeviceNameRunes {
+		s = string(rs[:maxDeviceNameRunes])
+	}
+	return s
 }
 
 // resolveUploadTarget 根据客户端上传时的“逻辑名”(可能是带目录的相对路径，

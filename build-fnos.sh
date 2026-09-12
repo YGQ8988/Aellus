@@ -32,7 +32,7 @@ mkdir -p dist
 BUILD_TMP=".build"
 mkdir -p "${BUILD_TMP}"
 
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.0.1}"
 
 echo ">> [1/2] 交叉编译 amd64 / arm64"
 # -tags fpk：飞牛 NAS 后台服务构建，排除所有桌面代码（托盘/通知/目录选择器/mac 开机项），
