@@ -4,14 +4,10 @@
 
 <h1 align="center">Aellus · 局域网文件互传</h1>
 
-<p align="center">
-  <em>The power comes from AI</em><br>
-  <em>The design comes from Yang Guangqing!</em><br>
-  <em>The style comes from Yang Junwen!</em>
-</p>
 
 > Aellus 之名取自希腊神话中哈耳皮埃（Harpy）三姐妹之长 **Aello**，意为「风暴疾飞」——
 > 正如文件在局域网内如风暴般瞬息传递。
+
 
 Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windows / Linux）或飞牛 NAS 上启动后，同局域网内的手机或 PC 用浏览器访问，即可上传文件、浏览与下载已收到的文件。**零部署、免流量、跨平台、单文件分发**。
 
