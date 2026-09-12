@@ -30,7 +30,7 @@ async function loadDirs(autoEnter = true) {
   $('dirsList').innerHTML = '';
   $('dirsEmpty').style.display = 'none';
   try {
-    const res = await fetch('/api/dirs');
+    const res = await fetch('api/dirs');
     const data = await res.json();
     allDirs = data.dirs;
     $('dirsLoading').style.display = 'none';
@@ -44,7 +44,7 @@ async function loadDirs(autoEnter = true) {
       <div class="file-item dir-card">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(d.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
         <div class="file-right">
-          <div class="file-main" onclick="selectDir('${escapeAttr(d.name)}')" style="cursor:pointer">
+          <div class="file-main" onclick="selectDir(${jsLit(d.name)})" style="cursor:pointer">
             <div class="thumb-folder">${SVG_FOLDER}</div>
             <div class="file-meta-col">
               <div class="fname fname-row"><span class="ftext">${escapeHtml(d.name === '' ? '未命名设备' : d.name)}</span><span class="badge badge-outline">文件夹</span></div>
@@ -101,7 +101,7 @@ async function openDir(path) {
   }
   $('filesEmpty').style.display = 'none';
   try {
-    const res = await fetch('/api/files?dir=' + encodeURIComponent(path));
+    const res = await fetch('api/files?dir=' + encodeURIComponent(path));
     const data = await res.json();
     $('filesLoading').style.display = 'none';
     $('filesList').classList.remove('swapping');
@@ -113,7 +113,7 @@ async function openDir(path) {
       const ext = f.name.split('.').pop().toLowerCase();
       return IMG_EXTS.includes(ext) || VID_EXTS.includes(ext);
     }).map(f => {
-      const u = '/api/download?dir=' + encodeURIComponent(path) + '&file=' + encodeURIComponent(f.name);
+      const u = 'api/download?dir=' + encodeURIComponent(path) + '&file=' + encodeURIComponent(f.name);
       return { name: f.name, previewUrl: u + '&inline=1', ext: f.name.split('.').pop().toLowerCase(), deletable: !!f.deletable };
     });
     $('filesList').innerHTML = data.files.map(renderFile).join('');
@@ -141,7 +141,11 @@ function clearAellusDir() { try { sessionStorage.removeItem('aellus_currentDir')
 
 // 根据 currentDir（可能是多层路径）动态生成面包屑
 function buildBreadcrumb() {
-  const parts = ['<a class="bc-link bc-home" href="/" onclick="clearAellusDir()">← 返回首页</a>'];
+  // 返回首页必须用相对路径 "./"：它会按页面 <base> 解析——
+  //   飞牛门户内（base=/app/<appname>/）→ 回应用首页；
+  //   局域网直连（base=/）→ 回站点首页。
+  // 写死 "/" 会跑到站点根：门户内即飞牛桌面（iframe 跳出应用），局域网下也会丢应用前缀。
+  const parts = ['<a class="bc-link bc-home" href="./" onclick="clearAellusDir()">← 返回首页</a>'];
   if (allDirs.length > 1) {
     parts.push('<span class="bc-sep">/</span>');
     parts.push('<a class="bc-link bc-dirs" href="javascript:backToDirs()">目录</a>');
@@ -176,7 +180,7 @@ function renderFile(f) {
       <div class="file-item folder-item">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(f.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
         <div class="file-right">
-          <div class="file-main" onclick="enterFolder('${escapeAttr(f.name)}')" style="cursor:pointer">
+          <div class="file-main" onclick="enterFolder(${jsLit(f.name)})" style="cursor:pointer">
             <div class="thumb-folder">${SVG_FOLDER}</div>
             <div class="file-meta-col">
               <div class="fname fname-row"><span class="ftext">${escapeHtml(f.name)}</span><span class="badge badge-outline">文件夹</span></div>
@@ -187,7 +191,7 @@ function renderFile(f) {
         </div>
       </div>`;
   }
-  const url = '/api/download?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name);
+  const url = 'api/download?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name);
   const previewUrl = url + '&inline=1';
   const meta = formatSize(f.size) + ' · ' + formatTime(f.mtime);
   const ext = f.name.split('.').pop().toLowerCase();
@@ -198,7 +202,7 @@ function renderFile(f) {
   if (previewable) {
     if (isImg) {
       // 缩略图走 /api/thumb（服务端缩放），只拉几百字节的小图，避免整张原图卡顿
-      const thumbUrl = '/api/thumb?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name) + '&w=240';
+      const thumbUrl = 'api/thumb?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name) + '&w=240';
       thumb = `<img class="thumb" src="${thumbUrl}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" data-name="${escapeAttr(f.name)}" style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)">`;
     } else {
       thumb = `<video class="thumb-video" src="${url}" preload="metadata" data-name="${escapeAttr(f.name)}" style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)"></video>`;
@@ -352,7 +356,7 @@ async function downloadSelectedDirs(btn) {
   btn.innerHTML = '<span class="spinner"></span>下载中...';
   try {
     for (const dir of dirs) {
-      const res = await fetch('/api/download-batch', {
+      const res = await fetch('api/download-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dir: dir, files: [] }),
@@ -421,7 +425,7 @@ async function downloadBatch(files, triggerBtn) {
     triggerBtn.innerHTML = '<span class="spinner"></span>下载中...';
   }
   try {
-    const res = await fetch('/api/download-batch', {
+    const res = await fetch('api/download-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dir: currentDir, files: files }),
@@ -651,6 +655,13 @@ function formatTime(ts) {
   return formatDay(ts) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 function escapeAttr(s) { return s.replace(/"/g, '&quot;'); }
+// jsLit：生成可安全放进 HTML 内联事件处理器（onclick="..."）里的 JS 字符串字面量。
+// 先用 JSON.stringify 做 JS 层转义（处理 ' " \ 及控制字符），再把 " 转成 &quot; 适配外层双引号属性。
+// 仅用于 onclick="fn(${jsLit(x)})" 这类「把用户数据作为 JS 字符串参数」的场景；
+// 普通属性值（如 data-name="..."）仍用 escapeAttr 即可。
+function jsLit(s) {
+  return JSON.stringify(String(s == null ? '' : s)).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
 
 // 公共：触发浏览器下载一个 blob（创建临时 <a> → click → 释放 URL）
 function downloadBlob(blob, filename) {
@@ -664,7 +675,7 @@ function downloadBlob(blob, filename) {
 // 公共：调用 /api/delete，成功返回 true，失败弹 toast 并返回 false
 async function apiDelete(dir, name) {
   try {
-    const res = await fetch('/api/delete', {
+    const res = await fetch('api/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dir: dir, file: name }),

@@ -55,10 +55,23 @@ func withSecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
-		// 注意：不设置 X-Frame-Options / CSP frame-ancestors。
+		// 注意：不设置 X-Frame-Options / CSP frame-ancestors=DENY。
 		// 飞牛 fnOS 门户以 iframe 方式嵌入应用（iframe 入口 + micro_app），
 		// 设置 DENY 会导致门户内"拒绝访问"（此前踩坑，已移除）。
+		// 改用 CSP 做纵深防御：默认全禁，仅放开同源资源与必需的内联脚本/样式，
+		// 阻断外域脚本/图片/字体加载（缓解 XSS 影响面），同时保留 iframe 嵌入能力。
 		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy",
+			"default-src 'none'; "+
+				"script-src 'self' 'unsafe-inline'; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data: blob:; "+
+				"media-src 'self' blob:; "+
+				"font-src 'self'; "+
+				"connect-src 'self'; "+
+				"frame-ancestors *; "+
+				"base-uri 'self'; "+
+				"form-action 'self'")
 		next.ServeHTTP(w, r)
 	})
 }

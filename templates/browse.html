@@ -3,11 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Aellus</title>
-<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/css/common.css">
-<link rel="stylesheet" href="/static/css/browse.css">
-<link rel="stylesheet" href="/static/css/components.css">
+<script>
+  // 页面基准路径：静态资源与接口都用相对路径（static/... 、api/...），解析依赖 <base>。
+  // 裸端口直连为 "/"；飞牛统一网关为 "/app/<appname>/"——由服务端按监听入口注入
+  // （网关转发可能已剥离前缀、地址栏可能无尾斜杠，前端无法从 location 推断）。
+  (function () {
+    var base = "{{.Base}}";
+    try {
+      var p = location.pathname || '/';
+      var pre = base;
+      while (pre.length > 1 && pre.charAt(pre.length - 1) === '/') pre = pre.slice(0, -1);
+      // 地址栏与注入前缀一致（可能仅大小写不同，如 /app/Aellus）时，沿用地址栏的真实写法。
+      if (pre && pre !== '/' && p.slice(0, pre.length).toLowerCase() === pre.toLowerCase()) {
+        base = p.slice(0, pre.length) + '/';
+      }
+    } catch (e) {}
+    var b = document.createElement('base');
+    b.href = base;
+    document.head.appendChild(b);
+  })();
+  </script>
+  <title>Aellus</title>
+<link rel="icon" href="static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="static/css/common.css">
+<link rel="stylesheet" href="static/css/browse.css">
+<link rel="stylesheet" href="static/css/components.css">
 </head>
 <body>
   <!-- 目录列表 -->
@@ -15,7 +35,7 @@
     <div class="top-bar">
       <div class="top-bar-inner">
       <nav class="breadcrumb">
-        <a class="bc-link bc-home" href="/" onclick="clearAellusDir()">← 返回首页</a>
+        <a class="bc-link bc-home" href="./" onclick="clearAellusDir()">← 返回首页</a>
         <span class="bc-sep">/</span>
         <span class="bc-cur">目录</span>
       </nav>
@@ -67,15 +87,15 @@
     <div class="lb-backdrop"></div>
     <img id="lbImg" class="lb-media" alt="">
     <video id="lbVideo" class="lb-media" controls></video>
-    <button id="lbPrev" class="lb-nav lb-prev" onclick="lbNav(-1)"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" class="text-[28px]"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.293 13.207a1 1 0 010-1.414l5.5-5.5a1 1 0 111.414 1.414L10.414 12.5l4.793 4.793a1 1 0 01-1.414 1.414l-5.5-5.5z"></path></svg></button>
-    <button id="lbNext" class="lb-nav lb-next" onclick="lbNav(1)"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" class="text-[28px]"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.457 11.543a1 1 0 010 1.414l-5.5 5.5a1 1 0 01-1.414-1.414l4.793-4.793-4.793-4.793a1 1 0 011.414-1.414l5.5 5.5z"></path></svg></button>
+    <button id="lbPrev" class="lb-nav lb-prev" onclick="lbNav(-1)"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.293 13.207a1 1 0 010-1.414l5.5-5.5a1 1 0 111.414 1.414L10.414 12.5l4.793 4.793a1 1 0 01-1.414 1.414l-5.5-5.5z"></path></svg></button>
+    <button id="lbNext" class="lb-nav lb-next" onclick="lbNav(1)"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.457 11.543a1 1 0 010 1.414l-5.5 5.5a1 1 0 01-1.414-1.414l4.793-4.793-4.793-4.793a1 1 0 011.414-1.414l5.5 5.5z"></path></svg></button>
     <button id="lbClose" class="lb-top-btn lb-close-left" onclick="closeLightbox()"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     <div class="lb-topbar">
       <button id="lbDownload" class="lb-top-btn" onclick="lbDownload()"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
       <button id="lbDelete" class="lb-top-btn" onclick="lbDelete()"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
     </div>
   </div>
-  <script src="/static/js/ui.js"></script>
-  <script src="/static/js/browse.js"></script>
+  <script src="static/js/ui.js"></script>
+  <script src="static/js/browse.js"></script>
 </body>
 </html>

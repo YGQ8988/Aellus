@@ -158,7 +158,8 @@
 
   // 飞牛运行环境判定：加载飞牛官方 SDK（@trimjs/web-app），用其 isStandaloneWeb 属性
   // 判断当前页面是否「独立浏览器」（true = 独立浏览器，false = 飞牛桌面 iframe 内嵌）。
-  // 该值只在浏览器端使用（不再通过请求头传服务端），服务端删除权限改由来源 IP 判定。
+  // 该值仅用于前端展示判断；删除 / 设置权限由服务端判定（见 Go 端 canManage：
+  // 只认飞牛统一网关 Unix Socket 入口带来的可信头 X-Trim-Userid，前端无法伪造）。
   // 时序：isStandaloneWeb 需等 SDK ready()（initPromise）完成后才可靠，故先按同步的
   // window.parent === window 兜底（与 SDK 底层实现一致），SDK ready 后再用官方值覆盖。
   var trimStandalone = null; // null=SDK 未就绪；之后为 SDK isStandaloneWeb 的真实布尔值
@@ -167,7 +168,8 @@
   }
   (function initTrimSDK() {
     try {
-      import('/static/js/trim-web-app.js').then(function (mod) {
+      // 用 document.baseURI 解析：兼容飞牛统一网关的 /app/<appname>/ 前缀与裸端口直连。
+      import(new URL('static/js/trim-web-app.js', document.baseURI).href).then(function (mod) {
         var sdk = new mod.TrimApp();
         return sdk.ready().then(function () {
           trimStandalone = !!sdk.isStandaloneWeb;
@@ -178,8 +180,8 @@
     } catch (e) {}
   })();
 
-  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头；并上报 isStandaloneWeb（飞牛应用
-  // 权限判定用：false=内嵌飞牛门户 iframe 才有删除/设置权限，true=独立网页直连拒绝）。
+  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头（设备名映射 / 访问日志用）。
+  // 删除 / 设置权限不在前端判定，由飞牛统一网关注入的可信头在服务端判定（见 Go 端 canManage）。
   var origFetch = window.fetch;
   window.fetch = function (url, options) {
     options = options || {};
@@ -187,7 +189,6 @@
     var headers = options.headers;
     if (headers instanceof Headers) {
       if (id && !headers.has('Deviceid')) headers.set('Deviceid', id);
-      if (!headers.has('X-Aellus-Standalone')) headers.set('X-Aellus-Standalone', String(isStandaloneWeb()));
     } else {
       var h = {};
       if (headers && typeof headers === 'object') {
@@ -196,7 +197,6 @@
         }
       }
       if (id && !('Deviceid' in h)) h['Deviceid'] = id;
-      if (!('X-Aellus-Standalone' in h)) h['X-Aellus-Standalone'] = String(isStandaloneWeb());
       options.headers = h;
     }
     return origFetch.call(window, url, options);
@@ -205,7 +205,7 @@
   // 诊断日志：控制台输出本机 IP（当前访问设备）与服务端 IP（运行 Aellus 的设备），
   // 便于排查删除权限等「本机 / 飞牛环境」判定问题（打开浏览器开发者工具控制台可见）。
   try {
-    fetch('/api/addr').then(function(r){ return r.json(); }).then(function(d){
+    fetch('api/addr').then(function(r){ return r.json(); }).then(function(d){
       console.log('[Aellus] 本机 IP（当前访问设备）: ' + (d.clientIP || '未知'));
       console.log('[Aellus] 服务端 IP（运行 Aellus 的设备）: ' + (d.ip || '未知'));
       console.log('[Aellus] 服务端运行环境: ' + (d.platform || '未知'));

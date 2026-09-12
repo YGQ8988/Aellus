@@ -3,11 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Aellus</title>
-<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/css/common.css">
-<link rel="stylesheet" href="/static/css/home.css">
-<link rel="stylesheet" href="/static/css/components.css">
+<script>
+  // 页面基准路径：静态资源与接口都用相对路径（static/... 、api/...），解析依赖 <base>。
+  // 裸端口直连为 "/"；飞牛统一网关为 "/app/<appname>/"——由服务端按监听入口注入
+  // （网关转发可能已剥离前缀、地址栏可能无尾斜杠，前端无法从 location 推断）。
+  (function () {
+    var base = "{{.Base}}";
+    try {
+      var p = location.pathname || '/';
+      var pre = base;
+      while (pre.length > 1 && pre.charAt(pre.length - 1) === '/') pre = pre.slice(0, -1);
+      // 地址栏与注入前缀一致（可能仅大小写不同，如 /app/Aellus）时，沿用地址栏的真实写法。
+      if (pre && pre !== '/' && p.slice(0, pre.length).toLowerCase() === pre.toLowerCase()) {
+        base = p.slice(0, pre.length) + '/';
+      }
+    } catch (e) {}
+    var b = document.createElement('base');
+    b.href = base;
+    document.head.appendChild(b);
+  })();
+  </script>
+  <title>Aellus</title>
+<link rel="icon" href="static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="static/css/common.css">
+<link rel="stylesheet" href="static/css/home.css">
+<link rel="stylesheet" href="static/css/components.css">
 </head>
 <body class="home">
   <button class="settings-btn" id="settingsBtn" title="设置" onclick="openSettings()">
@@ -16,7 +36,7 @@
   <div class="settings-overlay" id="settingsOverlay">
     <div class="settings-panel">
       <div class="settings-head">
-        <h2><span class="set-title-pc">设置</span><span class="set-title-m">关于Aellus</span></h2>
+        <h2><span class="set-title-pc">设置</span></h2>
         <button class="settings-close" onclick="closeSettings()" aria-label="关闭">✕</button>
       </div>
       <div class="settings-body">
@@ -47,11 +67,11 @@
           <p class="settings-reward-tip">这是完全自愿的个人赠与，不是购买软件，也不是购买服务。无论是否打赏，工具的功能和使用权限都不会有任何变化，也不会因此获得额外的技术支持或商用授权。</p>
           <div class="qr-list">
             <div class="qr-card">
-              <img src="/static/img/qr-dev-ygq.png" alt="开发者 染洛凉 支付宝二维码" class="qr-img">
+              <img src="static/img/qr-dev-ygq.png" alt="开发者 染洛凉 支付宝二维码" class="qr-img">
               <span class="qr-label">开发者 染洛凉</span>
             </div>
             <div class="qr-card">
-              <img src="/static/img/qr-designer-yixi.png" alt="设计师 一西啊 支付宝二维码" class="qr-img">
+              <img src="static/img/qr-designer-yixi.png" alt="设计师 一西啊 支付宝二维码" class="qr-img">
               <span class="qr-label">设计师 一西啊</span>
             </div>
           </div>
@@ -62,7 +82,7 @@
     </div>
   </div>
   <div class="container">
-    <img src="/static/img/logo-icon.png" alt="" class="hero-logo" width="5.5rem" height="auto">
+    <img src="static/img/logo-icon.png" alt="" class="hero-logo" width="5.5rem" height="auto">
     <h1>Aellus</h1>
     <div class="subtitle">局域网文件互传工具，上传 / 读取 / 下载 <span class="grad">更安全</span></div>
     <div class="lan-addr-bar" id="lanAddrBar">
@@ -76,12 +96,12 @@
       </button>
     </div>
     <div class="home-grid">
-      <a class="entry upload" href="/upload">
+      <a class="entry upload" href="upload">
         <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <div class="title">上传文件</div>
         <div class="desc">截图 / 录屏 / 拍照，发送到电脑</div>
       </a>
-      <a class="entry browse" href="/browse">
+      <a class="entry browse" href="browse">
         <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         <div class="title">读取文件</div>
         <div class="desc">浏览已上传的文件，支持下载</div>
@@ -102,11 +122,11 @@
       <p class="qr-tip">手机扫描二维码，即可在浏览器打开本工具</p>
     </div>
   </div>
-  <script src="/static/js/qrcode.js"></script>
-  <script src="/static/js/ui.js"></script>
+  <script src="static/js/qrcode.js"></script>
+  <script src="static/js/ui.js"></script>
   <script>
   function refreshLANAddr(){
-    fetch('/api/addr').then(r=>r.json()).then(d=>{
+    fetch('api/addr').then(r=>r.json()).then(d=>{
       var el=document.getElementById('lanUrl');
       el.textContent=d.url;
       el.dataset.url=d.url;
@@ -142,15 +162,18 @@
   }
   function openSettings(){
     document.getElementById('settingsOverlay').classList.add('active');
+    // 弹窗打开期间锁定背景滚动：html/body 双锁（html 才是实际滚动容器），
+    // 于是滚轮 / 触摸只会滚动弹窗内容，背景保持不动。
+    if(window.lockScroll){ lockScroll(); }
     var msg=document.getElementById('saveDirMsg');
     msg.className='settings-msg'; msg.textContent='';
     closeDirPopup();
-    fetch('/api/settings').then(r=>r.json()).then(d=>{
+    fetch('api/settings').then(r=>r.json()).then(d=>{
       // 是否可编辑保存路径：仅本机访问（与删除逻辑一致，飞牛里的浏览器/局域网设备不可改）
       var canEdit = d.isLocal;
-      // 标题：可编辑为「设置」，否则为「关于Aellus」（移动端标题「打赏」不变）
+      // 标题：可编辑为「设置」，否则为「关于 Aellus」（手机端与电脑端一致，不再按屏幕切换）
       var titlePc=document.querySelector('.set-title-pc');
-      if(titlePc){ titlePc.textContent = canEdit ? '设置' : '关于Aellus'; }
+      if(titlePc){ titlePc.textContent = canEdit ? '设置' : '关于 Aellus'; }
       var pathSec=document.querySelector('.settings-sec--path');
       var sep=document.querySelector('.separator');
       // 仅本机访问时展示「文件保存路径」模块，否则隐藏
@@ -182,6 +205,7 @@
   function closeSettings(){
     document.getElementById('settingsOverlay').classList.remove('active');
     closeDirPopup();
+    if(window.unlockScroll){ unlockScroll(); }
   }
 
   // —— 自定义下拉（trigger + popup） ——
@@ -271,7 +295,7 @@
     var dir=path||document.getElementById('saveDirDisplay').dataset.path||'';
     var msg=document.getElementById('saveDirMsg');
     msg.className='settings-msg show'; msg.textContent='保存中…';
-    fetch('/api/set-savedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:dir})})
+    fetch('api/set-savedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:dir})})
       .then(r=>r.json()).then(d=>{
         if(d.ok){
           var disp=d.saveDirDisplay||d.saveDir;
@@ -293,7 +317,7 @@
     var msg=document.getElementById('saveDirMsg');
     var hidden=document.getElementById('saveDirDisplay');
     msg.className='settings-msg show'; msg.textContent='保存中…';
-    fetch('/api/set-savedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:''})})
+    fetch('api/set-savedir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:''})})
       .then(r=>r.json()).then(d=>{
         if(d.ok){
           var disp=d.saveDirDisplay||d.saveDir;
@@ -327,7 +351,7 @@
     if(popup){ popup.innerHTML='<div class="dir-empty">加载中…</div>'; popup.hidden=true; }
     if(trigger){ trigger.style.display=''; }
     if(inputWrap){ inputWrap.hidden=true; }
-    fetch('/api/authpaths').then(r=>r.json()).then(function(d){
+    fetch('api/authpaths').then(r=>r.json()).then(function(d){
       var roots=(d&&d.paths)||[];
       var hasTrim=d&&d.hasTrim;
       // 桌面端（非飞牛）：切换为输入框模式，让用户直接填写路径
@@ -342,20 +366,29 @@
       // 飞牛环境：下拉选择模式
       if(trigger){ trigger.style.display=''; }
       if(inputWrap){ inputWrap.hidden=true; }
-      if(!roots.length){
-        // 飞牛环境但无授权目录：提示去飞牛应用设置授权
+      var labels=Object.assign({}, (d&&d.pathLabels)||{});
+      // 出厂默认目录（应用私有数据目录，如 存储空间1/应用文件/aellus/drops）不在授权
+      // 列表里，但服务端允许随时切回，故始终并入选项——避免"改到其它目录后，再想切回
+      // 默认目录却报『保存目录必须位于飞牛已授权目录内』"。
+      var def=(d&&d.defaultPath)||'';
+      if(def && !labels[def]){ labels[def]=(d&&d.defaultLabel)||def; }
+      var all=roots.slice();
+      if(def && all.indexOf(def)===-1){ all.push(def); }
+      // 当前保存目录若不在上述列表中（历史遗留路径），追加为合成项，保证能显示当前值。
+      if(cur && all.indexOf(cur)===-1){ all.push(cur); }
+      var tip=document.getElementById('saveDirTip');
+      if(!all.length){
+        // 飞牛环境但既无授权目录也无默认目录：提示去飞牛应用设置授权
         renderDirOptions([], '');
-        var tip=document.getElementById('saveDirTip');
         if(tip){ tip.textContent='飞牛尚未向 Aellus 授权任何共享目录。请在飞牛「应用设置 → 授权目录」中授权后，再回到此处选择保存位置。'; }
         return;
       }
-      renderDirTrigger(cur, (d&&d.pathLabels&&d.pathLabels[cur])||(s&&s.saveDirDisplay)||cur);
-      // 只展示授权根目录，不展开子目录（用户在飞牛端授权的是根目录，选根目录即可）
-      var all = roots.slice();
-      // 如果当前保存目录不在授权列表里（如 fnOS 默认 /vol1/@appcenter/Aellus/file-drops），
-      // 追加为合成项，保证总是能选中并显示当前路径。
-      if(cur && all.indexOf(cur)===-1){ all.push(cur); }
-      renderDirOptions(all, cur, (d&&d.pathLabels)||{});
+      if(tip && !roots.length){
+        tip.textContent='飞牛尚未向 Aellus 授权任何共享目录，当前可保存到「默认目录」；如需其它位置，请在飞牛「应用设置 → 授权目录」中授权。';
+      }
+      renderDirTrigger(cur, labels[cur]||(s&&s.saveDirDisplay)||cur);
+      // 选项 = 授权根目录 + 出厂默认目录（+ 当前目录兜底）；只展示根目录，不展开子目录
+      renderDirOptions(all, cur, labels);
     }).catch(function(){
       if(popup){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; }
     });
@@ -377,13 +410,17 @@
     var urlEl=document.getElementById('qrUrl');
     var url=(document.getElementById('lanUrl').dataset.url)||document.getElementById('lanUrl').textContent;
     if(!url || url==='获取中…' || url==='不可用'){
-      fetch('/api/addr').then(r=>r.json()).then(d=>{ renderQR(d.url, box, urlEl); }).catch(function(){ box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">地址获取失败</p>'; });
+      fetch('api/addr').then(r=>r.json()).then(d=>{ renderQR(d.url, box, urlEl); }).catch(function(){ box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">地址获取失败</p>'; });
     } else {
       renderQR(url, box, urlEl);
     }
+    if(window.lockScroll){ lockScroll(); }   // 同设置弹窗：锁定背景滚动
     modal.classList.add('active');
   }
-  function closeQR(){ document.getElementById('qrModal').classList.remove('active'); }
+  function closeQR(){
+    document.getElementById('qrModal').classList.remove('active');
+    if(window.unlockScroll){ unlockScroll(); }
+  }
   // 自定义下拉的全局事件：点 popup 外收起 / ESC 收起，popup 本身阻止冒泡避免误关 settings
   document.addEventListener('DOMContentLoaded', function(){
     var popup=document.getElementById('dirPopup');

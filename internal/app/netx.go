@@ -246,39 +246,41 @@ func isLocalIP(ip net.IP) bool {
 	return false
 }
 
-// isLocalRequest 判断请求是否来自本机（用于限制只有本机才能改设置/弹目录选择框）。
-// 判定依据（满足其一即本机）：
-//  1. Host 是 localhost / 127.0.0.1 / [::1]（loopback 访问）；
-//  2. 真实客户端 IP（RemoteAddr）是本机自身的网卡地址——覆盖"本机用局域网 IP
-//     访问"的情况（换浏览器/手动输入 IP 时 Host 是 192.168.x.x，但客户端仍是本机）。
+// isLocalRequest 判断请求是否来自本机（用于限制只有本机才能改设置/删文件）。
+// 判定依据：只信 TCP 对端地址（RemoteAddr）——回环地址，或本机任意网卡地址。
 //
-// 局域网内其他设备即使伪造 Host 也过不了第 2 条（它的 IP 不是本机网卡地址）。
+// 为什么不看 Host：Host 属于请求头（客户端可任意伪造），局域网设备只要发
+// 「Host: 127.0.0.1」就能冒充本机；而 TCP 源地址无法伪造，故本机判定只依据它。
 func isLocalRequest(r *http.Request) bool {
-	host := r.Host
-	if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") || strings.HasPrefix(host, "[::1]") {
-		return true
-	}
 	return isLocalIP(remoteIP(r))
+}
+
+// gatewayUser 返回「飞牛统一网关注入的用户身份头」的值；无则返回空串。
+// 官方文档存在两种写法（X-Trim-Userid / X-Trim-Uid），两者都接受，
+// 用户名（X-Trim-Username）作为兜底——它们只会出现在经网关转发的请求上：
+// 裸端口入口已由 stripTrimHeaders 剥离任何客户端伪造的 X-Trim-*。
+func gatewayUser(r *http.Request) string {
+	for _, k := range []string{"X-Trim-Userid", "X-Trim-Uid", "X-Trim-Username"} {
+		if v := strings.TrimSpace(r.Header.Get(k)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // canManage 判断请求是否有「删除文件 / 修改保存目录」权限（前端按钮显隐与服务端强制一致）。
 //
-// 双通道判定：
-//  1. 飞牛应用（fpk 构建，EnforceAuthBoundary()==true）：前端读取飞牛 SDK 的
-//     isStandaloneWeb 并通过 X-Aellus-Standalone 请求头上报——
-//     false（页面内嵌在飞牛门户 iframe 中，用户经飞牛账号体系进入）→ 有权限；
-//     true（独立网页直连，绕过门户）→ 拒绝；头缺失（旧前端缓存 / 脚本直连）→
-//     保守回退为仅本机判定。
-//  2. 非飞牛应用（桌面构建）：保持仅本机（isLocalRequest），不读该头。
+// 判定依据（满足其一即可）：
+//  1. 请求带飞牛统一网关注入的身份头（见 gatewayUser）——只有经网关（已完成飞牛
+//     登录态校验）转发的请求才有；裸端口入口已在 stripTrimHeaders 中剥离伪造的
+//     X-Trim-*，因此局域网设备手动构造该头也无法冒充「来自已登录门户」。
+//  2. 请求来自本机（isLocalRequest，仅依据 TCP 源地址）——覆盖桌面端、以及飞牛把
+//     门户请求从 NAS 本机（回环 / 本机网卡地址）转发到应用的情形。
+//
+// 局域网设备经 IP:端口 直连时两条都不满足，故只能浏览、上传、下载。
 func (a *App) canManage(r *http.Request) bool {
-	if a.platform.EnforceAuthBoundary() {
-		switch strings.ToLower(strings.TrimSpace(r.Header.Get("X-Aellus-Standalone"))) {
-		case "false":
-			return true
-		case "true":
-			return false
-		}
-		return isLocalRequest(r)
+	if gatewayUser(r) != "" {
+		return true
 	}
 	return isLocalRequest(r)
 }

@@ -3,20 +3,21 @@ package app
 import "net/http"
 
 // registerRoutes 把所有路由挂到 mux 上。
+// 页面 <base> 由 withPrefix 按请求路径写入上下文，servePage 读取（见 pageBase）。
 func (a *App) registerRoutes(mux *http.ServeMux) {
-	// 页面（HTML 里写死的 /static/xxx 路径由下面的静态处理器负责，无需改动）
+	// 页面（HTML 里的 static/xxx 等相对路径由下面的静态处理器负责，无需改动）
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		a.servePage(w, "home.html")
+		a.servePage(w, r, "home.html")
 	})
 	mux.HandleFunc("/browse", func(w http.ResponseWriter, r *http.Request) {
-		a.servePage(w, "browse.html")
+		a.servePage(w, r, "browse.html")
 	})
 	mux.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			a.handleUpload(w, r)
 			return
 		}
-		a.servePage(w, "upload.html")
+		a.servePage(w, r, "upload.html")
 	})
 
 	// 静态资源：把 embed 进来的 static/ 目录挂到 /static/ 路由。
@@ -26,7 +27,9 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 
 	// 浏览器可能额外请求 /favicon.ico，重定向到我们的 svg 图标（不记录日志）。
 	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/img/favicon.svg", http.StatusFound)
+		// 用相对路径重定向：经飞牛网关访问时（/app/<appname>/favicon.ico）也能落到
+		// 正确的 /app/<appname>/static/... 下，裸端口直连时与原来的绝对路径等价。
+		http.Redirect(w, r, "static/img/favicon.svg", http.StatusFound)
 	})
 
 	// API
@@ -44,6 +47,6 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/pick-dir", a.handlePickDir)
 	// 飞牛开放 API 授权路由回调页（openAppAuth 的 redirectUri 指向本页）
 	mux.HandleFunc("/callback.html", func(w http.ResponseWriter, r *http.Request) {
-		a.servePage(w, "callback.html")
+		a.servePage(w, r, "callback.html")
 	})
 }

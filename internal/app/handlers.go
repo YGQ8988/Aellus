@@ -370,8 +370,11 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 下载或危险类型：设置 Content-Disposition: attachment。
 		// filename*=UTF-8'' 是 RFC 5987 标准，保证中文文件名在浏览器里不乱码。
+		// 文件名可能含引号/控制字符，legacy 的 filename="..." 需做安全化处理；
+		// 真正的 UTF-8 文件名由 filename*= 承载（已做 QueryEscape）。
+		safeFile := strings.NewReplacer(`"`, "_", "\r", "", "\n", "").Replace(file)
 		w.Header().Set("Content-Disposition",
-			`attachment; filename="`+file+`"; filename*=UTF-8''`+url.QueryEscape(file))
+			`attachment; filename="`+safeFile+`"; filename*=UTF-8''`+url.QueryEscape(file))
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 	}
 
@@ -454,7 +457,10 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	zw := zip.NewWriter(tmp)
 	for _, name := range names {
 		full := filepath.Join(dirAbs, name)
-		if !isInside(dirAbs, full) { // 再次校验，双保险
+		// 双重校验：isInside 防路径穿越（仅字符串判断），realInside 解析符号链接防逃逸。
+		// 递归打包时 WalkDir 不跟随软链，但下方 os.Open 会跟随；若软链指向授权目录外，
+		// isInside 字符串判断会放行，故需 realInside 兜底（与单文件下载 resolveFile 一致）。
+		if !isInside(dirAbs, full) || !realInside(dirAbs, full) {
 			continue
 		}
 		src, err := os.Open(full)
@@ -478,8 +484,9 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	if zipName == "" || zipName == "." {
 		zipName = "files"
 	}
+	safeZip := strings.NewReplacer(`"`, "_", "\r", "", "\n", "").Replace(zipName)
 	w.Header().Set("Content-Disposition",
-		`attachment; filename="`+zipName+`.zip"; filename*=UTF-8''`+url.QueryEscape(zipName+".zip"))
+		`attachment; filename="`+safeZip+`.zip"; filename*=UTF-8''`+url.QueryEscape(zipName+".zip"))
 	w.Header().Set("Content-Type", "application/zip")
 
 	// 把临时 ZIP 直接流式返回给浏览器
@@ -515,9 +522,10 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	// 删除权限：双通道判定（canManage）——
-	//   - 飞牛应用：X-Aellus-Standalone=false（页面内嵌飞牛门户 iframe）有权限；true（独立网页直连）拒绝；
-	//   - 非飞牛应用 / 头缺失：仅本机（来源 IP 等于服务 IP）可删。
+	// 删除权限：由 canManage 判定——
+	//   - 飞牛应用且已接入统一网关：请求须携带网关可信注入头 X-Trim-Userid（仅门户内已登录用户才有），否则拒绝；
+	//   - 飞牛应用未接入网关 / 非飞牛应用：仅本机（来源 IP 等于服务 IP）可删。
+	// 裸 TCP 端口（局域网直连）的请求在到达此处前已被剥离伪造的 X-Trim-* 头，无法越权。
 	if !a.canManage(r) {
 		a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "无删除权限"})
 		return
