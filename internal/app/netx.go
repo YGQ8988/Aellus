@@ -192,15 +192,9 @@ func deviceID(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("Deviceid"))
 }
 
-// realIP 取真实客户端 IP：优先 X-Forwarded-For 首段（有反代时），否则取 RemoteAddr。
-func realIP(r *http.Request) string {
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	return r.RemoteAddr
-}
+// 说明：这里原本还有一个 realIP（优先取 X-Forwarded-For 首段）的函数，已删除。
+// 本应用没有任何反向代理，XFF 只可能来自客户端伪造，用它记访问日志会让操作被
+// 栽赃到别的 IP 上；需要客户端地址时一律用 remoteIP（只信 TCP 对端）。
 
 // remoteIP 从 RemoteAddr 解析对端 IP（去掉端口）。
 // 注意：只信 TCP 对端地址，不读 X-Forwarded-For 等请求头——头可被局域网内
@@ -274,13 +268,20 @@ func gatewayUser(r *http.Request) string {
 //  1. 请求带飞牛统一网关注入的身份头（见 gatewayUser）——只有经网关（已完成飞牛
 //     登录态校验）转发的请求才有；裸端口入口已在 stripTrimHeaders 中剥离伪造的
 //     X-Trim-*，因此局域网设备手动构造该头也无法冒充「来自已登录门户」。
-//  2. 请求来自本机（isLocalRequest，仅依据 TCP 源地址）——覆盖桌面端、以及飞牛把
-//     门户请求从 NAS 本机（回环 / 本机网卡地址）转发到应用的情形。
+//  2. 请求来自本机（isLocalRequest，仅依据 TCP 源地址）——桌面端「谁运行应用，
+//     那台电脑就是管理员」；也兼容飞牛门户经 NAS 本机转发到应用的情形。
+//
+// 例外：飞牛构建下若统一网关已成功监听，则【不再接受第 2 条】——NAS 上的任意本机
+// 进程、以及容器网桥地址（docker0 / vbr 等同样被 isLocalIP 视为本机）否则都能绕过
+// 飞牛账号体系拿到管理权。网关未起来时仍回退到第 2 条，避免门户整体不可用。
 //
 // 局域网设备经 IP:端口 直连时两条都不满足，故只能浏览、上传、下载。
 func (a *App) canManage(r *http.Request) bool {
 	if gatewayUser(r) != "" {
 		return true
+	}
+	if a.platform.EnforceAuthBoundary() && a.gatewayActive.Load() {
+		return false
 	}
 	return isLocalRequest(r)
 }

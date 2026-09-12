@@ -12,13 +12,13 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/browse", func(w http.ResponseWriter, r *http.Request) {
 		a.servePage(w, r, "browse.html")
 	})
-	mux.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/upload", a.requireTrustedClient(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			a.handleUpload(w, r)
 			return
 		}
 		a.servePage(w, r, "upload.html")
-	})
+	}))
 
 	// 静态资源：把 embed 进来的 static/ 目录挂到 /static/ 路由。
 	// 因为 embedded 文件名就是 static/css/common.css 这种，URL /static/css/common.css 能直接对应上。
@@ -37,14 +37,17 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/files", a.handleFiles)
 	mux.HandleFunc("/api/thumb", a.handleThumb)
 	mux.HandleFunc("/api/download", a.handleDownload)
-	mux.HandleFunc("/api/download-batch", a.handleBatchDownload)
-	mux.HandleFunc("/api/delete", a.handleDelete)
-	// 设置：读取/修改文件保存路径
+	// 会改变服务端状态的接口统一包一层 CSRF 校验（见 middleware.go requireTrustedClient）：
+	// 只放行携带前端自定义头 X-Aellus-Client 的请求——浏览器跨站时该头会触发预检，
+	// 而本服务不返回任何 CORS 许可，预检必然失败，请求根本发不出去。
+	mux.HandleFunc("/api/download-batch", a.requireTrustedClient(a.handleBatchDownload))
+	mux.HandleFunc("/api/delete", a.requireTrustedClient(a.handleDelete))
+	// 设置：读取无副作用（不校验），修改保存路径要校验
 	mux.HandleFunc("/api/settings", a.handleSettings)
 	mux.HandleFunc("/api/authpaths", a.handleAuthPaths)
 	mux.HandleFunc("/api/listdir", a.handleListDir)
-	mux.HandleFunc("/api/set-savedir", a.handleSetSaveDir)
-	mux.HandleFunc("/api/pick-dir", a.handlePickDir)
+	mux.HandleFunc("/api/set-savedir", a.requireTrustedClient(a.handleSetSaveDir))
+	mux.HandleFunc("/api/pick-dir", a.requireTrustedClient(a.handlePickDir))
 	// 飞牛开放 API 授权路由回调页（openAppAuth 的 redirectUri 指向本页）
 	mux.HandleFunc("/callback.html", func(w http.ResponseWriter, r *http.Request) {
 		a.servePage(w, r, "callback.html")

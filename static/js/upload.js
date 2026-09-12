@@ -435,6 +435,9 @@ function upload(files, inputEl) {
     al.appendChild(at); al.appendChild(ad); box.appendChild(al);
   };
   xhr.open('POST', 'upload');
+  // 状态变更接口要求的客户端标识头：跨站请求无法携带（浏览器会先发预检，本服务不返回
+  // CORS 许可 → 预检失败 → 请求发不出去），服务端据此拒绝跨站上传（防 CSRF）。
+  xhr.setRequestHeader('X-Aellus-Client', '1');
   var deviceID = (typeof getDeviceID === 'function') ? getDeviceID() : '';
   if (deviceID) xhr.setRequestHeader('Deviceid', deviceID);
   xhr.send(fd);

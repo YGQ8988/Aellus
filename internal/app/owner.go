@@ -16,11 +16,34 @@ func (a *App) deviceNamesPath() string {
 	return filepath.Join(a.platform.ConfigBaseDir(a.getSaveDir()), "devices.json")
 }
 
+// 设备名映射的容量与长度上限。
+// 局域网内任何设备都能上传（设计如此），若不设限，攻击者可用大量随机 Deviceid
+// 把 devices.json 无限撑大；超长字符串也应截断后再落盘。
+const (
+	maxDeviceNames   = 500
+	maxDeviceIDLen   = 64
+	maxDeviceNameLen = 32
+)
+
+// truncateRunes 按字符（rune）截断，避免把中文等多字节字符切坏。
+func truncateRunes(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	rs := []rune(s)
+	if len(rs) <= n {
+		return s
+	}
+	return string(rs[:n])
+}
+
 // recordDeviceName 记录设备 ID → 设备名映射（供下次自动填充）；同名跳过。
 func (a *App) recordDeviceName(devID, name string) {
 	if devID == "" || name == "" {
 		return
 	}
+	devID = truncateRunes(devID, maxDeviceIDLen)
+	name = truncateRunes(name, maxDeviceNameLen)
 	a.ownerMu.Lock()
 	defer a.ownerMu.Unlock()
 	m := map[string]string{}
@@ -28,6 +51,10 @@ func (a *App) recordDeviceName(devID, name string) {
 		_ = json.Unmarshal(b, &m)
 	}
 	if m[devID] == name {
+		return
+	}
+	// 新增条目时校验容量上限（已存在键的更新不受限）。
+	if _, exists := m[devID]; !exists && len(m) >= maxDeviceNames {
 		return
 	}
 	m[devID] = name
@@ -41,6 +68,7 @@ func (a *App) deviceNameOf(devID string) string {
 	if devID == "" {
 		return ""
 	}
+	devID = truncateRunes(devID, maxDeviceIDLen) // 与写入时的截断保持一致
 	a.ownerMu.Lock()
 	defer a.ownerMu.Unlock()
 	m := map[string]string{}

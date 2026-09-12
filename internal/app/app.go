@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // === 常量 ===
@@ -43,6 +45,12 @@ type App struct {
 	// FNNAS_GATEWAY_PREFIX 注入；空串表示无前缀（桌面端）。
 	// 用于把 /app/<appname>/... 归一化成内部路径，并据此决定页面 <base>。
 	mountPrefix string
+
+	// gatewayActive 表示飞牛统一网关的 Unix Socket 是否已成功监听。
+	// 飞牛构建下它为 true 时，删除 / 改保存目录【只认】网关注入的身份头，不再接受
+	// 「请求来自本机」——否则 NAS 上的任意本机进程，以及容器网桥地址（docker0 / vbr
+	// 等同样被 isLocalIP 当作本机），都能绕过飞牛账号体系直接拿到管理权。
+	gatewayActive atomic.Bool
 
 	absSaveDir string        // 保存目录的绝对路径，所有路径校验都以它为准
 	saveDirMu  sync.RWMutex  // 保护 absSaveDir（HTTP 各请求在独立 goroutine 中读取）
@@ -101,14 +109,25 @@ func (a *App) Serve(ln net.Listener, port int) {
 	a.mountPrefix = strings.TrimSuffix(strings.TrimSpace(os.Getenv("FNNAS_GATEWAY_PREFIX")), "/")
 
 	// 裸端口：先剥离伪造的 X-Trim-*，再归一化前缀，最后进入路由。
-	raw := a.withLog(withSecurityHeaders(a.stripTrimHeaders(a.withPrefix(a.buildMux(port)))))
+	raw := a.withLog(withSecurityHeaders(a.stripTrimHeaders(a.withPrefix(a.buildMux(port))), frameAncestorsAny))
 	go func() {
-		log.Fatal(http.Serve(ln, raw))
+		log.Fatal(newHTTPServer(raw).Serve(ln))
 	}()
 
 	// 飞牛统一网关：仅当启动脚本注入 Socket 路径时启用（见 fnos/cmd/main）。
 	if sock := strings.TrimSpace(os.Getenv("FNNAS_GATEWAY_SOCKET")); sock != "" {
 		go a.serveGateway(sock, port)
+	}
+}
+
+// newHTTPServer 构造带超时的 HTTP 服务。
+// 只设「读请求头」与「空闲连接」超时：ReadHeaderTimeout 足以挡住慢连接占位（slowloris），
+// 不设 ReadTimeout / WriteTimeout——上传下载大文件耗时可能很长，设了会掐断正常传输。
+func newHTTPServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 }
 
@@ -158,8 +177,10 @@ func (a *App) serveGateway(socketPath string, port int) {
 	// Socket 位于应用 target 目录（普通用户无法进入该目录），放开文件权限不影响安全，
 	// 同时兼容飞牛网关以其它用户/用户组连接。
 	_ = os.Chmod(socketPath, 0666)
+	// 标记网关可用：此后删除 / 改保存目录只认网关注入的身份头（见 canManage）。
+	a.gatewayActive.Store(true)
 	log.Printf("[gateway] 已接入飞牛统一网关（Socket=%s Prefix=%s）", socketPath, a.mountPrefix)
-	log.Fatal(http.Serve(ln, a.withLog(withSecurityHeaders(a.withPrefix(a.buildMux(port))))))
+	log.Fatal(newHTTPServer(a.withLog(withSecurityHeaders(a.withPrefix(a.buildMux(port)), frameAncestorsSelf))).Serve(ln))
 }
 
 // ctxKey 请求上下文键类型（避免与其它包/中间件的键冲突）。

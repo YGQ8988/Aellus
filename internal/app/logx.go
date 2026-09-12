@@ -9,10 +9,22 @@ import (
 
 // === 日志（App 方法，使用 App 持有的日志路径与锁） ===
 
+// maxLogBytes 单个日志文件的大小上限（超过即轮转）。
+// 访问日志会记录每次非静态请求，长期运行必须限制体积，否则会把磁盘写满
+// （飞牛端日志落在持久卷 TRIM_PKGVAR 下）。
+const maxLogBytes = 5 << 20 // 5MB
+
 // writeLog 日志文件是并发追加写入的，用 App.logMu 保证不互相穿插。
 func (a *App) writeLog(path, msg string) {
 	a.logMu.Lock()
 	defer a.logMu.Unlock()
+	// 简单轮转：超过上限就把当前文件改名为 <name>.old（只保留一份历史）。
+	// 并发安全由 logMu 保证，不会出现两个请求同时轮转。
+	if fi, err := os.Stat(path); err == nil && fi.Size() >= maxLogBytes {
+		old := path + ".old"
+		_ = os.Remove(old) // Windows 下 Rename 不能覆盖已存在的目标文件
+		_ = os.Rename(path, old)
+	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return

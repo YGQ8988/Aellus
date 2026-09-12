@@ -34,6 +34,12 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 // 优先通过飞牛官方后端 API（trim.file.getSharedAccessibleFolders，Unix socket + TRIM_API_TOKEN）
 // 查询管理员在应用设置中授权的目录；非飞牛环境回退到环境变量。
 func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
+	// 该接口只服务「文件保存路径」设置面板（仅管理者可见），故要求管理权限：
+	// 局域网设备即使直接调接口也只能拿到 403，避免暴露 NAS 的授权目录结构。
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"error": "无权限"})
+		return
+	}
 	paths := authorizedSavePaths()
 	labels := map[string]string{}
 	// 飞牛环境：把授权目录内部路径转成语义化展示路径，供设置页面下拉展示。
@@ -65,6 +71,11 @@ func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
 // 失败回退环境变量）。应用对授权目录本身拥有访问权限，此处仅做普通目录列举；
 // 只能在这些授权根内部导航，无法跳出授权边界（越权返回 403）。
 func (a *App) handleListDir(w http.ResponseWriter, r *http.Request) {
+	// 同 handleAuthPaths：只给管理者用（列授权目录内的子目录），局域网设备 403。
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"error": "无权限"})
+		return
+	}
 	roots := authorizedSavePaths()
 	if len(roots) == 0 {
 		a.writeJSON(w, http.StatusOK, map[string]interface{}{

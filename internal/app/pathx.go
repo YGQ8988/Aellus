@@ -30,8 +30,9 @@ func sanitizeDevice(name string) string {
 // resolveUploadTarget 根据客户端上传时的“逻辑名”(可能是带目录的相对路径，
 // 如 "MyFolder/sub/file.jpg"，来自网页内文件夹选择器) 计算最终落盘路径。
 // 返回：dstPath(实际文件绝对路径)、displayName(用于回显的相对名)、error。
-// 安全性：逐段 sanitize，拒绝 ".."/隐藏段/含分隔符的段；最终仍用 isInside 兜底防穿越。
-func resolveUploadTarget(deviceDir, rawName string) (string, string, error) {
+// 安全性：逐段 sanitize，拒绝 ".."/隐藏段/含分隔符的段；字符串层面用 isInside 防穿越，
+// 真实路径层面用 realInside 防软链逃逸（root 为授权保存根目录）。
+func resolveUploadTarget(root, deviceDir, rawName string) (string, string, error) {
 	rawName = strings.ReplaceAll(rawName, "\\", "/")
 	segs := strings.Split(rawName, "/")
 	cleanSegs := make([]string, 0, len(segs))
@@ -58,6 +59,12 @@ func resolveUploadTarget(deviceDir, rawName string) (string, string, error) {
 	dirPart := deviceDir
 	if len(dirs) > 0 {
 		dirPart = filepath.Join(append([]string{deviceDir}, dirs...)...)
+		// 防软链逃逸：子目录可能是授权目录内被换成指向外部的软链（能写入共享目录的人
+		// 可以创建），MkdirAll 会顺着软链建目录、后续写入也会落到授权目录之外，
+		// 因此先校验真实落点仍在 root 之内。
+		if !realInside(root, dirPart) {
+			return "", "", fmt.Errorf("path escapes save dir")
+		}
 		if err := os.MkdirAll(dirPart, 0755); err != nil {
 			return "", "", err
 		}
@@ -92,6 +99,11 @@ func resolveUploadTarget(deviceDir, rawName string) (string, string, error) {
 
 	if !isInside(deviceDir, dstPath) {
 		return "", "", fmt.Errorf("path escapes device dir")
+	}
+	// symlink 增强：同名文件若已被替换为指向外部的软链，跨设备回退分支的 os.Create
+	// 会顺着软链写入授权目录之外 → 用真实路径再校验一次。
+	if !realInside(root, dstPath) {
+		return "", "", fmt.Errorf("path escapes save dir")
 	}
 	return dstPath, displayName, nil
 }

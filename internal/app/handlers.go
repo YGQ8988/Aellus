@@ -126,6 +126,13 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// rels 列表已齐全，现在按索引配对并落盘到设备目录。
 	deviceDir := filepath.Join(a.getSaveDir(), device)
+	// 防软链逃逸：设备目录可能是授权目录内被替换成指向外部的软链（能写共享目录的人
+	// 可以创建），MkdirAll 与后续写入都会顺着软链落到授权目录之外 → 先做真实路径校验。
+	if !realInside(a.getSaveDir(), deviceDir) {
+		cleanupPending()
+		a.writeJSON(w, http.StatusForbidden, UploadResp{OK: false, Message: "目标目录不在授权范围内"})
+		return
+	}
 	if mkErr := os.MkdirAll(deviceDir, 0755); mkErr != nil {
 		cleanupPending()
 		a.writeJSON(w, http.StatusInternalServerError, UploadResp{OK: false})
@@ -141,7 +148,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		if j < len(rels) && rels[j] != "" {
 			rawName = rels[j]
 		}
-		dstPath, displayName, terr := resolveUploadTarget(deviceDir, rawName)
+		dstPath, displayName, terr := resolveUploadTarget(a.getSaveDir(), deviceDir, rawName)
 		if terr != nil {
 			os.Remove(pf.tmpPath)
 			cleanupPending()
@@ -356,27 +363,14 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inline := r.URL.Query().Get("inline") == "1"
-	ext := strings.ToLower(filepath.Ext(full))
-	if inline && isInlineSafe(ext) {
-		// 内联预览：仅允许安全类型（图片/视频/音频/PDF）直接显示，
-		// HTML/SVG 等可执行类型不内联，防止存储型 XSS。
-		ctype := mime.TypeByExtension(ext)
-		if ctype == "" {
-			ctype = "application/octet-stream"
-		}
-		w.Header().Set("Content-Type", ctype)
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-	} else {
-		// 下载或危险类型：设置 Content-Disposition: attachment。
-		// filename*=UTF-8'' 是 RFC 5987 标准，保证中文文件名在浏览器里不乱码。
-		// 文件名可能含引号/控制字符，legacy 的 filename="..." 需做安全化处理；
-		// 真正的 UTF-8 文件名由 filename*= 承载（已做 QueryEscape）。
-		safeFile := strings.NewReplacer(`"`, "_", "\r", "", "\n", "").Replace(file)
-		w.Header().Set("Content-Disposition",
-			`attachment; filename="`+safeFile+`"; filename*=UTF-8''`+url.QueryEscape(file))
-		w.Header().Set("X-Content-Type-Options", "nosniff")
+	// 输出头统一走 setFileOutputHeaders（见 fileout.go）：inline=1 且扩展名在
+	// 内联白名单内才允许浏览器直接渲染，其余（含 HTML/SVG/XML）一律按附件下载，
+	// 防止上传的文件在应用同源下执行脚本（存储型 XSS）。
+	mode := outputDownload
+	if r.URL.Query().Get("inline") == "1" {
+		mode = outputInlineMedia
 	}
+	setFileOutputHeaders(w, file, mode)
 
 	// ServeContent 会自己处理 Range 请求、Content-Length、Last-Modified 等，
 	// 它不会自动加 Content-Disposition，所以上面的设置能原样生效。
@@ -486,7 +480,7 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	safeZip := strings.NewReplacer(`"`, "_", "\r", "", "\n", "").Replace(zipName)
 	w.Header().Set("Content-Disposition",
-		`attachment; filename="`+safeZip+`.zip"; filename*=UTF-8''`+url.QueryEscape(zipName+".zip"))
+		`attachment; filename="`+safeZip+`.zip"; filename*=UTF-8''`+url.PathEscape(zipName+".zip"))
 	w.Header().Set("Content-Type", "application/zip")
 
 	// 把临时 ZIP 直接流式返回给浏览器

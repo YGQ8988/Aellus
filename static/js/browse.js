@@ -105,7 +105,9 @@ async function openDir(path) {
     const data = await res.json();
     $('filesLoading').style.display = 'none';
     $('filesList').classList.remove('swapping');
-    if (data.error) { $('filesList').innerHTML = '<div class="empty">' + data.error + '</div>'; buildBreadcrumb(); return; }
+    // data.error 也做 HTML 转义：服务端当前只返回固定文案，但这里是 innerHTML sink，
+    // 一旦将来把用户可控内容（如目录名）拼进错误信息就会变成 XSS。
+    if (data.error) { $('filesList').innerHTML = '<div class="empty">' + escapeHtml(data.error) + '</div>'; buildBreadcrumb(); return; }
     if (!data.files.length) { $('filesList').innerHTML = ''; $('filesEmpty').style.display = 'block'; buildBreadcrumb(); return; }
     // 构建可预览文件列表（图片 + 视频），供灯箱左右切换（文件夹不进预览）
     previewFiles = data.files.filter(f => {

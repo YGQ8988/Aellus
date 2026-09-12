@@ -7,7 +7,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -141,13 +140,12 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 	}
 	ext := strings.ToLower(filepath.Ext(full))
 
-	// 不支持的类型（webp/heic/bmp 等）或解码失败：回退为原文件流式返回
+	// 不支持的类型（webp/heic/bmp 等）或解码失败：回退为原文件流式返回。
+	// 输出头必须走 setFileOutputHeaders 统一判定（图片内联、其余一律附件下载）：
+	// 这里曾自行用 mime.TypeByExtension 决定 Content-Type，把上传的 .html / .svg
+	// 当页面内联返回，形成存储型 XSS（脚本在应用 / 门户同源下执行）。
 	serveOriginal := func() {
-		ctype := mime.TypeByExtension(ext)
-		if ctype == "" {
-			ctype = "application/octet-stream"
-		}
-		w.Header().Set("Content-Type", ctype)
+		setFileOutputHeaders(w, file, outputInlineImage)
 		w.Header().Set("Last-Modified", info.ModTime().UTC().Format(http.TimeFormat))
 		w.Header().Set("Cache-Control", "public, max-age=300")
 		f.Seek(0, io.SeekStart)

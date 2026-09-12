@@ -180,8 +180,8 @@
     } catch (e) {}
   })();
 
-  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头（设备名映射 / 访问日志用）。
-  // 删除 / 设置权限不在前端判定，由飞牛统一网关注入的可信头在服务端判定（见 Go 端 canManage）。
+  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头（设备名映射 / 访问日志用）与
+  // X-Aellus-Client 头（服务端据此拒绝跨站请求，见 Go 端 requireTrustedClient）。
   var origFetch = window.fetch;
   window.fetch = function (url, options) {
     options = options || {};
@@ -189,6 +189,7 @@
     var headers = options.headers;
     if (headers instanceof Headers) {
       if (id && !headers.has('Deviceid')) headers.set('Deviceid', id);
+      if (!headers.has('X-Aellus-Client')) headers.set('X-Aellus-Client', '1');
     } else {
       var h = {};
       if (headers && typeof headers === 'object') {
@@ -197,6 +198,7 @@
         }
       }
       if (id && !('Deviceid' in h)) h['Deviceid'] = id;
+      if (!('X-Aellus-Client' in h)) h['X-Aellus-Client'] = '1';
       options.headers = h;
     }
     return origFetch.call(window, url, options);
