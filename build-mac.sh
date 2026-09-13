@@ -6,6 +6,7 @@
 #   - 否则 → dist/Aellus-<arch>.app（arch 为 arm64 / x86_64）
 # 前置：1) 安装 Go   2) 安装 Xcode 命令行工具: xcode-select --install
 # 因为 systray 在 macOS 走 cgo(Cocoa)，无法从 Windows 交叉编译，必须在 Mac 本机编译。
+# 用法：./build-mac.sh [version]（不传则读 fnos/manifest 的 version，保证与 fpk / Windows 包一致）
 #
 # 关键：macOS 26 (Tahoe) 的菜单栏权限系统会直接忽略【未签名】的 app，
 # 导致 "Allow in the Menu Bar" 里根本不会出现本程序。所以打包后必须 codesign 签名。
@@ -16,6 +17,14 @@ cd "$(dirname "$0")"
 # 禁用 macOS cp 的 AppleDouble（._xxx）副文件，避免 .app 内混入垃圾
 export COPYFILE_DISABLE=1
 mkdir -p dist .build
+
+# 版本号：优先命令行参数，其次 fnos/manifest（唯一版本源，与 fpk / Windows 包保持一致），最后兜底。
+VERSION="${1:-}"
+if [ -z "${VERSION}" ]; then
+  VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
+fi
+VERSION="${VERSION:-1.0.1}"
+echo "构建版本：${VERSION}"
 
 # 兼容旧版 macOS：cgo 默认用本机 SDK 版本写入 Mach-O 的 LC_BUILD_VERSION.minos，
 # 在 macOS 26 上编译会写成 26.0，导致 macOS 13 等旧系统内核拒绝加载（"应用已损坏"）。
@@ -47,7 +56,8 @@ build_app() {
   local label="$(arch_label "$goarch")"
   local host_label="$(arch_label "$HOST_ARCH")"
 
-  # 命名：本机架构无后缀；非本机架构追加 -<label>（如 Aellus-arm64 / Aellus-x86_64）
+  # 命名：本机架构无后缀；非本机架构追加 -<label>（如 Aellus-arm64 / Aellus-x86_64）。
+  # 版本号不进文件名（由 Info.plist 的 CFBundleVersion 与二进制 Version 体现）。
   local app_name="Aellus"
   if [ "$label" != "$host_label" ]; then
     app_name="Aellus-${label}"
@@ -57,12 +67,13 @@ build_app() {
   echo ""
   echo ">> 编译 ${goarch}（本机 ${HOST_ARCH} → ${app_name}.app）"
   GOOS=darwin GOARCH="${goarch}" CGO_ENABLED=1 \
-    go build -trimpath -ldflags="-s -w" -o ".build/aellus-${goarch}" .
+    go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o ".build/aellus-${goarch}" .
 
   rm -rf "${app_dir}"
   mkdir -p "${app_dir}/Contents/MacOS" "${app_dir}/Contents/Resources"
 
-  cat > "${app_dir}/Contents/Info.plist" << 'PLIST'
+  # 注意：这里用不带引号的 heredoc，以便把 ${VERSION} 展开进 plist
+  cat > "${app_dir}/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -76,9 +87,9 @@ build_app() {
     <key>CFBundleIdentifier</key>
     <string>com.aellus.app</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>${VERSION}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleIconFile</key>

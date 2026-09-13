@@ -31,7 +31,7 @@
   --shadow-card-active: 0 4px 12px -4px hsl(var(--primary) / .12), 0 1px 4px -1px hsl(var(--foreground) / .05);
 
   /* 页面外边距（替代原 body padding：body 不能加 padding，否则会顶偏 sticky 顶吸附）。
-     移动端 16px、桌面端 24px；作用到 .container 与 .top-bar-inner，保证内容/面包屑对齐且留边。 */
+     移动端 16px、桌面端 32px；作用到 .container 与 .top-bar-inner，保证内容/面包屑对齐且留边。 */
   --page-gutter: 16px;
   --page-top: 16px;     /* 顶栏 / 首屏内容与上传页 .container 顶部对齐（移动 16px / 桌面 40px） */
 
@@ -89,11 +89,14 @@ body:not(.home)::after {
 }
 
 /* —— 布局 / 排版 —— */
-/* .container 承接原 body 的左右/上下外边距（用 --page-gutter，移动端16/桌面端24）。
+/* .container 承接原 body 的左右/上下外边距（用 --page-gutter，移动端16/桌面端32）。
    注意：吸顶栏 .top-bar 是满宽出血、不在 .container 内，它用 .top-bar-inner 吃同样的
    --page-gutter，因此面包屑与下方网格内容左右对齐。 */
 .container { max-width: 1120px; margin: 0 auto; padding: 16px var(--page-gutter) 24px; }
 h1 { font-size: clamp(2.25rem, 8.5vw, 3.75rem); text-align: center; margin: 20px 0 14px; font-weight: 800; letter-spacing: -.4px; color: hsl(var(--foreground)); }
+/* h4：设置弹窗内的小节标题（文件保存路径 / 打赏 / 免责声明）。
+   其余属性沿用浏览器默认（bold 700 / 1.17em），此处只补标题与下方内容的间距。 */
+h4 { margin-bottom: 14px; }
 .subtitle { text-align: center; font-size: clamp(0.95rem, 4.2vw, 1.125rem); font-weight: 500; color: hsl(var(--muted-foreground)); margin-top: -6px; margin-bottom: 30px; display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
 /* 渐变文字（用于「更安全」等强调词）：蓝(#2563eb) → 紫(#7c3aed) */
 .grad {
@@ -171,7 +174,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 
 /* —— PC 端 (>=768px) —— */
 @media (min-width: 768px) {
-  :root { --page-gutter: 24px; --page-top: 40px; }
+  :root { --page-gutter: 32px; --page-top: 40px; }
   body { min-height: 100vh; }
   /* 桌面端恢复原 body 的上下间距（40/48），由容器承接而非 body */
   .container { padding-top: 40px; padding-bottom: 48px; }

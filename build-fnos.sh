@@ -1,8 +1,8 @@
 #!/bin/bash
 # Aellus 飞牛 fnOS 版构建脚本（在项目根目录运行）
-# 通用包模式：一个 .fpk 同时支持 amd64(x86_64) 与 arm64(aarch64)。
-# 原理：manifest 声明 platform=all，app/ 内同时放入 aellus-x86_64 与 aellus-aarch64
-#       两个二进制，由 cmd/main 在启动时按 uname -m 选择执行。
+# 分架构模式：分别产出 x86_64 与 arm64 两个 .fpk，由应用中心按设备架构分发安装。
+# 原理：x86 包 manifest platform=x86、仅含 amd64 二进制；arm 包 manifest platform=arm、仅含 arm64 二进制。
+#       cmd/main 已兼容两种包：按 uname -m 找 aellus-x86_64 / aellus-aarch64，找不到回退 aellus。
 # 前置：本机有 Go（交叉编译纯标准库，无需 cgo）与 fnpack（tools/fnpack 或 PATH 中）
 set -e
 cd "$(dirname "$0")"
@@ -32,27 +32,36 @@ mkdir -p dist
 BUILD_TMP=".build"
 mkdir -p "${BUILD_TMP}"
 
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.0.1}"
 
-echo ">> [1/2] 交叉编译 amd64 / arm64"
+echo ">> [1/3] 交叉编译 amd64 / arm64"
 # -tags fpk：飞牛 NAS 后台服务构建，排除所有桌面代码（托盘/通知/目录选择器/mac 开机项），
 # 由 platform_fpks.go 提供 headless 等价实现，不带 systray 等桌面依赖。
 GOOS=linux GOARCH=amd64 go build -tags fpk -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o "${BUILD_TMP}/aellus-amd64" .
 GOOS=linux GOARCH=arm64 go build -tags fpk -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o "${BUILD_TMP}/aellus-arm64" .
 echo "   amd64/arm64 编译完成"
 
-echo ">> [2/2] 打包通用包（platform=all，含双架构二进制）"
-# 清理历史遗留的旧单架构二进制（旧版脚本会写入 fnos/app/aellus），避免混入包内
-rm -f fnos/app/aellus
+echo ">> [2/3] 打包 x86_64（platform=x86）"
+# 清掉 app/ 下可能残留的其他架构二进制，避免混入包内
+rm -f fnos/app/aellus fnos/app/aellus-aarch64
 cp "${BUILD_TMP}/aellus-amd64" fnos/app/aellus-x86_64
 chmod +x fnos/app/aellus-x86_64
+sed -i.bak 's/^platform *= .*/platform              = x86/' fnos/manifest && rm -f fnos/manifest.bak
+"$FN_PACK" build --directory fnos
+mv Aellus.fpk "dist/Aellus-${VERSION}-x86_64.fpk"
+echo "   x86_64 打包完成"
+
+echo ">> [3/3] 打包 arm64（platform=arm）"
+rm -f fnos/app/aellus fnos/app/aellus-x86_64
 cp "${BUILD_TMP}/aellus-arm64" fnos/app/aellus-aarch64
 chmod +x fnos/app/aellus-aarch64
-# 确保 manifest 声明 all（源码默认即 all，显式写入以覆盖历史残留的 x86/arm）
-sed -i.bak 's/^platform *= .*/platform              = all/' fnos/manifest && rm -f fnos/manifest.bak
+sed -i.bak 's/^platform *= .*/platform              = arm/' fnos/manifest && rm -f fnos/manifest.bak
 "$FN_PACK" build --directory fnos
-# 当前 fnpack 版本固定产出 Aellus.fpk（不带版本/平台），需手动重命名
-mv Aellus.fpk "dist/Aellus-${VERSION}-all.fpk"
+mv Aellus.fpk "dist/Aellus-${VERSION}-arm64.fpk"
+echo "   arm64 打包完成"
+
+# 还原 manifest 为 all（源码默认，支持全平台），保持 git 干净
+sed -i.bak 's/^platform *= .*/platform              = all/' fnos/manifest && rm -f fnos/manifest.bak
 
 # 清理临时二进制（fnos/app 下的编译产物不入库）
 rm -f fnos/app/aellus-x86_64 fnos/app/aellus-aarch64
@@ -60,4 +69,4 @@ rm -rf "${BUILD_TMP}"
 echo "    已清理临时产物"
 
 echo "完成："
-ls -la dist/Aellus-${VERSION}-all.fpk
+ls -la dist/Aellus-${VERSION}-x86_64.fpk dist/Aellus-${VERSION}-arm64.fpk

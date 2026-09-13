@@ -14,9 +14,68 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // === 路由处理 ===
+
+// uploadTempDirName 上传临时文件目录名（位于保存目录内，以 "." 开头因此不会出现在列表里）。
+const uploadTempDirName = ".aellus-tmp"
+
+// 上传表单里的文本字段上限：局域网内任何人可上传（设计如此），
+// 但文本字段如果不限长，就能用很小的请求撑爆服务端内存
+// （实测：20MB 的 rels 字段 → 服务端累计分配 325MB）。
+const (
+	maxDeviceFieldBytes = 4 << 10 // device 字段（设备名）
+	maxRelPathBytes     = 8 << 10 // 单个 rels 字段（相对路径，Linux PATH_MAX 为 4096）
+	maxRelEntries       = 20000   // rels 条数上限
+)
+
+// uploadTempDir 返回上传临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
+//
+// 为什么不用系统临时目录（os.TempDir / /tmp）：
+//   - 空间算错盘：上传期间占用的是系统盘/根分区（NAS 上通常很小），几十 GB 的上传
+//     会把它写满，导致系统级故障；保存目录那块的卷才是用户预期消耗空间的地方；
+//   - 必然多写一遍：临时目录与保存目录跨文件系统时 os.Rename 必然失败（EXDEV），
+//     只能整份复制 → 峰值磁盘占用 2× 文件大小、耗时翻倍。
+//
+// 该目录以 "." 开头，列表接口（/api/dirs、/api/files）天然过滤它，也无法通过 API
+// 下载 / 删除；上传临时文件在落盘前不可见。
+//
+// 返回空串表示保存目录不可用或该子目录是软链等异常，调用方回退系统临时目录（行为
+// 与改造前一致，至少能上传成功）。
+func (a *App) uploadTempDir() string {
+	dir := filepath.Join(a.getSaveDir(), uploadTempDirName)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return ""
+	}
+	// 防软链：该目录若被替换成指向外部的软链，临时文件就会写到保存目录之外。
+	if !realInside(a.getSaveDir(), dir) {
+		return ""
+	}
+	return dir
+}
+
+// cleanStaleUploadTemps 清理上传临时目录里的残留文件（进程被强杀时来不及删除的）。
+// 只删超过 6 小时的，避免误删正在传输的文件；只处理该目录下的普通文件。best-effort。
+func (a *App) cleanStaleUploadTemps(dir string) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-6 * time.Hour)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
 
 // handleUpload POST /upload 接收 multipart/form-data。
 //
@@ -50,7 +109,10 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	device := "default"
 	upDevID := deviceID(r) // 设备 ID（供设备名映射记录）
-	var rels []string                      // 所有文件的相对路径，按出现顺序收集
+	// 临时文件落地点（保存目录内隐藏子目录，失败时回退系统临时目录），并顺手清理上次残留。
+	tmpDir := a.uploadTempDir()
+	a.cleanStaleUploadTemps(tmpDir)
+	var rels []string // 所有文件的相对路径，按出现顺序收集
 	var scratch bytes.Buffer
 	buf := make([]byte, 1<<20) // 1MB 缓冲区，分块写入
 
@@ -87,15 +149,30 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case formName == "device":
 			scratch.Reset()
-			io.Copy(&scratch, part)
-			device = sanitizeDevice(strings.TrimSpace(scratch.String()))
+			// 限长读取：超长则整个字段丢弃（设备名保持 default），避免被用来撑内存。
+			if n, _ := io.CopyN(&scratch, part, maxDeviceFieldBytes+1); n <= maxDeviceFieldBytes {
+				device = sanitizeDevice(strings.TrimSpace(scratch.String()))
+			}
+			part.Close()
 		case formName == "rels":
+			if len(rels) >= maxRelEntries {
+				part.Close()
+				continue
+			}
 			scratch.Reset()
-			io.Copy(&scratch, part)
+			// 限长读取：超长则记为无效（该文件回退用 multipart 文件名），
+			// 而不是把截断后的路径当文件名用。
+			n, _ := io.CopyN(&scratch, part, maxRelPathBytes+1)
+			part.Close()
+			if n > maxRelPathBytes {
+				rels = append(rels, "")
+				continue
+			}
 			rels = append(rels, scratch.String())
 		case formName == "files" && fileName != "":
-			// 先把文件内容流式写入临时文件（不限制大小），之后再用 rels 配对重命名。
-			tmp, terr := os.CreateTemp("", "aellus-upload-*")
+			// 先把文件内容流式写入临时文件（内容不限大小），之后再用 rels 配对重命名。
+			// 临时文件放保存目录内的隐藏子目录（同盘 rename、空间算对盘），不可用时回退系统临时目录。
+			tmp, terr := os.CreateTemp(tmpDir, "aellus-upload-*")
 			if terr != nil {
 				part.Close()
 				cleanupPending()
@@ -126,6 +203,13 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	// rels 列表已齐全，现在按索引配对并落盘到设备目录。
 	deviceDir := filepath.Join(a.getSaveDir(), device)
+	// 防软链逃逸：设备目录可能是授权目录内被替换成指向外部的软链（能写共享目录的人
+	// 可以创建），MkdirAll 与后续写入都会顺着软链落到授权目录之外 → 先做真实路径校验。
+	if !realInside(a.getSaveDir(), deviceDir) {
+		cleanupPending()
+		a.writeJSON(w, http.StatusForbidden, UploadResp{OK: false, Message: "目标目录不在授权范围内"})
+		return
+	}
 	if mkErr := os.MkdirAll(deviceDir, 0755); mkErr != nil {
 		cleanupPending()
 		a.writeJSON(w, http.StatusInternalServerError, UploadResp{OK: false})
@@ -141,7 +225,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		if j < len(rels) && rels[j] != "" {
 			rawName = rels[j]
 		}
-		dstPath, displayName, terr := resolveUploadTarget(deviceDir, rawName)
+		dstPath, displayName, terr := resolveUploadTarget(a.getSaveDir(), deviceDir, rawName)
 		if terr != nil {
 			os.Remove(pf.tmpPath)
 			cleanupPending()
@@ -356,24 +440,14 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inline := r.URL.Query().Get("inline") == "1"
-	ext := strings.ToLower(filepath.Ext(full))
-	if inline && isInlineSafe(ext) {
-		// 内联预览：仅允许安全类型（图片/视频/音频/PDF）直接显示，
-		// HTML/SVG 等可执行类型不内联，防止存储型 XSS。
-		ctype := mime.TypeByExtension(ext)
-		if ctype == "" {
-			ctype = "application/octet-stream"
-		}
-		w.Header().Set("Content-Type", ctype)
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-	} else {
-		// 下载或危险类型：设置 Content-Disposition: attachment。
-		// filename*=UTF-8'' 是 RFC 5987 标准，保证中文文件名在浏览器里不乱码。
-		w.Header().Set("Content-Disposition",
-			`attachment; filename="`+file+`"; filename*=UTF-8''`+url.QueryEscape(file))
-		w.Header().Set("X-Content-Type-Options", "nosniff")
+	// 输出头统一走 setFileOutputHeaders（见 fileout.go）：inline=1 且扩展名在
+	// 内联白名单内才允许浏览器直接渲染，其余（含 HTML/SVG/XML）一律按附件下载，
+	// 防止上传的文件在应用同源下执行脚本（存储型 XSS）。
+	mode := outputDownload
+	if r.URL.Query().Get("inline") == "1" {
+		mode = outputInlineMedia
 	}
+	setFileOutputHeaders(w, file, mode)
 
 	// ServeContent 会自己处理 Range 请求、Content-Length、Last-Modified 等，
 	// 它不会自动加 Content-Disposition，所以上面的设置能原样生效。
@@ -454,7 +528,10 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	zw := zip.NewWriter(tmp)
 	for _, name := range names {
 		full := filepath.Join(dirAbs, name)
-		if !isInside(dirAbs, full) { // 再次校验，双保险
+		// 双重校验：isInside 防路径穿越（仅字符串判断），realInside 解析符号链接防逃逸。
+		// 递归打包时 WalkDir 不跟随软链，但下方 os.Open 会跟随；若软链指向授权目录外，
+		// isInside 字符串判断会放行，故需 realInside 兜底（与单文件下载 resolveFile 一致）。
+		if !isInside(dirAbs, full) || !realInside(dirAbs, full) {
 			continue
 		}
 		src, err := os.Open(full)
@@ -478,8 +555,9 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	if zipName == "" || zipName == "." {
 		zipName = "files"
 	}
+	safeZip := strings.NewReplacer(`"`, "_", "\r", "", "\n", "").Replace(zipName)
 	w.Header().Set("Content-Disposition",
-		`attachment; filename="`+zipName+`.zip"; filename*=UTF-8''`+url.QueryEscape(zipName+".zip"))
+		`attachment; filename="`+safeZip+`.zip"; filename*=UTF-8''`+url.PathEscape(zipName+".zip"))
 	w.Header().Set("Content-Type", "application/zip")
 
 	// 把临时 ZIP 直接流式返回给浏览器
@@ -515,9 +593,10 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	// 删除权限：双通道判定（canManage）——
-	//   - 飞牛应用：X-Aellus-Standalone=false（页面内嵌飞牛门户 iframe）有权限；true（独立网页直连）拒绝；
-	//   - 非飞牛应用 / 头缺失：仅本机（来源 IP 等于服务 IP）可删。
+	// 删除权限：由 canManage 判定——
+	//   - 飞牛应用且已接入统一网关：请求须携带网关可信注入头 X-Trim-Userid（仅门户内已登录用户才有），否则拒绝；
+	//   - 飞牛应用未接入网关 / 非飞牛应用：仅本机（来源 IP 等于服务 IP）可删。
+	// 裸 TCP 端口（局域网直连）的请求在到达此处前已被剥离伪造的 X-Trim-* 头，无法越权。
 	if !a.canManage(r) {
 		a.writeJSON(w, http.StatusForbidden, map[string]string{"error": "无删除权限"})
 		return

@@ -123,16 +123,30 @@ func lanPriority(ip net.IP) (int, bool) {
 	return 0, false
 }
 
-// isVirtualIface 判断是否为隧道 / 虚拟网卡（VPN、容器、虚拟机网桥等）。
+// isVirtualIface 判断是否为隧道 / 虚拟 / 网桥网卡（VPN、容器、虚拟机网络等）。
+//
+// 两个用途：
+//  1. GetLANIP 选局域网地址时跳过它们（局域网其它设备直连不到）；
+//  2. isLocalIP 判定「本机来源」时跳过它们（容器流量不算本机，见该函数注释）。
+//
+// 名单覆盖常见命名：Linux 网桥/Docker（docker0、br-<id>、veth*）、飞牛/群晖类网桥
+// （vbr*、ovs*）、libvirt（virbr*）、K8s/容器运行时（cni*、flannel*、cali*、kube*）、
+// VM（vmnet*、vboxnet*、vmbr*、vmenet*）、VPN/隧道（utun*、tun*、wg*、tailscale*、zt*）。
+// 物理网卡名（en0、eth0、ens*、wlan0、bond0…）不受影响。
 func isVirtualIface(name string) bool {
 	n := strings.ToLower(name)
-	prefixes := []string{"lo", "utun", "tun", "tap", "ppp", "ipsec", "wg", "vpn", "zt", "tailscale", "fl0", "awdl", "llw", "p2p", "anpi"}
+	prefixes := []string{
+		"lo", "utun", "tun", "tap", "ppp", "ipsec", "wg", "vpn", "zt", "tailscale",
+		"fl0", "awdl", "llw", "p2p", "anpi",
+		// 容器 / 网桥 / 虚拟网络（Linux 为主，NAS 上常见）
+		"br-", "vbr", "ovs", "virbr", "cni", "flannel", "cali", "kube", "vmenet", "vmbr",
+	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(n, p) {
 			return true
 		}
 	}
-	contains := []string{"vboxnet", "vmnet", "docker", "bridge", "veth", "ovpn"}
+	contains := []string{"vboxnet", "vmnet", "docker", "bridge", "veth", "ovpn", "nerdctl", "lxcbr", "multipass"}
 	for _, c := range contains {
 		if strings.Contains(n, c) {
 			return true
@@ -192,15 +206,9 @@ func deviceID(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("Deviceid"))
 }
 
-// realIP 取真实客户端 IP：优先 X-Forwarded-For 首段（有反代时），否则取 RemoteAddr。
-func realIP(r *http.Request) string {
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	return r.RemoteAddr
-}
+// 说明：这里原本还有一个 realIP（优先取 X-Forwarded-For 首段）的函数，已删除。
+// 本应用没有任何反向代理，XFF 只可能来自客户端伪造，用它记访问日志会让操作被
+// 栽赃到别的 IP 上；需要客户端地址时一律用 remoteIP（只信 TCP 对端）。
 
 // remoteIP 从 RemoteAddr 解析对端 IP（去掉端口）。
 // 注意：只信 TCP 对端地址，不读 X-Forwarded-For 等请求头——头可被局域网内
@@ -213,7 +221,12 @@ func remoteIP(r *http.Request) net.IP {
 	return net.ParseIP(h)
 }
 
-// isLocalIP 判断 IP 是否为本机：回环地址，或本机任意网卡上的地址。
+// isLocalIP 判断 IP 是否为本机：回环地址，或本机【物理】网卡上的地址。
+//
+// 注意：虚拟 / 网桥 / 隧道网卡上的地址不算本机。容器（Docker/containerd）、虚拟机、
+// VPN 的流量出到主机时，源地址就是主机网桥上那个网关地址（如 172.17.0.1、br-xxxx），
+// 若把它当作「本机」，容器里的进程就能直接拿到删除 / 改保存目录权限——而它并不是
+// 「运行应用的这台电脑上的用户」。回环地址仍然算本机（本机浏览器访问 127.0.0.1）。
 func isLocalIP(ip net.IP) bool {
 	if ip == nil {
 		return false
@@ -226,6 +239,9 @@ func isLocalIP(ip net.IP) bool {
 		return false
 	}
 	for _, iface := range ifaces {
+		if isVirtualIface(iface.Name) {
+			continue // 物理网卡之外的地址一律不算本机
+		}
 		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
@@ -246,39 +262,48 @@ func isLocalIP(ip net.IP) bool {
 	return false
 }
 
-// isLocalRequest 判断请求是否来自本机（用于限制只有本机才能改设置/弹目录选择框）。
-// 判定依据（满足其一即本机）：
-//  1. Host 是 localhost / 127.0.0.1 / [::1]（loopback 访问）；
-//  2. 真实客户端 IP（RemoteAddr）是本机自身的网卡地址——覆盖"本机用局域网 IP
-//     访问"的情况（换浏览器/手动输入 IP 时 Host 是 192.168.x.x，但客户端仍是本机）。
+// isLocalRequest 判断请求是否来自本机（用于限制只有本机才能改设置/删文件）。
+// 判定依据：只信 TCP 对端地址（RemoteAddr）——回环地址，或本机任意网卡地址。
 //
-// 局域网内其他设备即使伪造 Host 也过不了第 2 条（它的 IP 不是本机网卡地址）。
+// 为什么不看 Host：Host 属于请求头（客户端可任意伪造），局域网设备只要发
+// 「Host: 127.0.0.1」就能冒充本机；而 TCP 源地址无法伪造，故本机判定只依据它。
 func isLocalRequest(r *http.Request) bool {
-	host := r.Host
-	if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") || strings.HasPrefix(host, "[::1]") {
-		return true
-	}
 	return isLocalIP(remoteIP(r))
+}
+
+// gatewayUser 返回「飞牛统一网关注入的用户身份头」的值；无则返回空串。
+// 官方文档存在两种写法（X-Trim-Userid / X-Trim-Uid），两者都接受，
+// 用户名（X-Trim-Username）作为兜底——它们只会出现在经网关转发的请求上：
+// 裸端口入口已由 stripTrimHeaders 剥离任何客户端伪造的 X-Trim-*。
+func gatewayUser(r *http.Request) string {
+	for _, k := range []string{"X-Trim-Userid", "X-Trim-Uid", "X-Trim-Username"} {
+		if v := strings.TrimSpace(r.Header.Get(k)); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // canManage 判断请求是否有「删除文件 / 修改保存目录」权限（前端按钮显隐与服务端强制一致）。
 //
-// 双通道判定：
-//  1. 飞牛应用（fpk 构建，EnforceAuthBoundary()==true）：前端读取飞牛 SDK 的
-//     isStandaloneWeb 并通过 X-Aellus-Standalone 请求头上报——
-//     false（页面内嵌在飞牛门户 iframe 中，用户经飞牛账号体系进入）→ 有权限；
-//     true（独立网页直连，绕过门户）→ 拒绝；头缺失（旧前端缓存 / 脚本直连）→
-//     保守回退为仅本机判定。
-//  2. 非飞牛应用（桌面构建）：保持仅本机（isLocalRequest），不读该头。
+// 判定依据（满足其一即可）：
+//  1. 请求带飞牛统一网关注入的身份头（见 gatewayUser）——只有经网关（已完成飞牛
+//     登录态校验）转发的请求才有；裸端口入口已在 stripTrimHeaders 中剥离伪造的
+//     X-Trim-*，因此局域网设备手动构造该头也无法冒充「来自已登录门户」。
+//  2. 请求来自本机（isLocalRequest，仅依据 TCP 源地址）——桌面端「谁运行应用，
+//     那台电脑就是管理员」；也兼容飞牛门户经 NAS 本机转发到应用的情形。
+//
+// 例外：飞牛构建下若统一网关已成功监听，则【不再接受第 2 条】——NAS 上的任意本机
+// 进程、以及容器网桥地址（docker0 / vbr 等同样被 isLocalIP 视为本机）否则都能绕过
+// 飞牛账号体系拿到管理权。网关未起来时仍回退到第 2 条，避免门户整体不可用。
+//
+// 局域网设备经 IP:端口 直连时两条都不满足，故只能浏览、上传、下载。
 func (a *App) canManage(r *http.Request) bool {
-	if a.platform.EnforceAuthBoundary() {
-		switch strings.ToLower(strings.TrimSpace(r.Header.Get("X-Aellus-Standalone"))) {
-		case "false":
-			return true
-		case "true":
-			return false
-		}
-		return isLocalRequest(r)
+	if gatewayUser(r) != "" {
+		return true
+	}
+	if a.platform.EnforceAuthBoundary() && a.gatewayActive.Load() {
+		return false
 	}
 	return isLocalRequest(r)
 }

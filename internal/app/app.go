@@ -1,15 +1,20 @@
 package app
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"html/template"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // === 常量 ===
@@ -35,6 +40,17 @@ type Options struct {
 // 都收敛到这里，由 App 方法并发安全地访问。平台差异通过 Platform 接口注入。
 type App struct {
 	platform Platform
+
+	// mountPrefix 是飞牛门户对外路径前缀（如 /app/aellus），由启动脚本经
+	// FNNAS_GATEWAY_PREFIX 注入；空串表示无前缀（桌面端）。
+	// 用于把 /app/<appname>/... 归一化成内部路径，并据此决定页面 <base>。
+	mountPrefix string
+
+	// gatewayActive 表示飞牛统一网关的 Unix Socket 是否已成功监听。
+	// 飞牛构建下它为 true 时，删除 / 改保存目录【只认】网关注入的身份头，不再接受
+	// 「请求来自本机」——否则 NAS 上的任意本机进程，以及容器网桥地址（docker0 / vbr
+	// 等同样被 isLocalIP 当作本机），都能绕过飞牛账号体系直接拿到管理权。
+	gatewayActive atomic.Bool
 
 	absSaveDir string        // 保存目录的绝对路径，所有路径校验都以它为准
 	saveDirMu  sync.RWMutex  // 保护 absSaveDir（HTTP 各请求在独立 goroutine 中读取）
@@ -74,14 +90,57 @@ func (a *App) setSaveDir(d string) {
 	a.absSaveDir = d
 }
 
-// Serve 注册路由并启动 HTTP 服务（在独立 goroutine 中运行，不阻塞调用方）。
-// ln/port/ip 由 main 通过 listenWithFallback/getLANIP 取得。
+// Serve 启动 HTTP 服务（在独立 goroutine 中运行，不阻塞调用方）。
+//
+// 飞牛 fnOS 下同时开启两个入口，共用同一套路由：
+//  1. 裸 TCP 端口（局域网设备直连 IP:端口）：剥离客户端伪造的 X-Trim-* 头，
+//     只保留浏览、上传、下载（免登录直传的设计目的）；
+//  2. 飞牛统一网关 Unix Socket（应用中心 / 桌面门户内打开）：网关先校验飞牛登录态，
+//     再转发并注入可信头 X-Trim-Userid，删除 / 修改保存目录据此放行。
+//
+// 两个入口都会归一化飞牛门户的 /app/<appname> 路径前缀（见 withPrefix）：
+// 门户既可能经统一网关 Socket 访问，也可能以「端口 + 路径」方式访问，
+// 归一化后页面 <base> 与内部路由在两种方式下都正确。
+//
+// 非飞牛平台（桌面端）不注入 FNNAS_GATEWAY_SOCKET / PREFIX，仅开启裸端口。
+// ln/port 由 main 通过 ListenWithFallback / ListenStrict 取得。
 func (a *App) Serve(ln net.Listener, port int) {
+	// 门户路径前缀由启动脚本注入（如 /app/aellus）；未注入时为无前缀模式。
+	a.mountPrefix = strings.TrimSuffix(strings.TrimSpace(os.Getenv("FNNAS_GATEWAY_PREFIX")), "/")
+
+	// 裸端口：先剥离伪造的 X-Trim-*，再归一化前缀，最后进入路由。
+	raw := a.withLog(withSecurityHeaders(a.stripTrimHeaders(a.withPrefix(a.buildMux(port))), frameAncestorsAny))
+	go func() {
+		log.Fatal(newHTTPServer(raw).Serve(ln))
+	}()
+
+	// 飞牛统一网关：仅当启动脚本注入 Socket 路径时启用（见 fnos/cmd/main）。
+	if sock := strings.TrimSpace(os.Getenv("FNNAS_GATEWAY_SOCKET")); sock != "" {
+		go a.serveGateway(sock, port)
+	}
+}
+
+// newHTTPServer 构造带超时的 HTTP 服务。
+// 只设「读请求头」与「空闲连接」超时：ReadHeaderTimeout 足以挡住慢连接占位（slowloris），
+// 不设 ReadTimeout / WriteTimeout——上传下载大文件耗时可能很长，设了会掐断正常传输。
+func newHTTPServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
+// buildMux 构造全部路由（页面 + 静态 + API + /api/addr），裸端口与网关共用。
+// 页面 <base> 由 withPrefix 按请求路径写入上下文（见 pageBase / servePage）。
+func (a *App) buildMux(port int) *http.ServeMux {
 	mux := http.NewServeMux()
 	a.registerRoutes(mux)
-	// /api/addr 返回局域网访问地址（供首页地址栏展示）。
+	// /api/addr 返回局域网访问地址（供首页地址栏 / 二维码展示）。
 	// 每次请求实时算 IP：电脑 IP 变了（切网络 / 重连路由）也能拿到最新值，
 	// 不依赖启动时 GetLANIP 的快照。
+	// 注意：始终返回「裸端口直连」地址——门户内展示的二维码要给局域网设备扫，
+	// 必须指向 IP:端口（免登录上传），不能返回网关地址（网关要求飞牛登录态）。
 	mux.HandleFunc("/api/addr", func(w http.ResponseWriter, r *http.Request) {
 		curIP := GetLANIP()
 		clientIP := ""
@@ -100,9 +159,90 @@ func (a *App) Serve(ln net.Listener, port int) {
 			"platform": platform,
 		})
 	})
-	go func() {
-		log.Fatal(http.Serve(ln, a.withLog(withSecurityHeaders(mux))))
-	}()
+	return mux
+}
+
+// serveGateway 在飞牛统一网关的 Unix Socket 上提供与裸端口相同的服务。
+// socketPath 由启动脚本注入（${TRIM_APPDEST}/aellus.sock，与 app/ui/config 的
+// gatewaySocket 对应）。该入口的请求已经过网关登录态校验并带可信头 X-Trim-Userid，
+// 故不剥离 X-Trim-*；路径前缀归一化与页面 <base> 由 withPrefix 统一处理。
+func (a *App) serveGateway(socketPath string, port int) {
+	// 上次异常退出可能残留旧 Socket，先删除再绑定，否则 bind 直接失败。
+	_ = os.Remove(socketPath)
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		log.Printf("[gateway] Unix Socket 监听失败，门户内删除/设置将不可用: %v", err)
+		return
+	}
+	// Socket 位于应用 target 目录（普通用户无法进入该目录），放开文件权限不影响安全，
+	// 同时兼容飞牛网关以其它用户/用户组连接。
+	_ = os.Chmod(socketPath, 0666)
+	// 标记网关可用：此后删除 / 改保存目录只认网关注入的身份头（见 canManage）。
+	a.gatewayActive.Store(true)
+	log.Printf("[gateway] 已接入飞牛统一网关（Socket=%s Prefix=%s）", socketPath, a.mountPrefix)
+	log.Fatal(newHTTPServer(a.withLog(withSecurityHeaders(a.withPrefix(a.buildMux(port)), frameAncestorsSelf))).Serve(ln))
+}
+
+// ctxKey 请求上下文键类型（避免与其它包/中间件的键冲突）。
+type ctxKey int
+
+// pageBaseCtxKey 上下文键：当前请求的页面基准路径（供模板 <base> 注入）。
+const pageBaseCtxKey ctxKey = 0
+
+// withPrefix 统一归一化飞牛门户的 /app/<appname> 路径前缀。
+// 门户既可能经统一网关 Socket 访问，也可能以「端口 + 路径」方式访问
+// （http://NAS-IP:8000/app/aellus），这里对两种情形一致处理：
+//   - 路径正好等于前缀（无尾斜杠）：302 补上尾斜杠，否则页面内相对路径
+//     （static/... 、api/...）会解析到上一层目录，导致样式/脚本全部 404；
+//   - 路径带前缀：剥离前缀，使内部路由与裸端口完全一致；
+//   - 同时把前缀记为页面基准路径（<base>），供模板注入。
+//
+// 局域网直连（/、/browse）不带前缀 → 基准路径为 "/"，行为与改造前完全一致。
+func (a *App) withPrefix(next http.Handler) http.Handler {
+	prefix := a.mountPrefix
+	if prefix == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		base := "/"
+		p := r.URL.Path
+		// 大小写不敏感：飞牛可能按 manifest 的 appname 原样（如 /app/Aellus）路由，
+		// 而启动脚本注入的是 /app/aellus。
+		if strings.EqualFold(p, prefix) {
+			http.Redirect(w, r, p+"/", http.StatusFound)
+			return
+		}
+		if len(p) > len(prefix) && p[len(prefix)] == '/' && strings.EqualFold(p[:len(prefix)], prefix) {
+			base = p[:len(prefix)] + "/"
+			r.URL.Path = p[len(prefix):]
+			if len(r.URL.RawPath) > len(prefix) {
+				r.URL.RawPath = r.URL.RawPath[len(prefix):]
+			}
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), pageBaseCtxKey, base)))
+	})
+}
+
+// pageBase 取当前请求的页面基准路径（由 withPrefix 写入），无前缀时为 "/"。
+func pageBase(r *http.Request) string {
+	if v, ok := r.Context().Value(pageBaseCtxKey).(string); ok && v != "" {
+		return v
+	}
+	return "/"
+}
+
+// stripTrimHeaders 剥离客户端伪造的 X-Trim-* 系列头（仅用于裸 TCP 端口）。
+// 飞牛网关注入的可信身份头只会出现在经网关 Socket 转发的请求上；裸端口不经过网关，
+// 任何 X-Trim-* 都是客户端伪造，必须清除，避免局域网设备冒充「已登录门户」越权删除。
+func (a *App) stripTrimHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for k := range r.Header {
+			if strings.HasPrefix(strings.ToLower(k), "x-trim-") {
+				r.Header.Del(k)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // writeJSON 统一的 JSON 响应 helper。
@@ -113,10 +253,12 @@ func (a *App) writeJSON(w http.ResponseWriter, status int, v interface{}) {
 }
 
 // servePage 渲染一个静态 HTML 页面（home/upload/browse/callback）。
-// 这些 HTML 里没有任何模板变量（动态数据全靠前端 JS fetch），直接原样输出。
-func (a *App) servePage(w http.ResponseWriter, name string) {
+// 页面本身没有服务端数据（动态内容全靠前端 JS fetch），唯一模板变量是 Base——
+// 当前请求的页面基准路径（局域网直连 "/"，门户内 "/app/<appname>/"），写入 <base>，
+// 保证 static/... 、api/... 等相对路径在两种访问方式下都解析正确。
+func (a *App) servePage(w http.ResponseWriter, r *http.Request, name string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.tmpl.ExecuteTemplate(w, name, nil); err != nil {
+	if err := a.tmpl.ExecuteTemplate(w, name, map[string]string{"Base": pageBase(r)}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

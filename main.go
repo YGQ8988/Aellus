@@ -22,7 +22,7 @@ import (
 
 // === 版本 ===
 // 由构建脚本通过 -ldflags "-X main.Version=x.y.z" 注入。
-var Version = "1.0.0"
+var Version = "1.0.1"
 
 // === 启动语言 ===
 // Linux 终端字体/locale 差异大，中文易显示成黑方块（字体缺中文字形，程序无法替终端装字体），

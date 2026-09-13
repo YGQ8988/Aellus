@@ -3,17 +3,37 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Aellus</title>
-<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/static/css/common.css">
-<link rel="stylesheet" href="/static/css/upload.css">
-<link rel="stylesheet" href="/static/css/browse.css">
-<link rel="stylesheet" href="/static/css/components.css">
+<script>
+  // 页面基准路径：静态资源与接口都用相对路径（static/... 、api/...），解析依赖 <base>。
+  // 裸端口直连为 "/"；飞牛统一网关为 "/app/<appname>/"——由服务端按监听入口注入
+  // （网关转发可能已剥离前缀、地址栏可能无尾斜杠，前端无法从 location 推断）。
+  (function () {
+    var base = "{{.Base}}";
+    try {
+      var p = location.pathname || '/';
+      var pre = base;
+      while (pre.length > 1 && pre.charAt(pre.length - 1) === '/') pre = pre.slice(0, -1);
+      // 地址栏与注入前缀一致（可能仅大小写不同，如 /app/Aellus）时，沿用地址栏的真实写法。
+      if (pre && pre !== '/' && p.slice(0, pre.length).toLowerCase() === pre.toLowerCase()) {
+        base = p.slice(0, pre.length) + '/';
+      }
+    } catch (e) {}
+    var b = document.createElement('base');
+    b.href = base;
+    document.head.appendChild(b);
+  })();
+  </script>
+  <title>Aellus</title>
+<link rel="icon" href="static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="static/css/common.css">
+<link rel="stylesheet" href="static/css/upload.css">
+<link rel="stylesheet" href="static/css/browse.css">
+<link rel="stylesheet" href="static/css/components.css">
 </head>
 <body>
   <div class="container">
     <div class="upload-wrap">
-      <a class="nav-back" href="/">← 返回首页</a>
+      <a class="nav-back" href="./">← 返回首页</a>
 
       <div class="card">
         <label>设备名称（用于分目录）</label>
@@ -75,7 +95,7 @@
     </div>
   </div>
 
-  <script src="/static/js/ui.js"></script>
-  <script src="/static/js/upload.js"></script>
+  <script src="static/js/ui.js"></script>
+  <script src="static/js/upload.js"></script>
 </body>
 </html>

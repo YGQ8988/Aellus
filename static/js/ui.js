@@ -156,30 +156,14 @@
     }
   }
 
-  // 飞牛运行环境判定：加载飞牛官方 SDK（@trimjs/web-app），用其 isStandaloneWeb 属性
-  // 判断当前页面是否「独立浏览器」（true = 独立浏览器，false = 飞牛桌面 iframe 内嵌）。
-  // 该值只在浏览器端使用（不再通过请求头传服务端），服务端删除权限改由来源 IP 判定。
-  // 时序：isStandaloneWeb 需等 SDK ready()（initPromise）完成后才可靠，故先按同步的
-  // window.parent === window 兜底（与 SDK 底层实现一致），SDK ready 后再用官方值覆盖。
-  var trimStandalone = null; // null=SDK 未就绪；之后为 SDK isStandaloneWeb 的真实布尔值
-  function isStandaloneWeb() {
-    return trimStandalone === null ? (window.parent === window) : trimStandalone;
-  }
-  (function initTrimSDK() {
-    try {
-      import('/static/js/trim-web-app.js').then(function (mod) {
-        var sdk = new mod.TrimApp();
-        return sdk.ready().then(function () {
-          trimStandalone = !!sdk.isStandaloneWeb;
-        });
-      }).catch(function () {
-        // SDK 加载/初始化失败：保留同步兜底判断（window.parent === window）
-      });
-    } catch (e) {}
-  })();
+  // 说明：这里原本会预加载飞牛官方 SDK（static/js/trim-web-app.js）以读取其
+  // isStandaloneWeb 值，用于前端判断「当前是否为独立网页」。权限判定早已全部移到服务端
+  // （只认飞牛统一网关注入的身份头，或来自本机的请求，见 Go 端 canManage），该值现已
+  // 没有任何调用方，故整段删除：少加载一个第三方脚本，就少一份在应用同源里执行的外部代码。
+  // 请勿在此恢复「前端判定权限」——它可被伪造，服务端也不会采信。
 
-  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头；并上报 isStandaloneWeb（飞牛应用
-  // 权限判定用：false=内嵌飞牛门户 iframe 才有删除/设置权限，true=独立网页直连拒绝）。
+  // 全局 fetch 拦截：自动给所有请求加 Deviceid 头（设备名映射 / 访问日志用）与
+  // X-Aellus-Client 头（服务端据此拒绝跨站请求，见 Go 端 requireTrustedClient）。
   var origFetch = window.fetch;
   window.fetch = function (url, options) {
     options = options || {};
@@ -187,7 +171,7 @@
     var headers = options.headers;
     if (headers instanceof Headers) {
       if (id && !headers.has('Deviceid')) headers.set('Deviceid', id);
-      if (!headers.has('X-Aellus-Standalone')) headers.set('X-Aellus-Standalone', String(isStandaloneWeb()));
+      if (!headers.has('X-Aellus-Client')) headers.set('X-Aellus-Client', '1');
     } else {
       var h = {};
       if (headers && typeof headers === 'object') {
@@ -196,7 +180,7 @@
         }
       }
       if (id && !('Deviceid' in h)) h['Deviceid'] = id;
-      if (!('X-Aellus-Standalone' in h)) h['X-Aellus-Standalone'] = String(isStandaloneWeb());
+      if (!('X-Aellus-Client' in h)) h['X-Aellus-Client'] = '1';
       options.headers = h;
     }
     return origFetch.call(window, url, options);
@@ -205,7 +189,7 @@
   // 诊断日志：控制台输出本机 IP（当前访问设备）与服务端 IP（运行 Aellus 的设备），
   // 便于排查删除权限等「本机 / 飞牛环境」判定问题（打开浏览器开发者工具控制台可见）。
   try {
-    fetch('/api/addr').then(function(r){ return r.json(); }).then(function(d){
+    fetch('api/addr').then(function(r){ return r.json(); }).then(function(d){
       console.log('[Aellus] 本机 IP（当前访问设备）: ' + (d.clientIP || '未知'));
       console.log('[Aellus] 服务端 IP（运行 Aellus 的设备）: ' + (d.ip || '未知'));
       console.log('[Aellus] 服务端运行环境: ' + (d.platform || '未知'));
@@ -214,12 +198,11 @@
 
   // 暴露到全局：同时挂到 window.ui 命名空间与顶层全局，
   // 兼容以裸名（toast() / confirmDialog()）调用的业务代码。
-  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll, getDeviceID: getDeviceID, isStandaloneWeb: isStandaloneWeb };
+  window.ui = { toast: toast, confirmDialog: confirmDialog, escapeHtml: escapeHtml, lockScroll: lockScroll, unlockScroll: unlockScroll, getDeviceID: getDeviceID };
   window.toast = toast;
   window.confirmDialog = confirmDialog;
   window.escapeHtml = escapeHtml;
   window.lockScroll = lockScroll;
   window.unlockScroll = unlockScroll;
   window.getDeviceID = getDeviceID;
-  window.isStandaloneWeb = isStandaloneWeb;
 })();

@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,8 +26,8 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"saveDirDisplay": saveDirDisplay,
 		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
-		"isLocal":        a.canManage(r),                      // 是否有删除/修改保存目录权限（飞牛应用按 isStandaloneWeb=false、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
-		"deviceName":     a.deviceNameOf(deviceID(r)),        // 当前设备 ID 对应的上次设备名（供上传页自动填充）
+		"isLocal":        a.canManage(r),                   // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
+		"deviceName":     a.deviceNameOf(deviceID(r)),      // 当前设备 ID 对应的上次设备名（供上传页自动填充）
 	})
 }
 
@@ -34,16 +35,35 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 // 优先通过飞牛官方后端 API（trim.file.getSharedAccessibleFolders，Unix socket + TRIM_API_TOKEN）
 // 查询管理员在应用设置中授权的目录；非飞牛环境回退到环境变量。
 func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
+	// 该接口只服务「文件保存路径」设置面板（仅管理者可见），故要求管理权限：
+	// 局域网设备即使直接调接口也只能拿到 403，避免暴露 NAS 的授权目录结构。
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"error": "无权限"})
+		return
+	}
 	paths := authorizedSavePaths()
 	labels := map[string]string{}
 	// 飞牛环境：把授权目录内部路径转成语义化展示路径，供设置页面下拉展示。
 	if a.platform.EnforceAuthBoundary() {
 		labels = trimConvertPaths(paths)
 	}
+	// 出厂默认目录（应用私有数据目录）不在授权列表里，但服务端允许随时切回它，
+	// 故单独返回给前端，由前端始终并入下拉选项（见 home.html renderAuthPaths）。
+	def := bootDefaultSaveDir()
+	defLabel := def
+	if a.platform.EnforceAuthBoundary() && def != "" {
+		if m := trimConvertPaths([]string{def}); m[def] != "" {
+			defLabel = "默认目录 · " + m[def]
+		} else {
+			defLabel = "默认目录 · " + def
+		}
+	}
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"paths":      paths,
-		"pathLabels": labels,
-		"hasTrim":    a.platform.EnforceAuthBoundary(),
+		"paths":        paths,
+		"pathLabels":   labels,
+		"hasTrim":      a.platform.EnforceAuthBoundary(),
+		"defaultPath":  def,
+		"defaultLabel": defLabel,
 	})
 }
 
@@ -52,6 +72,11 @@ func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
 // 失败回退环境变量）。应用对授权目录本身拥有访问权限，此处仅做普通目录列举；
 // 只能在这些授权根内部导航，无法跳出授权边界（越权返回 403）。
 func (a *App) handleListDir(w http.ResponseWriter, r *http.Request) {
+	// 同 handleAuthPaths：只给管理者用（列授权目录内的子目录），局域网设备 403。
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"error": "无权限"})
+		return
+	}
 	roots := authorizedSavePaths()
 	if len(roots) == 0 {
 		a.writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -146,8 +171,8 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
 		return
 	}
-	// 修改保存路径权限与删除一致（canManage）：
-	// 飞牛应用在门户 iframe 内（isStandaloneWeb=false）可改；独立网页直连、非飞牛环境非本机均不可改。
+	// 修改保存路径权限与删除一致（见 canManage）：
+	// 飞牛端需经门户（网关注入身份头）修改，桌面端需来自本机；局域网设备直连一律拒绝。
 	if !a.canManage(r) {
 		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "无权限修改保存路径"})
 		return
@@ -155,7 +180,8 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Dir string `json:"dir"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// 限长读取：与其它 POST 接口一致，避免超大请求体撑内存。
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 		a.writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "请求格式错误"})
 		return
 	}
@@ -180,20 +206,20 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// fpk 端：用户主动选择了新目录时，强制保存目录落在飞牛授权目录树内（含授权根及其子树）。
-	// 恢复默认（restoreDefault）不校验——飞牛注入的默认目录即系统分配的合法落盘位置。
+	// fpk 端：用户主动选择了新目录时，强制保存目录落在「允许的根」内
+	// （飞牛授权目录 + 出厂默认目录，见 saveDirAllowedRoots）。
 	if a.platform.EnforceAuthBoundary() && !restoreDefault {
-		roots := authorizedSavePaths()
-		if len(roots) == 0 {
+		if len(authorizedSavePaths()) == 0 && bootDefaultSaveDir() == "" {
 			a.writeJSON(w, http.StatusForbidden, map[string]interface{}{
 				"ok":    false,
 				"error": "当前未获取到飞牛授权目录，无法设置保存目录",
 			})
 			return
 		}
-		// 先用字符串前缀快速拒绝明显越界，再用 realInside 做 symlink 增强校验
-		// （dir 可能尚不存在，realInside 会解析其父目录再比对，防软链逃逸）。
-		if !withinAuthRoots(dir, roots) && !realInside(roots[0], dir) {
+		// withinAuthRoots 会逐根比对（字符串前缀 + symlink 真实路径增强）：
+		// dir 可能尚不存在，realInside 会解析其存在的最深父目录再比对，防软链逃逸。
+		// 注意不要在这里额外单判 roots[0]——授权多个目录时那样会误拒其它授权根下的目录。
+		if !withinAuthRoots(dir, saveDirAllowedRoots()) {
 			a.writeJSON(w, http.StatusForbidden, map[string]interface{}{
 				"ok":    false,
 				"error": "保存目录必须位于飞牛已授权目录内（当前不在授权范围）",
@@ -206,10 +232,10 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "无法创建目录：" + err.Error()})
 		return
 	}
-	// MkdirAll 后再次确认真实落点仍在授权树内（防「待建目录经软链指向上级」的 TOCTOU 变种）。
+	// MkdirAll 后再次确认真实落点仍在允许的根内（防「待建目录经软链指向上级」的 TOCTOU 变种）。
+	// 同样逐根比对，避免只判 roots[0] 造成的误拒。
 	if a.platform.EnforceAuthBoundary() && !restoreDefault {
-		roots := authorizedSavePaths()
-		if len(roots) > 0 && !realInside(roots[0], dir) {
+		if roots := saveDirAllowedRoots(); len(roots) > 0 && !withinAuthRoots(dir, roots) {
 			a.writeJSON(w, http.StatusForbidden, map[string]interface{}{
 				"ok":    false,
 				"error": "保存目录必须位于飞牛已授权目录内（当前不在授权范围）",

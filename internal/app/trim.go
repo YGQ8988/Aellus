@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -73,14 +74,29 @@ func withinAuthRoots(p string, roots []string) bool {
 }
 
 // IsPersistedSaveDirValid 判断持久化的保存目录在飞牛授权边界下是否仍然有效。
-// 飞牛端要求路径仍落在授权目录树内（管理员可能在应用设置里移除授权，导致已持久化路径失效）；
-// 取不到任何授权目录时视为无效。桌面端无授权边界，调用方不应在非飞牛环境调用此函数。
+// 飞牛端要求路径仍落在「允许的根」内（授权目录 + 出厂默认目录；管理员可能在应用设置里
+// 移除授权，导致已持久化路径失效）；取不到任何根时视为无效。
+// 桌面端无授权边界，调用方不应在非飞牛环境调用此函数。
 func IsPersistedSaveDirValid(dir string) bool {
-	roots := authorizedSavePaths()
+	roots := saveDirAllowedRoots()
 	if len(roots) == 0 {
 		return false
 	}
 	return withinAuthRoots(dir, roots)
+}
+
+// saveDirAllowedRoots 返回「允许作为保存目录的根」= 飞牛授权目录 + 飞牛注入的出厂默认目录。
+//
+// 默认目录位于应用私有数据目录（界面展示为「存储空间N/应用文件/{appname}/drops」），
+// 通常不会出现在飞牛「授权目录」列表里，但它是启动脚本（cmd/main）分配的合法落盘位置、
+// 也是应用的出厂默认值，因此必须与授权目录并列允许——否则用户改成其它目录后，
+// 再手动选回默认目录会被误报「保存目录必须位于飞牛已授权目录内」。
+func saveDirAllowedRoots() []string {
+	roots := authorizedSavePaths()
+	if d := bootDefaultSaveDir(); d != "" {
+		roots = append(roots, d)
+	}
+	return roots
 }
 
 // trimQuerySharedFolders 调用飞牛官方后端 API 查询共享授权目录（trim.file.getSharedAccessibleFolders，
@@ -203,7 +219,9 @@ func trimBackendAPI(req string, data interface{}) (json.RawMessage, error) {
 		Msg  string          `json:"msg"`
 		Data json.RawMessage `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	// 限长读取：该响应来自本机飞牛的 Unix Socket 服务，正常很小；加个上限避免
+	// 对端异常/被攻破时用超大响应占内存。
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
 		return nil, err
 	}
 	if out.Code != 0 {

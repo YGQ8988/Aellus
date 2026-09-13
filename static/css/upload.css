@@ -68,18 +68,14 @@
   .up-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; }
 }
 
-/* 语义按钮色：拍摄(中性) / 录像(危险) / 取消(次级) */
-.btn-cam { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
-@media (hover: hover) and (pointer: fine) {
-  .btn-cam:hover { background: hsl(var(--secondary) / 0.8); }
-}
+/* 语义按钮色：录像(危险色) 单独一条；拍摄 / 取消同为次级中性色，合并为一条 */
 .btn-rec { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
 @media (hover: hover) and (pointer: fine) {
   .btn-rec:hover { background: hsl(var(--destructive) / 0.9); }
 }
-.btn-cancel { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+.btn-cam, .btn-cancel { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
 @media (hover: hover) and (pointer: fine) {
-  .btn-cancel:hover { background: hsl(var(--secondary) / 0.8); }
+  .btn-cam:hover, .btn-cancel:hover { background: hsl(var(--secondary) / 0.8); }
 }
 
 input[type=file] { display: none; }

@@ -11,6 +11,9 @@ aellus-drops/
 
 # macOS
 .DS_Store
+# AppleDouble 资源分叉文件：在 exFAT / 网络卷上编辑文件时自动生成，
+# 会被 //go:embed 的 `templates/*`、`static/*` 通配符误收进二进制，必须忽略。
+._*
 
 # IDE
 .idea/

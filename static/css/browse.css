@@ -98,17 +98,14 @@
 .file-item .dl-btn, .file-item .del-btn, .file-item .pv-btn {
   flex: 1; text-align: center; padding: 7px 16px; border-radius: calc(var(--radius) - 4px); font-size: 13px; text-decoration: none; font-weight: 500; cursor: pointer; border: 1px solid hsl(var(--border)); background: transparent; transition: background-color .15s, color .15s, border-color .15s;
 }
-.file-item .dl-btn { color: hsl(var(--primary)); }
+/* 下载 / 预览：同为「主色描边 → hover 填充」，合并为一条；删除为危险色，单独一条 */
+.file-item .dl-btn, .file-item .pv-btn { color: hsl(var(--primary)); }
 @media (hover: hover) and (pointer: fine) {
-  .file-item .dl-btn:hover { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+  .file-item .dl-btn:hover, .file-item .pv-btn:hover { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
 }
 .file-item .del-btn { color: hsl(var(--destructive)); }
 @media (hover: hover) and (pointer: fine) {
   .file-item .del-btn:hover { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); border-color: hsl(var(--destructive)); }
-}
-.file-item .pv-btn { color: hsl(var(--primary)); }
-@media (hover: hover) and (pointer: fine) {
-  .file-item .pv-btn:hover { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
 }
 .file-item .del-btn.loading { pointer-events: none; opacity: .6; }
 
@@ -183,9 +180,12 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 .btn-batch.loading, .dl-btn.loading { pointer-events: none; opacity: .75; }
 
+/* 桌面端多列铺排：目录与文件均以 3 列为目标（1100px 窗口 → 内容 1036px → 3 列 ≈335px/张）。
+   下限取 280 / 320 是为了在 1120px 容器上限内稳定成 3 列（340 会卡在 2~3 列临界）。
+   窗口变窄时列数自动减少（auto-fill 特性）。 */
 @media (min-width: 640px) {
   .dirs-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-  .files-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .files-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 }
 @media (min-width: 768px) {
   .breadcrumb { font-size: 15px; }
@@ -193,8 +193,7 @@
 /* 手机端（<768px）：打开/下载实色填充白字；删除 ghost 浅底红字；按下仅轻微变暗，不出现半透明色块叠加 */
 @media (max-width: 767px) {
   .file-item .dl-btn, .file-item .del-btn, .file-item .pv-btn { border-color: transparent; }
-  .file-item .dl-btn { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+  .file-item .dl-btn, .file-item .pv-btn { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
   .file-item .del-btn { background: hsl(var(--destructive)/.1); color: hsl(var(--destructive)); }
-  .file-item .pv-btn { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
   .file-item .dl-btn:active, .file-item .del-btn:active, .file-item .pv-btn:active { opacity: .8; }
 }

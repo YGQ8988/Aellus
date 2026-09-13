@@ -43,7 +43,16 @@ start_process() {
     log_msg "BIN = ${BIN}"
     log_msg "SHARE_DIR = ${SHARE_DIR}"
     log_msg "PORT = ${PORT}"
-    # main.go 不解析命令行参数：保存目录经 AELLUS_SAVE_DIR 注入，端口经 AELLUS_PORT 注入
+    # main.go 不解析命令行参数：保存目录经 AELLUS_SAVE_DIR 注入，端口经 AELLUS_PORT 注入。
+    # 飞牛统一网关：把网关 Socket 路径与前缀注入应用，应用据此额外监听网关 Unix Socket，
+    # 并在删除/设置接口强制校验网关注入的可信头 X-Trim-Userid（裸端口请求无此头，无法越权）。
+    # 注意：Socket 文件名（aellus.sock）须与 app/ui/config 的 gatewaySocket 一致，
+    #      前缀须与 gatewayPrefix 一致，否则网关找不到 Socket 或路由 404。
+    GATEWAY_SOCKET="${TRIM_APPDEST}/aellus.sock"
+    rm -f "${GATEWAY_SOCKET}"   # 清理上次异常退出残留的 Socket，避免 bind 失败
+    # gatewayPrefix 必须与 appname（Aellus，含大小写）一致，飞牛才注册网关路由；
+    # 应用侧对前缀大小写不敏感，两种写法都能正确剥离。
+    FNNAS_GATEWAY_SOCKET="${GATEWAY_SOCKET}" FNNAS_GATEWAY_PREFIX="/app/Aellus" \
     AELLUS_SAVE_DIR="${SHARE_DIR}" AELLUS_PORT="${PORT}" AELLUS_STRICT_PORT=1 "${BIN}" >> ${LOG_FILE} 2>&1 &
     printf "%s" "$!" > ${PID_FILE}
     return 0
@@ -81,6 +90,9 @@ stop_process() {
             log_msg "process killed... "
         fi
     fi
+
+    # 清理网关 Socket（下次启动会重建）
+    rm -f "${TRIM_APPDEST}/aellus.sock"
 
     return 0
 }

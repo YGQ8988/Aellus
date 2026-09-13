@@ -9,7 +9,7 @@ function restoreDeviceName() {
     if (saved) { $('device').value = saved; return; }
   } catch (e) {}
   // localStorage 没有：按设备 ID 从服务端取回上次的设备名（换浏览器/清数据也能恢复）
-  fetch('/api/settings').then(function(r){ return r.json(); }).then(function(d){
+  fetch('api/settings').then(function(r){ return r.json(); }).then(function(d){
     if (d && d.deviceName) {
       $('device').value = d.deviceName;
       try { localStorage.setItem(DEVICE_NAME_KEY, d.deviceName); } catch (e) {}
@@ -434,7 +434,10 @@ function upload(files, inputEl) {
     const ad = document.createElement('div'); ad.className = 'alert-desc'; ad.textContent = '上传失败，请检查网络连接后重试。';
     al.appendChild(at); al.appendChild(ad); box.appendChild(al);
   };
-  xhr.open('POST', '/upload');
+  xhr.open('POST', 'upload');
+  // 状态变更接口要求的客户端标识头：跨站请求无法携带（浏览器会先发预检，本服务不返回
+  // CORS 许可 → 预检失败 → 请求发不出去），服务端据此拒绝跨站上传（防 CSRF）。
+  xhr.setRequestHeader('X-Aellus-Client', '1');
   var deviceID = (typeof getDeviceID === 'function') ? getDeviceID() : '';
   if (deviceID) xhr.setRequestHeader('Deviceid', deviceID);
   xhr.send(fd);

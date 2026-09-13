@@ -2,14 +2,14 @@
 # Aellus 全平台二进制构建脚本
 # 在 macOS 上运行可构建全部 8 个目标；在 Linux 上运行仅构建 Linux + Windows
 #   （macOS 需 cgo/Cocoa，只能在 Mac 本机构建）
-# 产物输出到 dist/，命名：aellus-<os>-<arch>[.exe]
+# 产物输出到 dist/，命名：Aellus-<version>-<os>-<arch>[.exe]（版本号紧跟产品名）
 #
-# 用法：./build-all.sh [version]   （默认 1.0.0）
+# 用法：./build-all.sh [version]   （默认 1.0.1）
 set -e
 cd "$(dirname "$0")"
 mkdir -p dist
 
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.0.1}"
 LDFLAGS_BASE="-s -w -X main.Version=${VERSION}"
 
 # arch_out：产物命名用 x86_64（Unix 惯例）替代 goarch 的 amd64，其余保持。
@@ -25,7 +25,9 @@ build() {
   local goos=$1 goarch=$2 extra=$3
   local ext=""
   [ "$goos" = "windows" ] && ext=".exe"
-  local out="dist/aellus-${goos}-$(arch_out "$goarch")${ext}"
+  # 命名带版本号，版本号紧跟产品名（与 build-fnos.sh 的 Aellus-<version>-*.fpk 风格一致）：
+  # Aellus-<version>-<os>-<arch>[.exe]，如 Aellus-1.0.1-darwin-arm64
+  local out="dist/Aellus-${VERSION}-${goos}-$(arch_out "$goarch")${ext}"
   local cgo=0
   [ "$goos" = "darwin" ] && cgo=1
   # darwin：cgo 走 Cocoa/WebKit/UserNotifications，需在 Mac 本机编译
@@ -107,4 +109,4 @@ build linux 386
 echo ""
 echo "================================"
 echo "完成，产物在 dist/："
-ls -lh dist/aellus-* 2>/dev/null | awk '{printf "  %-8s %s\n", $5, $NF}'
+ls -lh dist/Aellus-${VERSION}-darwin-* dist/Aellus-${VERSION}-linux-* dist/Aellus-${VERSION}-windows-* 2>/dev/null | awk '{printf "  %-8s %s\n", $5, $NF}'
