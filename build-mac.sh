@@ -56,7 +56,8 @@ build_app() {
   local label="$(arch_label "$goarch")"
   local host_label="$(arch_label "$HOST_ARCH")"
 
-  # 命名：本机架构无后缀；非本机架构追加 -<label>（如 Aellus-arm64 / Aellus-x86_64）
+  # 命名：本机架构无后缀；非本机架构追加 -<label>（如 Aellus-arm64 / Aellus-x86_64）。
+  # 版本号不进文件名（由 Info.plist 的 CFBundleVersion 与二进制 Version 体现）。
   local app_name="Aellus"
   if [ "$label" != "$host_label" ]; then
     app_name="Aellus-${label}"

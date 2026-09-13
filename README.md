@@ -50,20 +50,20 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 ### 1. 运行
 
-**Windows：** 双击 `aellus.exe` 即可。程序会自动打开默认浏览器并跳转到访问地址，同时在**系统托盘**显示图标——右键菜单可「打开浏览器」或「退出」。
+**Windows：** 双击 `dist/Aellus-<version>-windows-x86_64.exe` 即可（版本号以实际为准）。程序会自动打开默认浏览器并跳转到访问地址，同时在**系统托盘**显示图标——右键菜单可「打开浏览器」或「退出」。
 
 **macOS：**
 ```bash
-chmod +x aellus-darwin-arm64    # Apple Silicon（M1/M2/M3）
-# 或 chmod +x aellus-darwin-x86_64  # Intel
-./aellus-darwin-arm64
+chmod +x Aellus-1.0.1-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
+# 或 chmod +x Aellus-1.0.1-darwin-x86_64  # Intel
+./Aellus-1.0.1-darwin-arm64
 ```
 或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
 
 **Linux：**
 ```bash
-chmod +x aellus-linux-x86_64
-./aellus-linux-x86_64
+chmod +x Aellus-1.0.1-linux-x86_64
+./Aellus-1.0.1-linux-x86_64
 ```
 
 启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
@@ -97,8 +97,8 @@ Aellus 已启动 (Go 单文件版)
 
 ```bash
 bash build-mac.sh     # 打包 dist/Aellus.app（本机架构）+ dist/Aellus-{arm64,x86_64}.app（非本机架构）
-bash build-all.sh     # 打包 dist/aellus-{os}-{arch} 共 8 个裸二进制
-bash build-fnos.sh    # 打包 dist/Aellus-*.fpk
+bash build-all.sh     # 打包 dist/Aellus-<version>-{os}-{arch} 共 8 个裸二进制（版本号紧跟产品名）
+bash build-fnos.sh    # 打包 dist/Aellus-<version>-*.fpk（x86_64 / arm64 分架构）
 ```
 
 > `build-all.sh` 产物直接输出到 `dist/`；`build-mac.sh` 与 `build-fnos.sh` 共用 `.build/` 中间目录，**不能并行执行**（`build-fnos.sh` 结束时会清理 `.build/`），需串行运行。
