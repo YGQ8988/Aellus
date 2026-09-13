@@ -34,6 +34,28 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 ---
 
+## 📸 界面预览
+
+### 飞牛（fnOS）
+
+| 首页 | 访问二维码 | 上传 | 浏览 | 设置 |
+|------|-----------|------|------|------|
+| <img src="screenshots/飞牛_首页.png" width="200" alt="飞牛 首页"> | <img src="screenshots/飞牛_访问二维码.png" width="200" alt="飞牛 访问二维码"> | <img src="screenshots/飞牛_上传.png" width="200" alt="飞牛 上传"> | <img src="screenshots/飞牛_浏览.png" width="200" alt="飞牛 浏览"> | <img src="screenshots/飞牛_设置.png" width="200" alt="飞牛 设置"> |
+
+### Android
+
+| 首页 | 上传 | 浏览 | 关于 |
+|------|------|------|------|
+| <img src="screenshots/Android_首页.jpg" width="200" alt="Android 首页"> | <img src="screenshots/Android_上传.jpg" width="200" alt="Android 上传"> | <img src="screenshots/Android_浏览.jpg" width="200" alt="Android 浏览"> | <img src="screenshots/Android_关于.jpg" width="200" alt="Android 关于"> |
+
+### iOS
+
+| 首页 | 上传 | 浏览 | 关于 |
+|------|------|------|------|
+| <img src="screenshots/IOS_首页.png" width="200" alt="iOS 首页"> | <img src="screenshots/IOS_上传.png" width="200" alt="iOS 上传"> | <img src="screenshots/IOS_浏览.png" width="200" alt="iOS 浏览"> | <img src="screenshots/IOS_关于.png" width="200" alt="iOS 关于"> |
+
+---
+
 ## 🖥 环境依赖
 
 | 项 | 要求 |
