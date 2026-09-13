@@ -1,9 +1,9 @@
 #!/bin/bash
 # Aellus macOS 构建脚本（必须在 Mac 上运行）
-# 拆分打包：arm64 与 amd64 各自独立生成 .app，不再合并 universal。
-# 命名规则：
-#   - 构建架构 == 运行脚本电脑的架构 → dist/Aellus.app
-#   - 否则 → dist/Aellus-<arch>.app（arch 为 arm64 / x86_64）
+# 分架构打包：arm64 与 amd64 各自独立构建 .app 并压缩成 zip。
+# 产物命名（架构体现在压缩包名，.app 统一叫 Aellus.app）：
+#   - dist/Aellus-<version>-mac-arm64.zip   （Apple Silicon）
+#   - dist/Aellus-<version>-mac-x86_64.zip  （Intel）
 # 前置：1) 安装 Go   2) 安装 Xcode 命令行工具: xcode-select --install
 # 因为 systray 在 macOS 走 cgo(Cocoa)，无法从 Windows 交叉编译，必须在 Mac 本机编译。
 # 用法：./build-mac.sh [version]（不传则读 fnos/manifest 的 version，保证与 fpk / Windows 包一致）
@@ -50,22 +50,16 @@ arch_label() {
   esac
 }
 
-# build_app <goarch>：编译、打包、签名单个架构的 .app。
+# build_app <goarch>：编译、打包、签名并压缩单个架构的 .app。
+# .app 统一命名 dist/Aellus.app（不区分架构）；架构体现在 zip 文件名。
 build_app() {
   local goarch="$1"
   local label="$(arch_label "$goarch")"
-  local host_label="$(arch_label "$HOST_ARCH")"
-
-  # 命名：本机架构无后缀；非本机架构追加 -<label>（如 Aellus-arm64 / Aellus-x86_64）。
-  # 版本号不进文件名（由 Info.plist 的 CFBundleVersion 与二进制 Version 体现）。
-  local app_name="Aellus"
-  if [ "$label" != "$host_label" ]; then
-    app_name="Aellus-${label}"
-  fi
-  local app_dir="dist/${app_name}.app"
+  local app_dir="dist/Aellus.app"
+  local zip_name="dist/Aellus-${VERSION}-mac-${label}.zip"
 
   echo ""
-  echo ">> 编译 ${goarch}（本机 ${HOST_ARCH} → ${app_name}.app）"
+  echo ">> 编译 ${goarch}（本机 ${HOST_ARCH} → ${zip_name}）"
   GOOS=darwin GOARCH="${goarch}" CGO_ENABLED=1 \
     go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o ".build/aellus-${goarch}" .
 
@@ -126,20 +120,31 @@ PLIST
 
   # --force 覆盖、--deep 递归签名内部组件、--sign - 为 ad-hoc、--options runtime 开启强化运行时
   codesign --force --deep --sign - --options runtime "${app_dir}"
-  echo "    ${app_name}.app 已生成并签名"
+  echo "    ${app_dir} 已生成并签名"
+
+  # 压缩成 zip：用 ditto 保留扩展属性 / 符号链接（macOS 官方推荐的 .app 打包方式），
+  # --keepParent 让 zip 内顶层就是 Aellus.app，解压即得可双击应用。
+  rm -f "${zip_name}"
+  ditto -c -k --sequesterRsrc --keepParent "${app_dir}" "${zip_name}"
+  echo "    ${zip_name} 已生成"
+
+  # 压缩后删除 .app（完整应用已在 zip 内），dist/ 只保留 zip，架构由文件名区分
+  rm -rf "${app_dir}"
 }
 
 build_app arm64
 build_app amd64
 
-# 清理中间产物（单架构二进制已被打进各自 .app，留着无用）
+# 清理中间产物（单架构二进制已打进各自 .app 并压缩，留着无用）
 rm -f .build/aellus-arm64 .build/aellus-amd64
 echo "    已清理 .build/ 中间产物"
 
 echo ""
 echo "完成，产物在 dist/："
-ls -d dist/*.app
+ls -lh dist/*.zip 2>/dev/null | awk '{printf "  %-8s %s\n", $5, $NF}'
 echo ""
+echo "按架构解压对应 zip 后双击 Aellus.app 即可（顶部菜单栏出现 Aellus 图标，点开有『打开浏览器 / 退出』）。"
 echo "首次运行请先移除 quarantine 再双击（本机生成的 app 通常已无 quarantine，保险起见执行一次）："
-echo "  xattr -dr com.apple.quarantine dist/Aellus.app"
-echo "双击对应架构的 .app 即可（顶部菜单栏出现 Aellus 图标，点开有『打开浏览器 / 退出』）。"
+echo "  unzip dist/Aellus-${VERSION}-mac-arm64.zip   # Apple Silicon"
+echo "  unzip dist/Aellus-${VERSION}-mac-x86_64.zip  # Intel"
+echo "  xattr -dr com.apple.quarantine Aellus.app"

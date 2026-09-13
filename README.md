@@ -96,7 +96,7 @@ Aellus 已启动 (Go 单文件版)
 | 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | x86 + arm，纯后台服务、无托盘 |
 
 ```bash
-bash build-mac.sh     # 打包 dist/Aellus.app（本机架构）+ dist/Aellus-{arm64,x86_64}.app（非本机架构）
+bash build-mac.sh     # 打包 dist/Aellus-<version>-mac-{arm64,x86_64}.zip（内含 Aellus.app，架构由压缩包名区分）
 bash build-all.sh     # 打包 dist/Aellus-<version>-{os}-{arch} 共 8 个裸二进制（版本号紧跟产品名）
 bash build-fnos.sh    # 打包 dist/Aellus-<version>-*.fpk（x86_64 / arm64 分架构）
 ```
