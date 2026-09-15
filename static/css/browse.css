@@ -81,9 +81,9 @@
 .file-item .thumb-other svg { width: 36px; height: 36px; color: hsl(var(--muted-foreground)); }
 /* 文件夹项：可点击进入，无下载/删除 */
 .file-item .thumb-folder svg { width: 40px; height: 40px; color: hsl(var(--muted-foreground)); }
-.file-item .fname { word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.file-item .fname { word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 /* 文件夹卡片：文件名与「文件夹」badge 同行、垂直居中对齐 */
-.file-item .fname-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; -webkit-line-clamp: initial; }
+.file-item .fname-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; -webkit-line-clamp: initial; line-clamp: initial; }
 .file-item .fname-row .ftext { word-break: break-all; line-height: 1.4; }
 /* 图片 + 文件名/大小/日期 组合块 */
 .file-item .file-main { grid-column: 2; grid-row: 1; display: flex; gap: 12px; align-items: flex-start; min-width: 0; width: fit-content; max-width: 100%; }
