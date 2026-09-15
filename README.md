@@ -161,6 +161,8 @@ aellus/
 │   ├── logx.go                   # 日志写入（含轮转与注入清洗）
 │   ├── fileout.go                # 文件输出统一出口（下载 / 缩略图的类型白名单与附件判定）
 │   ├── types.go                  # 数据结构定义
+│   ├── paging.go                 # 分页计算（总页数/偏移/页码纠正）
+│   ├── paging_test.go            # 分页单元测试
 │   └── security_test.go          # 安全回归测试（`go test ./...` 即可运行）
 ├── internal/platform/            # 平台层（build-tag 选择编译；实现 Platform 接口）
 │   ├── platform_impl.go          # 桌面端实现（!fpk；托盘/通知/单实例/文件夹选择）
