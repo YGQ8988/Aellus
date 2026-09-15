@@ -28,6 +28,10 @@ type DirInfo struct {
 type DirsResp struct {
 	Dirs      []DirInfo `json:"dirs"`
 	CanDelete bool      `json:"canDelete"` // 当前请求是否可删除（本机访问），前端据此显隐批量删除按钮
+	// 分页字段：size=0 表示未分页（返回全量，兼容旧调用）
+	Total int `json:"total"` // 分页前的完整数量
+	Page  int `json:"page"`  // 当前页（从 1 开始）
+	Size  int `json:"size"`  // 每页大小
 }
 
 // —— 文件列表返回 ——
@@ -44,6 +48,10 @@ type FilesResp struct {
 	Files     []FileInfo `json:"files"`
 	CanDelete bool       `json:"canDelete"`        // 当前请求是否可删除（本机访问），前端据此显隐批量删除按钮
 	Error     string     `json:"error,omitempty"` // 出错时填充，前端 browse.js 会读这个字段
+	// 分页字段：size=0 表示未分页（返回全量，兼容旧调用）
+	Total int `json:"total"` // 分页前的完整数量
+	Page  int `json:"page"`  // 当前页（从 1 开始）
+	Size  int `json:"size"`  // 每页大小
 }
 
 // —— 批量下载请求体 ——

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"image"
@@ -16,9 +17,8 @@ import (
 	"testing"
 )
 
-// 本文件是安全回归测试：把「曾经出现过 / 差点出现」的问题固化成断言，
-// 以后任何改动把这些行为改回去，`go test ./...` 会当场红灯，
-// 而不是依赖某次人工通读代码去发现。
+// 本文件是安全回归测试：把关键安全行为固化成断言，
+// 以后任何改动把这些行为改回去，`go test ./...` 会当场红灯。
 //
 // 覆盖：
 //  1. 文件输出（下载 / 缩略图）不得把上传的 HTML/SVG 等可执行类型内联返回；
@@ -29,7 +29,9 @@ import (
 //  6. 授权目录相关接口不对局域网开放；
 //  7. 设备名映射的容量与长度上限；
 //  8. 缩略图只缩小、不放大（防「放大式」内存耗尽 DoS）；
-//  9. 上传表单文本字段限长（防内存耗尽）、日志值清洗（防日志注入）。
+//  9. 上传表单文本字段限长（防内存耗尽）、日志值清洗（防日志注入）；
+// 10. 批量下载不得把隐藏目录内容（含 .aellus-tmp 上传临时文件）打包进 ZIP；
+// 11. 批量下载的临时 ZIP 必须落在保存目录内，不得占用系统临时目录。
 
 // secTestPlatform 是 Platform 接口的最小实现，供本文件测试使用。
 type secTestPlatform struct {
@@ -437,5 +439,120 @@ func TestUploadTempDirInsideSaveDir(t *testing.T) {
 	a2 := &App{platform: secTestPlatform{dir: root2}, absSaveDir: root2}
 	if got := a2.uploadTempDir(); got != "" {
 		t.Errorf("临时目录为软链时应回退（返回空串），实际 %q", got)
+	}
+}
+
+// batchProbeWriter 在响应首次写出时执行回调（此刻临时 ZIP 已完整、正在被读取发送）。
+type batchProbeWriter struct {
+	*httptest.ResponseRecorder
+	probe func()
+	fired bool
+}
+
+func (p *batchProbeWriter) Write(b []byte) (int, error) {
+	if !p.fired {
+		p.fired = true
+		p.probe()
+	}
+	return p.ResponseRecorder.Write(b)
+}
+
+// TestBatchDownloadSkipsHiddenPaths 覆盖 B2：批量下载不得把隐藏目录里的内容打包进 ZIP。
+// 隐藏语义在列表 / 解析 / 打包各条路径必须一致；WalkDir 对隐藏目录要返回 SkipDir，
+// 否则 .aellus-tmp（上传临时文件）与其它隐藏目录内容会随 ZIP 泄露出去。
+func TestBatchDownloadSkipsHiddenPaths(t *testing.T) {
+	root := t.TempDir()
+	a := &App{platform: secTestPlatform{dir: root}, absSaveDir: root}
+	mux := a.buildMux(8000)
+
+	os.MkdirAll(filepath.Join(root, "dev"), 0755)
+	if err := os.WriteFile(filepath.Join(root, "dev", "ok.txt"), []byte("ok"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// 隐藏目录 + 其中的普通文件（列表接口看不到、resolveDir 也进不去）。
+	os.MkdirAll(filepath.Join(root, ".hidden"), 0755)
+	os.WriteFile(filepath.Join(root, ".hidden", "secret.txt"), []byte("secret"), 0644)
+	// 临时目录里的半成品文件（模拟另一台设备正在上传）。
+	os.MkdirAll(filepath.Join(root, uploadTempDirName), 0700)
+	os.WriteFile(filepath.Join(root, uploadTempDirName, "aellus-upload-xyz"), []byte("inflight"), 0600)
+	// 设备目录内的隐藏子目录。
+	os.MkdirAll(filepath.Join(root, "dev", ".thumbnails"), 0755)
+	os.WriteFile(filepath.Join(root, "dev", ".thumbnails", "meta.txt"), []byte("meta"), 0644)
+
+	req := httptest.NewRequest("POST", "/api/download-batch", strings.NewReader(`{"dir":"","files":[]}`))
+	req.Header.Set(clientHeaderName, "1")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("批量下载状态码 %d", w.Code)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
+	if err != nil {
+		t.Fatalf("解析返回 ZIP 失败: %v", err)
+	}
+	gotOK := false
+	for _, f := range zr.File {
+		norm := strings.ReplaceAll(f.Name, `\`, "/")
+		for _, seg := range strings.Split(norm, "/") {
+			if strings.HasPrefix(seg, ".") {
+				t.Errorf("隐藏路径段 %q 被打进 ZIP（条目 %s）：隐藏目录内容不得出现在批量下载中", seg, f.Name)
+			}
+		}
+		if norm == "dev/ok.txt" {
+			gotOK = true
+		}
+	}
+	if !gotOK {
+		t.Error("正常文件 dev/ok.txt 未被打包（隐藏过滤不应误伤正常文件）")
+	}
+}
+
+// TestBatchDownloadTempFileInsideSaveDir 覆盖 B1：批量下载的临时 ZIP 必须落在保存目录内的
+// 临时目录（同盘、空间算对盘），不得占用系统临时目录——NAS 上 /tmp 常是 tmpfs / 小根分区，
+// 打包大目录会把它写满（系统级故障）。同时确认响应结束后临时文件被清理。
+func TestBatchDownloadTempFileInsideSaveDir(t *testing.T) {
+	root := t.TempDir()
+	a := &App{platform: secTestPlatform{dir: root}, absSaveDir: root}
+	mux := a.buildMux(8000)
+	os.MkdirAll(filepath.Join(root, "dev"), 0755)
+	if err := os.WriteFile(filepath.Join(root, "dev", "ok.txt"), []byte("ok"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var inTempDir, inSystemTemp []string
+	probe := func() {
+		// 响应正在发送：临时 ZIP 已完整、尚未删除（defer 在本函数返回后才执行）。
+		if ents, err := os.ReadDir(filepath.Join(root, uploadTempDirName)); err == nil {
+			for _, e := range ents {
+				inTempDir = append(inTempDir, e.Name())
+			}
+		}
+		if ents, err := os.ReadDir(os.TempDir()); err == nil {
+			for _, e := range ents {
+				if strings.HasPrefix(e.Name(), "aellus-download-") {
+					inSystemTemp = append(inSystemTemp, e.Name())
+				}
+			}
+		}
+	}
+
+	req := httptest.NewRequest("POST", "/api/download-batch", strings.NewReader(`{"dir":"dev","files":[]}`))
+	req.Header.Set(clientHeaderName, "1")
+	w := &batchProbeWriter{ResponseRecorder: httptest.NewRecorder(), probe: probe}
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("批量下载状态码 %d", w.Code)
+	}
+	if len(inSystemTemp) != 0 {
+		t.Errorf("临时 ZIP 出现在系统临时目录 %s：%v（应落在保存目录内）", os.TempDir(), inSystemTemp)
+	}
+	if len(inTempDir) == 0 {
+		t.Errorf("响应期间未在 %s 下发现临时 ZIP（临时文件应落在保存目录内）", uploadTempDirName)
+	}
+	// 响应结束后必须清理干净，不留残留。
+	if ents, err := os.ReadDir(filepath.Join(root, uploadTempDirName)); err == nil {
+		for _, e := range ents {
+			t.Errorf("响应结束后临时文件未清理: %s", e.Name())
+		}
 	}
 }

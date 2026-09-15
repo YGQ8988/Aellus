@@ -1,28 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh" data-base="{{.Base}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<script>
-  // 页面基准路径：静态资源与接口都用相对路径（static/... 、api/...），解析依赖 <base>。
-  // 裸端口直连为 "/"；飞牛统一网关为 "/app/<appname>/"——由服务端按监听入口注入
-  // （网关转发可能已剥离前缀、地址栏可能无尾斜杠，前端无法从 location 推断）。
-  (function () {
-    var base = "{{.Base}}";
-    try {
-      var p = location.pathname || '/';
-      var pre = base;
-      while (pre.length > 1 && pre.charAt(pre.length - 1) === '/') pre = pre.slice(0, -1);
-      // 地址栏与注入前缀一致（可能仅大小写不同，如 /app/Aellus）时，沿用地址栏的真实写法。
-      if (pre && pre !== '/' && p.slice(0, pre.length).toLowerCase() === pre.toLowerCase()) {
-        base = p.slice(0, pre.length) + '/';
-      }
-    } catch (e) {}
-    var b = document.createElement('base');
-    b.href = base;
-    document.head.appendChild(b);
-  })();
-  </script>
+<script src="static/js/base.js"></script>
   <title>Aellus</title>
 <link rel="icon" href="static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="static/css/common.css">
@@ -30,21 +11,21 @@
 <link rel="stylesheet" href="static/css/components.css">
 </head>
 <body class="home">
-  <button class="settings-btn" id="settingsBtn" title="设置" onclick="openSettings()">
+  <button class="settings-btn" title="设置" onclick="openSettings()">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
-  <div class="settings-overlay" id="settingsOverlay">
-    <div class="settings-panel">
+  <div class="settings-overlay modal-overlay" id="settingsOverlay">
+    <div class="settings-panel modal-card">
       <div class="settings-head">
         <h2><span class="set-title-pc">设置</span></h2>
-        <button class="settings-close" onclick="closeSettings()" aria-label="关闭">✕</button>
+        <button class="settings-close modal-close" onclick="closeSettings()" aria-label="关闭">✕</button>
       </div>
       <div class="settings-body">
         <section class="settings-sec settings-sec--path">
           <h4>文件保存路径</h4>
           <p class="settings-tip" id="saveDirTip">接收到的文件将保存到该目录（修改后立即生效，重启后保留）。</p>
           <div class="dir-picker-row">
-            <div class="dir-picker" id="dirPicker">
+            <div class="dir-picker">
               <button type="button" class="dir-trigger" id="dirTrigger" aria-haspopup="listbox" aria-expanded="false" onclick="toggleDirPopup(event)">
                 <span class="dir-trigger-path" id="dirTriggerPath">加载中…</span>
                 <svg class="dir-trigger-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -53,15 +34,15 @@
               <input type="hidden" id="saveDirDisplay" value="" data-path="">
               <div class="dir-input-wrap" id="dirInputWrap" hidden>
                 <input type="text" id="dirInput" class="dir-input" placeholder="输入保存目录的绝对路径" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSaveDirInput();}">
-                <button type="button" class="btn-set-primary dir-save-btn" id="dirSaveBtn" onclick="saveSaveDirInput()">保存</button>
+                <button type="button" class="btn-primary dir-save-btn" onclick="saveSaveDirInput()">保存</button>
               </div>
             </div>
-            <button class="btn-set-text" id="resetDirBtn" onclick="resetSaveDir()">恢复默认</button>
+            <button class="btn-outline btn-set-text" id="resetDirBtn" onclick="resetSaveDir()">恢复默认</button>
           </div>
           <div class="settings-msg" id="saveDirMsg"></div>
         </section>
         <div class="separator"></div>
-        <section class="settings-sec settings-sec--reward">
+        <section class="settings-sec">
           <h4>打赏</h4>
           <p class="settings-reward-desc">如果我们开发的 Aellus 工具对您有所帮助的话，可以请我们喝一杯咖啡吗？</p>
           <p class="settings-reward-tip">这是完全自愿的个人赠与，不是购买软件，也不是购买服务。无论是否打赏，工具的功能和使用权限都不会有任何变化，也不会因此获得额外的技术支持或商用授权。</p>
@@ -85,9 +66,9 @@
     <img src="static/img/logo-icon.png" alt="" class="hero-logo" width="5.5rem" height="auto">
     <h1>Aellus</h1>
     <div class="subtitle">局域网文件互传工具，上传 / 读取 / 下载 <span class="grad">更安全</span></div>
-    <div class="lan-addr-bar" id="lanAddrBar">
-      <button class="lan-qr" id="lanQr" title="扫码访问" aria-label="扫码访问" onclick="openQR()">
-        <svg class="ico-qr" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h.01"/><path d="M12 21v.01"/><path d="M16 21v.01"/></svg>
+    <div class="lan-addr-bar">
+      <button class="lan-qr" title="扫码访问" aria-label="扫码访问" onclick="openQR()">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h.01"/><path d="M12 21v.01"/><path d="M16 21v.01"/></svg>
       </button>
       <span class="lan-url" id="lanUrl">获取中…</span>
       <button class="lan-copy" id="lanCopy" title="复制地址" aria-label="复制地址" onclick="copyLANAddr()">
@@ -96,12 +77,12 @@
       </button>
     </div>
     <div class="home-grid">
-      <a class="entry upload" href="upload">
+      <a class="entry" href="upload">
         <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         <div class="title">上传文件</div>
         <div class="desc">截图 / 录屏 / 拍照，发送到电脑</div>
       </a>
-      <a class="entry browse" href="browse">
+      <a class="entry" href="browse">
         <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         <div class="title">读取文件</div>
         <div class="desc">浏览已上传的文件，支持下载</div>
@@ -111,11 +92,11 @@
   <footer class="home-footer">
     <p class="disclaimer">本工具设计初衷为局域网环境下的文件传输。<br>若由第三方部署至公网服务器，相关运营责任由部署方自行承担，开发者不参与任何第三方部署实例的运营与管理。</p>
   </footer>
-  <div class="qr-modal" id="qrModal" onclick="if(event.target===this)closeQR()">
-    <div class="qr-inner">
+  <div class="qr-modal modal-overlay" id="qrModal" onclick="if(event.target===this)closeQR()">
+    <div class="qr-inner modal-card">
       <div class="qr-head">
         <h3>扫码访问</h3>
-        <button class="qr-close" onclick="closeQR()" aria-label="关闭">✕</button>
+        <button class="qr-close modal-close" onclick="closeQR()" aria-label="关闭">✕</button>
       </div>
       <div class="qr-code" id="qrCode"></div>
       <p class="qr-url" id="qrUrl"></p>

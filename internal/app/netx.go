@@ -12,8 +12,7 @@ import (
 // === 网络纯函数（无状态） ===
 
 // GetLANIP 返回供局域网内其它设备访问的「本机 IP」。
-// 采用枚举网卡、筛选真实局域网 IPv4 的方式，避免旧实现用「UDP 连公网取出口 IP」
-// 在开启 VPN 时被默认路由带偏到隧道口（如 198.18.0.1）的问题。
+// 采用枚举网卡、筛选真实局域网 IPv4 的方式，避免开启 VPN 时被默认路由带偏到隧道口（如 198.18.0.1）。
 func GetLANIP() string {
 	if cands := lanCandidates(); len(cands) > 0 {
 		return cands[0]
@@ -25,7 +24,7 @@ func GetLANIP() string {
 	return "127.0.0.1"
 }
 
-// udpEgressIP 旧实现的兜底：UDP "连接" 公网地址（不会真的发包）读本地绑定 IP。
+// udpEgressIP 兜底：UDP "连接" 公网地址（不会真的发包）读本地绑定 IP。
 func udpEgressIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
@@ -206,9 +205,9 @@ func deviceID(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("Deviceid"))
 }
 
-// 说明：这里原本还有一个 realIP（优先取 X-Forwarded-For 首段）的函数，已删除。
-// 本应用没有任何反向代理，XFF 只可能来自客户端伪造，用它记访问日志会让操作被
-// 栽赃到别的 IP 上；需要客户端地址时一律用 remoteIP（只信 TCP 对端）。
+// 注意：不要从请求头（X-Forwarded-For / X-Real-IP 等）读取客户端 IP。
+// 本应用没有任何反向代理，这些头只可能来自客户端伪造，用它记日志会让操作被栽赃到
+// 别的 IP 上；需要客户端地址时一律用 remoteIP（只信 TCP 对端）。
 
 // remoteIP 从 RemoteAddr 解析对端 IP（去掉端口）。
 // 注意：只信 TCP 对端地址，不读 X-Forwarded-For 等请求头——头可被局域网内
@@ -263,7 +262,8 @@ func isLocalIP(ip net.IP) bool {
 }
 
 // isLocalRequest 判断请求是否来自本机（用于限制只有本机才能改设置/删文件）。
-// 判定依据：只信 TCP 对端地址（RemoteAddr）——回环地址，或本机任意网卡地址。
+// 判定依据：只信 TCP 对端地址（RemoteAddr）——回环地址，或本机【物理】网卡地址
+// （虚拟 / 网桥 / 隧道网卡上的地址不算，见 isLocalIP）。
 //
 // 为什么不看 Host：Host 属于请求头（客户端可任意伪造），局域网设备只要发
 // 「Host: 127.0.0.1」就能冒充本机；而 TCP 源地址无法伪造，故本机判定只依据它。

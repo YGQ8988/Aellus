@@ -19,7 +19,9 @@ import (
 
 // === 路由处理 ===
 
-// uploadTempDirName 上传临时文件目录名（位于保存目录内，以 "." 开头因此不会出现在列表里）。
+// uploadTempDirName 临时文件目录名（位于保存目录内，以 "." 开头，因此不会出现在列表与打包结果里）。
+// 上传的临时文件与批量下载的临时 ZIP 都放在这里：与保存目录同盘（rename 快、空间算对盘），
+// 不用系统临时目录（NAS 上常是 tmpfs / 小根分区，写满会引发系统级故障）。
 const uploadTempDirName = ".aellus-tmp"
 
 // 上传表单里的文本字段上限：局域网内任何人可上传（设计如此），
@@ -31,19 +33,19 @@ const (
 	maxRelEntries       = 20000   // rels 条数上限
 )
 
-// uploadTempDir 返回上传临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
+// uploadTempDir 返回临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
+// 上传的临时文件与批量下载的临时 ZIP 都落在这里。
 //
 // 为什么不用系统临时目录（os.TempDir / /tmp）：
-//   - 空间算错盘：上传期间占用的是系统盘/根分区（NAS 上通常很小），几十 GB 的上传
-//     会把它写满，导致系统级故障；保存目录那块的卷才是用户预期消耗空间的地方；
+//   - 空间算错盘：占用的是系统盘/根分区（NAS 上常是 tmpfs 或很小的小根分区），
+//     大文件传输会把它写满，导致系统级故障；保存目录那块的卷才是用户预期消耗空间的地方；
 //   - 必然多写一遍：临时目录与保存目录跨文件系统时 os.Rename 必然失败（EXDEV），
 //     只能整份复制 → 峰值磁盘占用 2× 文件大小、耗时翻倍。
 //
-// 该目录以 "." 开头，列表接口（/api/dirs、/api/files）天然过滤它，也无法通过 API
-// 下载 / 删除；上传临时文件在落盘前不可见。
+// 该目录以 "." 开头：列表接口（/api/dirs、/api/files）过滤它，批量下载（WalkDir）
+// 整棵跳过（见 handleBatchDownload），也无法通过 API 下载 / 删除其中的文件。
 //
-// 返回空串表示保存目录不可用或该子目录是软链等异常，调用方回退系统临时目录（行为
-// 与改造前一致，至少能上传成功）。
+// 返回空串表示保存目录不可用或该子目录是软链等异常，调用方回退系统临时目录（保证功能可用）。
 func (a *App) uploadTempDir() string {
 	dir := filepath.Join(a.getSaveDir(), uploadTempDirName)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -56,7 +58,7 @@ func (a *App) uploadTempDir() string {
 	return dir
 }
 
-// cleanStaleUploadTemps 清理上传临时目录里的残留文件（进程被强杀时来不及删除的）。
+// cleanStaleUploadTemps 清理临时目录里的残留文件（上传/打包过程中进程被强杀，来不及删除的）。
 // 只删超过 6 小时的，避免误删正在传输的文件；只处理该目录下的普通文件。best-effort。
 func (a *App) cleanStaleUploadTemps(dir string) {
 	if dir == "" {
@@ -126,7 +128,7 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	var pending []pendingFile
 
-	// cleanupPending 清理所有已落盘的临时文件，防止泄漏到系统临时目录。
+	// cleanupPending 清理所有已落盘的临时文件，避免上传失败时残留占用保存目录空间。
 	cleanupPending := func() {
 		for _, pf := range pending {
 			os.Remove(pf.tmpPath)
@@ -348,7 +350,8 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 	if rootCount > 0 {
 		dirs = append(dirs, DirInfo{Name: "", Count: int(rootCount), Size: rootSize, Mtime: rootMtime})
 	}
-	a.writeJSON(w, http.StatusOK, DirsResp{Dirs: dirs, CanDelete: a.canManage(r)})
+	part, total, page, size := pageScope(r, dirs)
+	a.writeJSON(w, http.StatusOK, DirsResp{Dirs: part, CanDelete: a.canManage(r), Total: total, Page: page, Size: size})
 }
 
 // handleFiles GET /api/files?dir=xxx 列出某目录下的文件与子目录。
@@ -393,15 +396,20 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 		}
 		files = append(files, fi)
 	}
-	// 文件夹排在最前，其余按修改时间倒序。
+	// 文件夹排在最前，其余按修改时间倒序；mtime 相同时按名字排序（保证全序稳定，
+	// 分页切分跨页不重不漏——同秒写入的多个文件否则顺序不确定）。
 	sort.Slice(files, func(i, j int) bool {
 		if files[i].IsDir != files[j].IsDir {
 			return files[i].IsDir
 		}
-		return files[i].Mtime > files[j].Mtime
+		if files[i].Mtime != files[j].Mtime {
+			return files[i].Mtime > files[j].Mtime
+		}
+		return files[i].Name < files[j].Name
 	})
 
-	a.writeJSON(w, http.StatusOK, FilesResp{Dir: dir, Files: files, CanDelete: a.canManage(r)})
+	part, total, page, size := pageScope(r, files)
+	a.writeJSON(w, http.StatusOK, FilesResp{Dir: dir, Files: part, CanDelete: a.canManage(r), Total: total, Page: page, Size: size})
 }
 
 // handleDownload GET /api/download?dir=xxx&file=xxx[&inline=1]
@@ -483,6 +491,12 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 				return werr
 			}
 			if d.IsDir() {
+				// 隐藏目录必须整棵跳过（SkipDir）：只 return nil 仅表示"不把目录本身加入列表"，
+				// WalkDir 仍会进入它，把里面的普通文件打包出去（实测会泄露 .aellus-tmp 里的
+				// 上传临时文件、以及其它隐藏目录的内容）。dirAbs 自身可能以 "." 开头，不能跳。
+				if p != dirAbs && strings.HasPrefix(d.Name(), ".") {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			if strings.HasPrefix(d.Name(), ".") {
@@ -514,8 +528,11 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 创建系统临时目录下的临时 ZIP 文件。
-	tmp, err := os.CreateTemp("", "aellus-*.zip")
+	// 创建临时 ZIP 文件：与上传临时文件同放保存目录内的隐藏子目录（同盘、空间算对盘）。
+	// 不用系统临时目录——NAS 上它常是 tmpfs / 很小的小根分区，打包大目录会把它写满，
+	// 造成系统级故障。uploadTempDir 返回空串时 CreateTemp 自动回退系统临时目录，保证可用。
+	tmpDir := a.uploadTempDir()
+	tmp, err := os.CreateTemp(tmpDir, "aellus-download-*.zip")
 	if err != nil {
 		http.Error(w, "创建临时文件失败", http.StatusInternalServerError)
 		return
@@ -544,7 +561,10 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 			src.Close()
 			continue
 		}
-		_, _ = io.CopyBuffer(zwEntry, src, buf)
+		if _, werr := io.CopyBuffer(zwEntry, src, buf); werr != nil {
+			// 写入失败（多为保存目录空间不足）：记一条日志便于排查，其余文件继续打包。
+			a.logOp(fmt.Sprintf("批量下载 写入失败 文件=%s 错误=%v", name, werr))
+		}
 		src.Close()
 	}
 	zw.Close() // 必须 Close 才能写完 ZIP 中央目录

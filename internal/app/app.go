@@ -19,10 +19,10 @@ import (
 
 // === 常量 ===
 const (
-	saveDirName   = "file-drops"                              // 文件保存目录名（实际路径在桌面上：~/Desktop/file-drops）
-	DefaultPort   = 8000                                      // 默认端口；被占用时自动尝试 8001、8002……
-	SettingsFile  = "aellus-settings.json"                    // 保存目录持久化配置文件名
-	SaveDirName   = saveDirName                               // 导出别名（config.go 等同包文件直接用小写 saveDirName 即可）
+	saveDirName   = "file-drops"                                 // 文件保存目录名（实际路径在桌面上：~/Desktop/file-drops）
+	DefaultPort   = 8000                                         // 默认端口；被占用时自动尝试 8001、8002……
+	SettingsFile  = "aellus-settings.json"                       // 保存目录持久化配置文件名
+	SaveDirName   = saveDirName                                  // 导出别名（config.go 等同包文件直接用小写 saveDirName 即可）
 	trimAPISocket = "/var/run/trim_open_gateway_apiscope.socket" // 飞牛开放 API 后端网关 Unix Socket
 )
 
@@ -34,10 +34,8 @@ type Options struct {
 	SaveDir     string   // 初始保存目录（main 已完成解析、mkdir 与回退）
 }
 
-// App 持有 HTTP 服务的全部运行时状态。
-//
-// 所有原本散落在 package main 的全局变量（absSaveDir / tmpl / logPath / 各类 mutex）
-// 都收敛到这里，由 App 方法并发安全地访问。平台差异通过 Platform 接口注入。
+// App 持有 HTTP 服务的全部运行时状态，由 App 方法并发安全地访问。
+// 平台差异通过 Platform 接口注入。
 type App struct {
 	platform Platform
 
@@ -48,15 +46,14 @@ type App struct {
 
 	// gatewayActive 表示飞牛统一网关的 Unix Socket 是否已成功监听。
 	// 飞牛构建下它为 true 时，删除 / 改保存目录【只认】网关注入的身份头，不再接受
-	// 「请求来自本机」——否则 NAS 上的任意本机进程，以及容器网桥地址（docker0 / vbr
-	// 等同样被 isLocalIP 当作本机），都能绕过飞牛账号体系直接拿到管理权。
+	// 「请求来自本机」——否则 NAS 上的任意本机进程都能绕过飞牛账号体系拿到管理权。
 	gatewayActive atomic.Bool
 
-	absSaveDir string        // 保存目录的绝对路径，所有路径校验都以它为准
-	saveDirMu  sync.RWMutex  // 保护 absSaveDir（HTTP 各请求在独立 goroutine 中读取）
+	absSaveDir string       // 保存目录的绝对路径，所有路径校验都以它为准
+	saveDirMu  sync.RWMutex // 保护 absSaveDir（HTTP 各请求在独立 goroutine 中读取）
 
-	tmpl     *template.Template // 已解析的 HTML 模板（home/upload/browse/callback）
-	staticFS embed.FS            // 静态资源（CSS/JS/图标），挂到 /static/
+	tmpl     *template.Template // 已解析的 HTML 模板（home/upload/browse）
+	staticFS embed.FS           // 静态资源（CSS/JS/图标），挂到 /static/
 
 	accessLogPath    string     // 访问日志路径
 	operationLogPath string     // 操作日志路径
@@ -252,7 +249,7 @@ func (a *App) writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// servePage 渲染一个静态 HTML 页面（home/upload/browse/callback）。
+// servePage 渲染一个静态 HTML 页面（home/upload/browse）。
 // 页面本身没有服务端数据（动态内容全靠前端 JS fetch），唯一模板变量是 Base——
 // 当前请求的页面基准路径（局域网直连 "/"，门户内 "/app/<appname>/"），写入 <base>，
 // 保证 static/... 、api/... 等相对路径在两种访问方式下都解析正确。

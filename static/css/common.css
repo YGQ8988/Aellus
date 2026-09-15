@@ -8,7 +8,6 @@
   --background: 0 0% 100%;
   --foreground: 240 10% 3.9%;
   --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
   --popover: 0 0% 100%;
   --popover-foreground: 240 10% 3.9%;
   --primary: 240 5.9% 10%;
@@ -37,6 +36,10 @@
 
   /* 成功态绿色：完整 hsl 值，用 var(--green) 取用（勿再套 hsl()） */
   --green: hsl(142 71% 45%);
+
+  /* 字体栈：全站统一，改一处全站生效（等宽场景：路径 / 地址 / 二维码） */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -47,7 +50,7 @@
    顶部留出未模糊的缝 = 露馅）。clip 只裁剪、不创建滚动容器，sticky 正常。 */
 html { -webkit-text-size-adjust: 100%; background: #f7f7f7; min-height: 100%; overflow-x: clip; }
 body {
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+  font-family: var(--font-sans);
   color: hsl(var(--foreground));
   /* 注意：body 不加 padding（原 16px/24px 已移除）。body 有 padding 会让 sticky
      顶吸附被顶偏（叠上满宽吸顶栏时顶部留未模糊缝）。外边距改由 .container /
@@ -164,6 +167,10 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .btn-destructive { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
 @media (hover: hover) and (pointer: fine) {
   .btn-destructive:hover { background: hsl(var(--destructive) / 0.9); }
+}
+.btn-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+@media (hover: hover) and (pointer: fine) {
+  .btn-secondary:hover { background: hsl(var(--secondary) / 0.8); }
 }
 
 .tip { font-size: 12px; color: hsl(var(--muted-foreground)); text-align: center; margin-top: 18px; line-height: 1.6; }

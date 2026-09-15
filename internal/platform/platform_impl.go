@@ -65,7 +65,7 @@ func (platformImpl) LogsDir() string {
 	if configDir, err := os.UserConfigDir(); err == nil && configDir != "" {
 		return filepath.Join(configDir, "Aellus", "logs")
 	}
-	// 回退：取不到系统配置目录，退回 .app / 可执行文件同级（旧行为）
+	// 回退：取不到系统配置目录，退回 .app / 可执行文件同级
 	return app.ResolveBaseDir()
 }
 

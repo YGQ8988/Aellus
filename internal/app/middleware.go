@@ -95,7 +95,7 @@ func noCache(next http.Handler) http.Handler {
 
 // frameAncestorsAny 允许任意来源 iframe 嵌入。
 // 用于裸端口（局域网直连）入口：该入口没有删除 / 管理权限，且需兼容飞牛门户以
-// 「端口 + 路径」方式嵌入应用的历史行为（那时若设 'self' 会显示"拒绝访问"）。
+// 「端口 + 路径」方式嵌入应用。
 const frameAncestorsAny = "*"
 
 // frameAncestorsSelf 只允许同源 iframe 嵌入。

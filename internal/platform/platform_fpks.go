@@ -73,7 +73,7 @@ func (fpkPlatform) ConfigBaseDir(saveDir string) string {
 }
 
 // LogsDir fpk 端：访问/操作日志存放到飞牛私有运行时数据目录，不写入应用安装目录。
-// 优先级：AELLUS_LOGS_DIR（cmd/main 注入）> TRIM_PKGVAR/logs > 可执行文件同目录（旧行为兜底）。
+// 优先级：AELLUS_LOGS_DIR（cmd/main 注入）> TRIM_PKGVAR/logs > 可执行文件同目录。
 func (fpkPlatform) LogsDir() string {
 	if d := os.Getenv("AELLUS_LOGS_DIR"); d != "" {
 		return d
@@ -81,7 +81,7 @@ func (fpkPlatform) LogsDir() string {
 	if v := os.Getenv("TRIM_PKGVAR"); v != "" && strings.HasPrefix(v, "/vol") {
 		return filepath.Join(v, "logs")
 	}
-	// 兜底：可执行文件同目录（与旧行为一致）
+	// 兜底：可执行文件同目录
 	if exe, err := os.Executable(); err == nil {
 		return filepath.Dir(exe)
 	}

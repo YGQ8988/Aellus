@@ -20,10 +20,6 @@ import (
 	"aellus/internal/platform"
 )
 
-// === 版本 ===
-// 由构建脚本通过 -ldflags "-X main.Version=x.y.z" 注入。
-var Version = "1.0.1"
-
 // === 启动语言 ===
 // Linux 终端字体/locale 差异大，中文易显示成黑方块（字体缺中文字形，程序无法替终端装字体），
 // 默认英文彻底规避；macOS/Windows 图形终端字体齐全，默认中文。AELLUS_LANG=en|zh 可强制覆盖。
@@ -67,7 +63,7 @@ func main() {
 	// 日志目录：与 settings 统一到系统配置目录，拖到 /Applications 不再污染系统目录。
 	baseDir := p.LogsDir()
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		// 系统配置目录不可写（罕见），回退到 .app / 可执行文件同级（旧行为）
+		// 系统配置目录不可写（罕见），回退到 .app / 可执行文件同级
 		baseDir = app.ResolveBaseDir()
 	}
 	defaultSave := app.ResolveSaveDir() // 上传文件保存目录（桌面 file-drops，跨机器默认可写）

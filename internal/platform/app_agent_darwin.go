@@ -14,8 +14,7 @@ package platform
 extern int NSApplicationLoad(void);
 
 static void setAgentActivationPolicy(void) {
-    // 本程序经 .app 的 universal 二进制直接启动（build-mac.sh 用 lipo 合并，
-    // 不再需要 aellus-launcher 这类按架构选二进制的 shell 启动器），不属于「标准 GUI 启动」，
+    // 本程序以菜单栏代理（LSUIElement）方式运行，不属于「标准 GUI 启动」，
     // AppKit 不会像普通 GUI 应用那样自动完成加载。若不先加载，
     // objc_getClass("NSApplication") 会返回 NULL，导致 setActivationPolicy 整段静默失效、
     // 应用保持默认的 Regular(前台)策略，Dock 就会弹跳一次。
