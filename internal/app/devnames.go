@@ -44,8 +44,8 @@ func (a *App) recordDeviceName(devID, name string) {
 	}
 	devID = truncateRunes(devID, maxDeviceIDLen)
 	name = truncateRunes(name, maxDeviceNameLen)
-	a.ownerMu.Lock()
-	defer a.ownerMu.Unlock()
+	a.deviceNameMu.Lock()
+	defer a.deviceNameMu.Unlock()
 	m := map[string]string{}
 	if b, err := os.ReadFile(a.deviceNamesPath()); err == nil {
 		_ = json.Unmarshal(b, &m)
@@ -69,8 +69,8 @@ func (a *App) deviceNameOf(devID string) string {
 		return ""
 	}
 	devID = truncateRunes(devID, maxDeviceIDLen) // 与写入时的截断保持一致
-	a.ownerMu.Lock()
-	defer a.ownerMu.Unlock()
+	a.deviceNameMu.Lock()
+	defer a.deviceNameMu.Unlock()
 	m := map[string]string{}
 	if b, err := os.ReadFile(a.deviceNamesPath()); err == nil {
 		_ = json.Unmarshal(b, &m)

@@ -58,7 +58,7 @@ type App struct {
 	accessLogPath    string     // 访问日志路径
 	operationLogPath string     // 操作日志路径
 	logMu            sync.Mutex // 日志并发追加写锁
-	ownerMu          sync.Mutex // 设备名映射（devices.json）读改写锁
+	deviceNameMu     sync.Mutex // 设备名映射（devices.json）读改写锁
 }
 
 // New 构造 App：注入平台实现与 embed 资源，解析模板，记录日志路径。

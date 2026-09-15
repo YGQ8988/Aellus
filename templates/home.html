@@ -150,8 +150,8 @@
     msg.className='settings-msg'; msg.textContent='';
     closeDirPopup();
     fetch('api/settings').then(r=>r.json()).then(d=>{
-      // 是否可编辑保存路径：仅本机访问（与删除逻辑一致，飞牛里的浏览器/局域网设备不可改）
-      var canEdit = d.isLocal;
+      // 是否可编辑保存路径（与删除逻辑一致：桌面端本机 / 飞牛门户内有权限，局域网设备不可改）
+      var canEdit = d.canManage;
       // 标题：可编辑为「设置」，否则为「关于 Aellus」（手机端与电脑端一致，不再按屏幕切换）
       var titlePc=document.querySelector('.set-title-pc');
       if(titlePc){ titlePc.textContent = canEdit ? '设置' : '关于 Aellus'; }

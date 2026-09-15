@@ -326,8 +326,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 			}
 			// 递归统计该目录的总大小、文件数、最新修改时间
 			size, count, mtime := dirStats(filepath.Join(a.getSaveDir(), e.Name()))
-			dirs = append(dirs, DirInfo{Name: e.Name(), Count: count, Size: size, Mtime: mtime,
-				Deletable: a.canManage(r)})
+			dirs = append(dirs, DirInfo{Name: e.Name(), Count: count, Size: size, Mtime: mtime})
 		}
 	}
 	// 根目录（未命名设备）下直接存放的文件，也作为一个目录项展示；
@@ -380,12 +379,11 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		fi := FileInfo{
-			Name:      e.Name(),
-			Size:      info.Size(),
-			Mtime:     info.ModTime().Unix(),
-			IsDir:     e.IsDir(),
-			Count:     0,
-			Deletable: a.canManage(r),
+			Name:  e.Name(),
+			Size:  info.Size(),
+			Mtime: info.ModTime().Unix(),
+			IsDir: e.IsDir(),
+			Count: 0,
 		}
 		// 文件夹：递归计算总大小、文件数、最新修改时间
 		if e.IsDir() {

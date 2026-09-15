@@ -15,10 +15,12 @@ let filesPage = 1;      // 文件列表：当前页 / 总数（分页器与空�
 let filesTotal = 0;
 let dirsPage = 1;       // 文件夹列表：当前页 / 总数
 let dirsTotal = 0;
-let previewFiles = []; // [{name, previewUrl, ext, deletable}, ...] 当前目录可预览文件
+let previewFiles = []; // [{name, previewUrl, ext}, ...] 当前目录可预览文件
 let lbIndex = 0;       // 灯箱当前索引
-// 某项是否可删：服务端已按「桌面端本机 / 飞牛环境内」算好并返回 deletable 字段，前端直接使用。
-const canDel = d => !!(d && d.deletable);
+// 是否有删除权限（含删目录 / 批量删）：服务端按「桌面端本机 / 飞牛门户内」算好，随列表响应
+// 的顶层 canDelete 下发——同一请求内所有条目一致（见 Go 端 canManage）。渲染列表前更新；
+// 前端判定仅用于按钮显隐，真正的强制在服务端。
+let canManage = false;
 
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
@@ -100,8 +102,9 @@ async function loadDirs(autoEnter = true, page) {
       const last = Math.ceil(data.total / PAGE_SIZE);
       if (pg > last) { loadDirs(false, last); return; }
     }
+    canManage = !!data.canDelete;
     $('dirsList').innerHTML = data.dirs.map(d => {
-      const delable = canDel(d);
+      const delable = canManage;
       return `
       <div class="file-item dir-card">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(d.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
@@ -120,7 +123,7 @@ async function loadDirs(autoEnter = true, page) {
     // 显示目录页批量操作栏，重置全选
     $('dirsBatchBar').style.display = 'flex';
     $('selectAllDirs').checked = false;
-    // 无删除权限（非本机访问）时直接隐藏批量删除按钮，不显示置灰态
+    // 无删除权限（局域网设备直连）时直接隐藏批量删除按钮，不显示置灰态
     $('btnDelDirs').style.display = data.canDelete ? '' : 'none';
     updateSelectedCount();
     // 页码分页器：不足 2 页自动隐藏
@@ -190,13 +193,14 @@ async function openDir(path, page) {
       return IMG_EXTS.includes(ext) || VID_EXTS.includes(ext);
     }).map(f => {
       const u = 'api/download?dir=' + encodeURIComponent(path) + '&file=' + encodeURIComponent(f.name);
-      return { name: f.name, previewUrl: u + '&inline=1', ext: f.name.split('.').pop().toLowerCase(), deletable: !!f.deletable };
+      return { name: f.name, previewUrl: u + '&inline=1', ext: f.name.split('.').pop().toLowerCase() };
     });
+    canManage = !!data.canDelete;
     $('filesList').innerHTML = data.files.map(renderFile).join('');
     // 显示批量操作栏，重置选中状态
     $('batchBar').style.display = 'flex';
     $('selectAll').checked = false;
-    // 无删除权限（非本机访问）时直接隐藏批量删除按钮，不显示置灰态
+    // 无删除权限（局域网设备直连）时直接隐藏批量删除按钮，不显示置灰态
     $('btnDelSelected').style.display = data.canDelete ? '' : 'none';
     updateSelectedCount();
     buildBreadcrumb();
@@ -253,7 +257,7 @@ function renderFile(f) {
   // 文件夹：与文件卡片结构一致（复选框、缩略图、文件名、标签、删除）。
   // 注意：文件夹卡不再提供「打开」按钮（点击缩略图/文件名区即可进入）。
   if (f.isDir) {
-    const delable = canDel(f);
+    const delable = canManage;
     return `
       <div class="file-item folder-item">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(f.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
@@ -290,7 +294,7 @@ function renderFile(f) {
   }
   const mainCursor = previewable ? ' style="cursor:pointer"' : '';
   const mainClick = previewable ? ` data-name="${escapeAttr(f.name)}" onclick="openLightboxFromEl(this)"` : '';
-  const delable = canDel(f);
+  const delable = canManage;
   return `
     <div class="file-item">
       <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(f.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
@@ -635,8 +639,8 @@ function showLbImage(dir) {
   dlBtn.classList.remove('loading');
   dlBtn.disabled = false;
   dlBtn.innerHTML = SVG_DOWNLOAD;
-  // 删除按钮：仅本设备上传的文件可删（切换图片时同步显隐）
-  $('lbDelete').style.display = canDel(f) ? '' : 'none';
+  // 删除按钮：无管理权限（局域网设备直连）时隐藏（切换图片时同步显隐）
+  $('lbDelete').style.display = canManage ? '' : 'none';
 }
 
 // ---- 灯箱「平移切换」 ----

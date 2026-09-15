@@ -26,7 +26,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"saveDirDisplay": saveDirDisplay,
 		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
-		"isLocal":        a.canManage(r),                   // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
+		"canManage":      a.canManage(r),                   // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
 		"deviceName":     a.deviceNameOf(deviceID(r)),      // 当前设备 ID 对应的上次设备名（供上传页自动填充）
 	})
 }

@@ -154,7 +154,7 @@ aellus/
 │   ├── netx.go                   # 网络工具（局域网 IP / 端口监听 / 本机与权限判定）
 │   ├── pathx.go                  # 路径安全（设备名/文件名/穿越防护）
 │   ├── resolve.go                # 目录/文件路径解析
-│   ├── owner.go                  # 设备名映射（devices.json 读写）
+│   ├── devnames.go               # 设备名映射（devices.json 读写）
 │   ├── thumb.go                  # 缩略图生成
 │   ├── trim.go                   # 飞牛授权目录 API
 │   ├── middleware.go             # 中间件（日志/安全响应头/no-cache）
