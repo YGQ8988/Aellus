@@ -61,28 +61,17 @@
 .up-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .up-thumb-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; letter-spacing: .5px; color: hsl(var(--muted-foreground)); }
 /* 文字块与 72px 缩略图等高：文件名顶对齐、大小·时间底对齐 */
-.up-meta { min-width: 0; min-height: 72px; display: flex; flex-direction: column; justify-content: space-between; }
-.up-name { font-size: 14px; color: hsl(var(--foreground)); word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.up-size { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.up-name { word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 @media (min-width: 640px) {
   .up-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; }
 }
 
-/* 语义按钮色：录像(危险色) 单独一条；拍摄 / 取消同为次级中性色，合并为一条 */
-.btn-rec { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
-@media (hover: hover) and (pointer: fine) {
-  .btn-rec:hover { background: hsl(var(--destructive) / 0.9); }
-}
-.btn-cam, .btn-cancel { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
-@media (hover: hover) and (pointer: fine) {
-  .btn-cam:hover, .btn-cancel:hover { background: hsl(var(--secondary) / 0.8); }
-}
 
 input[type=file] { display: none; }
 
 /* 网页内相机弹窗 → shadcn Dialog */
-.cam-modal { position: fixed; inset: 0; background: rgb(0 0 0 / 0.8); display: none; align-items: center; justify-content: center; z-index: 9999; padding: 12px; }
-.cam-inner { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; align-items: center; background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg); padding: 16px;  }
+.cam-modal { background: rgb(0 0 0 / 0.8); z-index: 9999; padding: 12px; }
+.cam-inner { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 16px; }
 .cam-inner video, .cam-preview { width: 100%; max-height: 70vh; border-radius: calc(var(--radius) - 2px); background: #000; object-fit: contain; overflow: hidden; }
 .cam-preview img, .cam-preview video { width: 100%; border-radius: calc(var(--radius) - 2px); display: block; }
 .cam-bar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
@@ -112,16 +101,12 @@ input[type=file] { display: none; }
 }
 /* 上排：缩略图 + 文件名/速度 + 取消按钮 */
 .up-prog-item .up-prog-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
-/* 缩略图 / 文件图标（48px，比读取页的 72px 更紧凑以贴近"卡片"比例） */
+/* 缩略图：通用外观见 components.css 的 .thumb 族，这里只定尺寸（48px，比读取页 72px 紧凑） */
 .up-prog-item .thumb,
 .up-prog-item .thumb-video,
 .up-prog-item .thumb-other {
-  width: 48px; height: 48px; border-radius: calc(var(--radius) - 2px); flex-shrink: 0; object-fit: cover; background: hsl(var(--muted));
+  width: 48px; height: 48px;
 }
-.up-prog-item .thumb { opacity: 0; transition: opacity .25s ease; }
-.up-prog-item .thumb.loaded { opacity: 1; }
-.up-prog-item .thumb-video { background: #000; }
-.up-prog-item .thumb-other { display: flex; align-items: center; justify-content: center; }
 .up-prog-item .thumb-other svg { width: 22px; height: 22px; color: hsl(var(--muted-foreground)); }
 /* 后缀名文字占位（无后缀时才用 SVG 图标）：与读取页 .up-thumb-ph 风格一致 */
 .up-prog-item .thumb-other.thumb-ext {
@@ -130,8 +115,7 @@ input[type=file] { display: none; }
 /* 文件名 + 速度 纵向组合块 */
 .up-prog-item .file-main { display: flex; gap: 12px; align-items: center; min-width: 0; flex: 1; }
 .up-prog-item .file-meta-col { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
-.up-prog-item .fname { font-size: 14px; color: hsl(var(--foreground)); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.up-prog-item .fmeta { font-size: 12px; color: hsl(var(--muted-foreground)); }
+.up-prog-item .fname { line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 取消按钮：圆角方框 + 描边 + 叉号（hover 变红） */
 .up-prog-item .up-prog-cancel {
   flex-shrink: 0; width: 28px; height: 28px; min-height: 0; border-radius: 9999px;

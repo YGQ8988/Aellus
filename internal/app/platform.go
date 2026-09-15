@@ -23,8 +23,10 @@ type Platform interface {
 	PickFolderDialog() string
 	PickDirSupported() bool
 
-	// PersistSaveDirAllowed 桌面端允许把保存目录持久化到本地配置文件（true）；
-	// fpk 端不允许（false，路径完全由飞牛授权决定，重启回到注入值）。
+	// PersistSaveDirAllowed 表示是否允许把保存目录持久化到本地配置文件。
+	// 桌面端与 fpk 端都为 true：桌面端存到系统配置目录；fpk 端存到 TRIM_PKGVAR
+	// 持久卷，重启加载时再校验是否仍落在飞牛授权目录内（见 IsPersistedSaveDirValid），
+	// 授权被移除则回退到注入的默认目录。
 	PersistSaveDirAllowed() bool
 
 	// EnforceAuthBoundary fpk 端强制「保存目录必须落在飞牛授权目录树内」（true）；

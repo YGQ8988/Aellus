@@ -1,5 +1,4 @@
-// 上传页逻辑
-const $ = id => document.getElementById(id);
+// 上传页逻辑（$ / formatSize / formatTime 等通用工具来自 ui.js 共享层）
 
 // 记住设备名称：上传时存 localStorage，下次打开上传页自动填充，避免每次重新输入
 const DEVICE_NAME_KEY = 'aellus_device_name';
@@ -20,26 +19,13 @@ function rememberDeviceName(name) {
   try { localStorage.setItem(DEVICE_NAME_KEY, name); } catch (e) {}
 }
 
-// 与读取页一致的字段格式化（大小 / 时间），保证上传成功卡片与 files-grid 卡片字段统一
-function formatSize(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
-  if (b < 1073741824) return (b/1048576).toFixed(2) + ' MB';      // < 1024 MB
-  if (b < 1099511627776) return (b/1073741824).toFixed(2) + ' GB'; // < 1024 GB
-  return (b/1099511627776).toFixed(2) + ' TB';
-}
 // 上传速度格式化：始终以 MB/s 显示（不上 GB/s，避免单位跳变且局域网内极少突破 1GB/s）
 function formatSpeed(bps) {
   const mbps = bps / 1048576;
   if (mbps < 0.1) return (mbps * 1000).toFixed(0) + ' KB/s';
   return mbps.toFixed(1) + ' MB/s';
 }
-function formatTime(ts) {
-  const d = new Date(ts * 1000);
-  const p = n => String(n).padStart(2,'0');
-  const day = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-  return day + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
-}
+// 注：formatSize / formatTime 已统一到 ui.js 共享层（与读取页同一实现）
 
 function getFiles(input) {
   if (!input.files.length) return;

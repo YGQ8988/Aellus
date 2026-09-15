@@ -2,32 +2,41 @@
 # Aellus 全平台二进制构建脚本
 # 在 macOS 上运行可构建全部 8 个目标；在 Linux 上运行仅构建 Linux + Windows
 #   （macOS 需 cgo/Cocoa，只能在 Mac 本机构建）
-# 产物输出到 dist/，命名：Aellus-<version>-<os>-<arch>[.exe]（版本号紧跟产品名）
+# 产物输出到 dist/：命名 Aellus-<version>-<os>-<arch>（版本号紧跟产品名）。
+# Windows 与 macOS 风格一致：打成 zip（架构体现在 zip 文件名，解压后统一是 Aellus.exe / Aellus.app）。
+# darwin / linux 为裸二进制（无外层压缩）。
 #
 # 用法：./build-all.sh [version]   （默认 1.0.1）
 set -e
 cd "$(dirname "$0")"
 mkdir -p dist
 
-VERSION="${1:-1.0.1}"
-LDFLAGS_BASE="-s -w -X main.Version=${VERSION}"
+# 版本号：优先命令行参数；不传则读 fnos/manifest（与 build-mac.sh / build-fnos.sh 一致，
+# 保证各平台产物版本统一）；兜底 1.0.1。
+VERSION="${1:-}"
+if [ -z "${VERSION}" ]; then
+  VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
+fi
+VERSION="${VERSION:-1.0.1}"
+echo "构建版本：${VERSION}"
+LDFLAGS_BASE="-s -w"
 
-# arch_out：产物命名用 x86_64（Unix 惯例）替代 goarch 的 amd64，其余保持。
+# arch_out：把 goarch 映射为产物命名用的架构标识：
+#   amd64 → x64（64 位 x86）、386 → x86（32 位 x86）、arm64 保持 arm64。
 arch_out() {
   case "$1" in
-    amd64) echo "x86_64" ;;
+    amd64) echo "x64" ;;
+    386)   echo "x86" ;;
     *)     echo "$1" ;;
   esac
 }
 
-# build <goos> <goarch> [extra-ldflags]
+# build <goos> <goarch> [extra-ldflags]：构建裸二进制（darwin / linux）。
+# Windows 走 build_win_zip（打成 zip，内含 Aellus.exe）。
 build() {
   local goos=$1 goarch=$2 extra=$3
-  local ext=""
-  [ "$goos" = "windows" ] && ext=".exe"
-  # 命名带版本号，版本号紧跟产品名（与 build-fnos.sh 的 Aellus-<version>-*.fpk 风格一致）：
-  # Aellus-<version>-<os>-<arch>[.exe]，如 Aellus-1.0.1-darwin-arm64
-  local out="dist/Aellus-${VERSION}-${goos}-$(arch_out "$goarch")${ext}"
+  # 命名带版本号，版本号紧跟产品名：Aellus-<version>-<os>-<arch>，如 Aellus-1.0.2-darwin-arm64
+  local out="dist/Aellus-${VERSION}-${goos}-$(arch_out "$goarch")"
   local cgo=0
   [ "$goos" = "darwin" ] && cgo=1
   # darwin：cgo 走 Cocoa/WebKit/UserNotifications，需在 Mac 本机编译
@@ -39,6 +48,26 @@ build() {
   echo "✓ $(ls -lh "$out" | awk '{print $5}')"
 }
 
+# build_win_zip <goarch>：构建 Windows exe 并打成 zip（与 macOS 的 .app.zip 对齐）。
+# zip 名体现架构：Aellus-<version>-windows-<arch>.zip；解压后统一是 Aellus.exe。
+# -H windowsgui：GUI 子系统，双击不弹黑窗口。
+build_win_zip() {
+  local goarch=$1
+  local label
+  label="$(arch_out "$goarch")"
+  local stage=".build/win-${label}"
+  local zip_name="dist/Aellus-${VERSION}-windows-${label}.zip"
+  mkdir -p "${stage}"
+  printf "  %-18s " "windows/${goarch}"
+  GOOS=windows GOARCH="${goarch}" CGO_ENABLED=0 \
+    go build -trimpath -ldflags="${LDFLAGS_BASE} -H windowsgui" -o "${stage}/Aellus.exe" .
+  rm -f "${zip_name}"
+  # -j：只存文件名（zip 内为单文件 Aellus.exe，无目录层级）；-X：不存 macOS 扩展属性
+  zip -q -j -X "${zip_name}" "${stage}/Aellus.exe"
+  echo "✓ $(ls -lh "${zip_name}" | awk '{print $5}')  （zip 内含 Aellus.exe）"
+  rm -rf "${stage}"
+}
+
 echo "Aellus 全平台构建 v${VERSION}"
 echo "================================"
 
@@ -46,12 +75,8 @@ echo "================================"
 echo ""
 if [ "$(uname)" = "Darwin" ]; then
   echo "[macOS] (cgo/Cocoa, 需 Xcode CLT)"
-  # 兼容旧版 macOS：避免 cgo 默认写入 minos=26.0 导致 macOS 13 等旧系统拒绝加载；
-  # 设为 11.0（Big Sur）保证 UserNotifications strong link（代码用了 macOS 11+ 的
-  # UNNotificationPresentationOptionBanner，低于 11.0 会弱链接致通知授权失效）。
+  # cgo 编译目标固定 macOS 11.0（兼容 macOS 11+，并保证通知框架 strong link）
   export MACOSX_DEPLOYMENT_TARGET=11.0
-  # 强制 cgo 目标=11.0：本机 clang 默认 minos=13.0，且 Go cgo 子进程不透传
-  # MACOSX_DEPLOYMENT_TARGET，会导致 cgo object 被抬到 13.0（macOS 11 真机弱链接崩溃）。
   export CGO_CFLAGS="-mmacosx-version-min=11.0"
   build darwin arm64
   build darwin amd64
@@ -93,11 +118,12 @@ gen_winres() {
 
 # Windows（纯 Go 交叉编译，windowsgui 子系统不弹黑窗口）
 echo ""
-echo "[Windows] (纯 Go, -H windowsgui, 含图标)"
+echo "[Windows] (纯 Go, -H windowsgui, 含图标；打包为 zip，内含 Aellus.exe)"
+command -v zip >/dev/null 2>&1 || { echo "  [错误] 未找到 zip 命令（打包 Windows 产物需要）"; exit 1; }
 gen_winres
-build windows amd64 "-H windowsgui"
-build windows arm64 "-H windowsgui"
-build windows 386   "-H windowsgui"
+build_win_zip amd64
+build_win_zip arm64
+build_win_zip 386
 
 # Linux（纯 Go 交叉编译）
 echo ""
@@ -110,3 +136,4 @@ echo ""
 echo "================================"
 echo "完成，产物在 dist/："
 ls -lh dist/Aellus-${VERSION}-darwin-* dist/Aellus-${VERSION}-linux-* dist/Aellus-${VERSION}-windows-* 2>/dev/null | awk '{printf "  %-8s %s\n", $5, $NF}'
+rmdir .build 2>/dev/null || true

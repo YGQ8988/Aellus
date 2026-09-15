@@ -37,7 +37,9 @@
   width: 6px; height: 3px;
   border: solid hsl(var(--primary-foreground));
   border-width: 0 0 2px 2px;
-  transform: rotate(-45deg);
+  /* 视觉居中：勾旋转后视觉重心偏下约 1px。translateY 写在前面 = 先旋转、
+     后在页面坐标系内整体上移 1px（纯平移，不歪斜）。 */
+  transform: translateY(-1px) rotate(-45deg);
 }
 .checkbox:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 .checkbox:disabled, .checkbox[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
@@ -58,18 +60,57 @@
 .alert-desc { color: hsl(var(--muted-foreground)); }
 .alert-destructive .alert-desc { color: hsl(var(--destructive) / .85); }
 
+/* ---------- Modal 体系（遮罩 / 面板 / 关闭钮：设置、扫码、确认、相机四个弹窗共用） ----------
+   公共观感集中在这里，各弹窗只保留差异（z-index、激活方式、局部尺寸）。
+   用法：弹窗容器加 .modal-overlay，面板加 .modal-card，关闭钮加 .modal-close。 */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  align-items: center; justify-content: center; padding: 16px;
+  background: rgb(0 0 0 / .45);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+}
+.modal-card {
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-lg);
+}
+.modal-close {
+  border: none; background: transparent; color: hsl(var(--muted-foreground));
+  font-size: 18px; min-height: 0; cursor: pointer;
+  border-radius: calc(var(--radius) - 2px);
+  transition: background .15s, color .15s;
+}
+.modal-close:active { background: hsl(var(--accent)); }
+@media (hover: hover) and (pointer: fine) {
+  .modal-close:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+}
+
+/* ---------- 卡片碎片（读取页文件卡 / 上传页进度与结果卡共用） ---------- */
+/* 缩略图族：图片(淡入) / 视频(黑底) / 通用图标(居中容器)；尺寸由各页面给（72px / 48px） */
+.thumb, .thumb-video, .thumb-other, .thumb-folder {
+  border-radius: calc(var(--radius) - 2px); flex-shrink: 0;
+  object-fit: cover; background: hsl(var(--muted));
+}
+.thumb { opacity: 0; transition: opacity .25s ease; }
+.thumb.loaded { opacity: 1; }
+.thumb-video { background: #000; }
+.thumb-other, .thumb-folder { display: flex; align-items: center; justify-content: center; }
+/* 图高对齐的文字列：文件名顶对齐缩略图顶、元信息底对齐缩略图底 */
+.file-item .file-meta-col, .up-meta {
+  min-width: 0; min-height: 72px; display: flex; flex-direction: column; justify-content: space-between;
+}
+/* 卡片文字：文件名 / 元信息（字号与颜色统一，换行方式等差异由各页补充） */
+.file-item .fname, .up-prog-item .fname, .up-name { font-size: 14px; color: hsl(var(--foreground)); }
+.file-item .fmeta, .up-prog-item .fmeta, .up-size { font-size: 12px; color: hsl(var(--muted-foreground)); }
+
 /* ---------- Alert Dialog ---------- */
+/* 遮罩与面板的公共外观来自上面的 .modal-overlay / .modal-card（类名挂在 JS 生成的节点上） */
 .alert-dialog-overlay {
-  position: fixed; inset: 0; z-index: 2000;
-  background: rgb(0 0 0 / .45); backdrop-filter: blur(2px);
-  display: none; align-items: center; justify-content: center; padding: 16px;
+  z-index: 2000;
 }
 .alert-dialog-overlay[data-open="true"] { display: flex; animation: fadeIn .15s ease; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .alert-dialog {
   width: 100%; max-width: 420px;
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg);
   overflow: hidden;
   animation: dialogIn .18s ease;
 }

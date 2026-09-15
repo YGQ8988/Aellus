@@ -1,28 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh" data-base="{{.Base}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<script>
-  // 页面基准路径：静态资源与接口都用相对路径（static/... 、api/...），解析依赖 <base>。
-  // 裸端口直连为 "/"；飞牛统一网关为 "/app/<appname>/"——由服务端按监听入口注入
-  // （网关转发可能已剥离前缀、地址栏可能无尾斜杠，前端无法从 location 推断）。
-  (function () {
-    var base = "{{.Base}}";
-    try {
-      var p = location.pathname || '/';
-      var pre = base;
-      while (pre.length > 1 && pre.charAt(pre.length - 1) === '/') pre = pre.slice(0, -1);
-      // 地址栏与注入前缀一致（可能仅大小写不同，如 /app/Aellus）时，沿用地址栏的真实写法。
-      if (pre && pre !== '/' && p.slice(0, pre.length).toLowerCase() === pre.toLowerCase()) {
-        base = p.slice(0, pre.length) + '/';
-      }
-    } catch (e) {}
-    var b = document.createElement('base');
-    b.href = base;
-    document.head.appendChild(b);
-  })();
-  </script>
+<script src="static/js/base.js"></script>
   <title>Aellus</title>
 <link rel="icon" href="static/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="static/css/common.css">
@@ -74,22 +55,22 @@
       </div>
 
       <div class="tip">
-        <span id="tipSaveLoc">文件自动保存到「管理员」设置目录 <b>/&lt;设备名&gt;/</b> 目录下<br></span>
+        <span>文件自动保存到「管理员」设置目录 <b>/&lt;设备名&gt;/</b> 目录下<br></span>
         文件名自动加时间戳，不会覆盖
       </div>
     </div>
   </div>
 
   <!-- 网页内相机弹窗：拍照/录像直接调摄像头，绕开系统文件选择器，三端行为一致 -->
-  <div id="camModal" class="cam-modal">
-    <div class="cam-inner">
+  <div id="camModal" class="cam-modal modal-overlay">
+    <div class="cam-inner modal-card">
       <video id="camVideo" autoplay playsinline muted></video>
       <div id="camPreview" class="cam-preview"></div>
       <div class="cam-bar">
-        <button class="btn-cam" id="camCapture">拍照</button>
-        <button class="btn-rec" id="camRecord">开始录像</button>
+        <button class="btn-secondary" id="camCapture">拍照</button>
+        <button class="btn-destructive" id="camRecord">开始录像</button>
         <button class="btn-primary" id="camConfirm" style="display:none">确认上传</button>
-        <button class="btn-cancel" id="camCancel">取消</button>
+        <button class="btn-secondary" id="camCancel">取消</button>
       </div>
       <div id="camStatus" class="cam-status"></div>
     </div>

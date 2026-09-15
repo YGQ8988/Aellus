@@ -29,7 +29,7 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 - **桌面端常驻**：macOS 菜单栏 / Windows 系统托盘常驻图标，后台运行不抢焦点
 - **飞牛 NAS 支持**：可作为飞牛 fnOS 后台服务运行（`.fpk` 包），复用飞牛授权目录机制
 - **路径穿越防护**：严格校验目录名 / 文件名，禁止 `..` 越界与隐藏文件访问，并对软链做真实路径二次校验（浏览 / 下载 / 删除 / 上传全链路）
-- **安全防护**：写操作需客户端标识头（防 CSRF）、上传的文件不会被当页面执行、缩略图与请求体有内存上限（详见「安全说明」）
+- **安全防护**：写操作需客户端标识头（防 CSRF）、上传的文件不会被当页面执行、缩略图与请求体有内存上限
 - **单文件分发**：前端资源经 `//go:embed` 编译进二进制，运行时无需任何外部文件
 
 ---
@@ -73,20 +73,20 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 ### 1. 运行
 
-**Windows：** 双击 `dist/Aellus-<version>-windows-x86_64.exe` 即可（版本号以实际为准）。程序会自动打开默认浏览器并跳转到访问地址，同时在**系统托盘**显示图标——右键菜单可「打开浏览器」或「退出」。
+**Windows：** 解压 `dist/Aellus-<version>-windows-x64.zip`（版本号以实际为准），双击里面的 `Aellus.exe`。程序会自动打开默认浏览器并跳转到访问地址，同时在**系统托盘**显示图标——右键菜单可「打开浏览器」或「退出」。
 
 **macOS：**
 ```bash
 chmod +x Aellus-1.0.1-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
-# 或 chmod +x Aellus-1.0.1-darwin-x86_64  # Intel
+# 或 chmod +x Aellus-1.0.1-darwin-x64  # Intel
 ./Aellus-1.0.1-darwin-arm64
 ```
 或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
 
 **Linux：**
 ```bash
-chmod +x Aellus-1.0.1-linux-x86_64
-./Aellus-1.0.1-linux-x86_64
+chmod +x Aellus-1.0.1-linux-x64
+./Aellus-1.0.1-linux-x64
 ```
 
 启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
@@ -114,17 +114,22 @@ Aellus 已启动 (Go 单文件版)
 
 | 产物 | 脚本 | 运行环境 | 说明 |
 |------|------|---------|------|
-| macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x86_64 独立打包，已签名 |
-| 全平台裸二进制 | `build-all.sh` | 任意平台 | 8 个目标：macOS / Windows / Linux 各架构 |
-| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | x86 + arm，纯后台服务、无托盘 |
+| macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x64 独立打成 zip，已签名 |
+| 全平台 | `build-all.sh` | 任意平台 | macOS / Linux 裸二进制 + Windows `Aellus.exe`（打成 zip） |
+| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
 
 ```bash
-bash build-mac.sh     # 打包 dist/Aellus-<version>-mac-{arm64,x86_64}.zip（内含 Aellus.app，架构由压缩包名区分）
-bash build-all.sh     # 打包 dist/Aellus-<version>-{os}-{arch} 共 8 个裸二进制（版本号紧跟产品名）
-bash build-fnos.sh    # 打包 dist/Aellus-<version>-*.fpk（x86_64 / arm64 分架构）
+bash build-mac.sh     # dist/Aellus-<version>-mac-{arm64,x64}.zip      （内含 Aellus.app）
+bash build-all.sh     # dist/Aellus-<version>-darwin-{arm64,x64}、-linux-{x64,arm64,x86}（裸二进制）
+                      # dist/Aellus-<version>-windows-{x64,arm64,x86}.zip（内含 Aellus.exe）
+bash build-fnos.sh    # dist/Aellus-<version>-fnos-{x64,arm64}.fpk    （直接可安装）
 ```
 
-> `build-all.sh` 产物直接输出到 `dist/`；`build-mac.sh` 与 `build-fnos.sh` 共用 `.build/` 中间目录，**不能并行执行**（`build-fnos.sh` 结束时会清理 `.build/`），需串行运行。
+> 命名风格统一：**文件名带版本与架构**；macOS `.app` 与 Windows `Aellus.exe` 打成 zip（解压即用），飞牛 `.fpk` 与 macOS / Linux 裸二进制不套压缩包（直接使用）。
+> 架构标识统一为 `x64`（64 位 x86）/ `x86`（32 位 x86）/ `arm64`。
+> 飞牛 `.fpk` **特意不套 zip**：fpk 内部是 gzip 流，macOS 自带归档工具的「必要时继续展开」会把它连同 zip 一起解开，用户解压后拿不到 fpk 文件（只得到解开的文件夹）。
+>
+> 三个脚本的产物都输出到 `dist/`，并共用 `.build/` 中间目录，**不能并行执行**（结束时会各自清理），需串行运行。
 >
 > `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
 >
@@ -137,7 +142,8 @@ bash build-fnos.sh    # 打包 dist/Aellus-<version>-*.fpk（x86_64 / arm64 分�
 ```
 aellus/
 ├── main.go                       # 启动入口：embed 资源 + 平台选择 + App 构造 + Serve + 托盘
-├── go.mod                        # Go module（唯一外部依赖 systray；fpk 构建自动剥离）
+├── go.mod / go.sum               # Go module（唯一外部依赖 systray；fpk 构建自动剥离）
+├── LICENSE                       # MIT 许可证
 ├── internal/app/                 # 业务逻辑（零 build-tag，纯 Go；平台差异通过 Platform 接口注入）
 │   ├── app.go                    # App struct + New/Serve + 常量定义
 │   ├── platform.go               # Platform 接口定义（隔离 build-tag 差异）
@@ -145,16 +151,18 @@ aellus/
 │   ├── handlers.go               # HTTP handler（上传/下载/浏览/删除/批量下载）
 │   ├── settings.go               # 设置 handler（保存目录/授权目录/文件夹选择）
 │   ├── config.go                 # 配置解析（保存目录/配置文件读写/旧配置迁移）
-│   ├── netx.go                   # 网络工具（局域网 IP/端口监听）
+│   ├── netx.go                   # 网络工具（局域网 IP / 端口监听 / 本机与权限判定）
 │   ├── pathx.go                  # 路径安全（设备名/文件名/穿越防护）
 │   ├── resolve.go                # 目录/文件路径解析
-│   ├── owner.go                  # 设备名映射（devices.json 读写）
+│   ├── devnames.go               # 设备名映射（devices.json 读写）
 │   ├── thumb.go                  # 缩略图生成
 │   ├── trim.go                   # 飞牛授权目录 API
 │   ├── middleware.go             # 中间件（日志/安全响应头/no-cache）
 │   ├── logx.go                   # 日志写入（含轮转与注入清洗）
 │   ├── fileout.go                # 文件输出统一出口（下载 / 缩略图的类型白名单与附件判定）
 │   ├── types.go                  # 数据结构定义
+│   ├── paging.go                 # 分页计算（总页数/偏移/页码纠正）
+│   ├── paging_test.go            # 分页单元测试
 │   └── security_test.go          # 安全回归测试（`go test ./...` 即可运行）
 ├── internal/platform/            # 平台层（build-tag 选择编译；实现 Platform 接口）
 │   ├── platform_impl.go          # 桌面端实现（!fpk；托盘/通知/单实例/文件夹选择）
@@ -172,7 +180,7 @@ aellus/
 │   ├── app_agent_darwin.go       # macOS AppKit 激活策略（后台运行，Dock 不弹跳）
 │   ├── forceSetTemplateIcon.m    # macOS 菜单栏图标 cgo ObjC
 │   ├── menuicon.png              # macOS 菜单栏图标（embed）
-│   └── favicon.ico               # Windows 托盘 / exe 图标（embed）
+│   └── favicon.ico               # Windows 托盘图标（embed）
 ├── templates/                    # HTML 页面（已编译进二进制）
 │   ├── home.html                 # 首页
 │   ├── upload.html               # 上传页
@@ -182,14 +190,15 @@ aellus/
 │   ├── js/                       # 脚本：ui.js（通用 UI + 设备 ID + 客户端标识头）/ upload.js / browse.js / qrcode.js
 │   └── img/                      # 图标与图片：logo-icon.png / icon.png / favicon.svg / 打赏二维码
 ├── build-mac.sh                  # macOS .app 构建脚本
-├── build-all.sh                  # 全平台裸二进制构建脚本
-├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本
+├── build-all.sh                  # 全平台构建脚本（macOS/Linux 裸二进制 + Windows exe 打成 zip）
+├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本（分架构，直接产出 .fpk）
 ├── aellus.icns                   # macOS 应用图标
 ├── winres/                       # Windows 图标相关（源图标 + 工具脚本）
 │   ├── aellus.ico                # Windows 应用图标（多尺寸，go-winres 打包进 exe）
 │   ├── make_ico.py               # 图标生成工具：PNG → 多尺寸 ICO（改图标时用）
 │   └── check_pe_icon.py          # 校验脚本：检查 exe 是否含图标/版本资源
 ├── rsrc_windows_{amd64,arm64,386}.syso  # Windows 图标/清单/版本资源（go build 在根目录自动链接）
+├── screenshots/                  # 界面预览截图（README「界面预览」章节引用：飞牛 / Android / iOS）
 ├── fnos/                         # 飞牛 fnOS 打包资源（manifest / config / cmd）
 └── README.md
 ```
@@ -201,8 +210,10 @@ aellus/
 ```
 ~/Desktop/file-drops/
 └── <设备名>/
-    └── 20260804_112601079_截图.png   # 时间戳_原文件名
+    └── 20260914_143022.123456_截图.png   # 时间戳_原文件名
 ```
+
+> 目录内还有一个隐藏的中转目录 `.aellus-tmp`（上传与打包的临时文件；正常使用可忽略，也可整目录删除）。
 
 飞牛 NAS 端保存目录由飞牛「应用设置 → 授权目录」注入，落在授权目录树内。
 
@@ -271,43 +282,11 @@ const (
 ## 🛠 服务管理
 
 - **macOS**：双击 `Aellus.app` 启动，顶部菜单栏出现 Aellus 图标，后台运行（不在 Dock 弹跳）；点菜单「退出」停止
-- **Windows**：双击 `aellus.exe` 启动；右键系统托盘图标 →「退出」停止（也可任务管理器结束进程）
+- **Windows**：双击 `Aellus.exe` 启动；右键系统托盘图标 →「退出」停止（也可任务管理器结束进程）
 - **Linux**：终端运行二进制；`Ctrl+C` 停止
 - **飞牛 NAS**：作为 fnOS 后台服务运行，由 fnOS / systemd 管理生命周期
 
 > 未配置开机自启。如需自启：macOS 可配置 launchd，Windows 可配置任务计划程序，Linux 可配置 systemd。
-
----
-
-## 🔒 安全说明
-
-### 威胁模型（先读这一段）
-
-本工具的安全边界是**「可信局域网」**：
-
-- **局域网内 = 可信**：同一网段内任何设备无需账号即可浏览、下载、上传文件（零安装直传是设计目的，**上传不限大小、不限频率**）
-- **不可信网络 = 不要用**：服务监听 `0.0.0.0`，一旦端口被转发到公网，等于把保存目录的读取权与写入权公开
-- **删除 / 修改保存目录只对「管理入口」开放**：飞牛端为门户内（经飞牛统一网关，先校验飞牛登录态后再转发）；桌面端为运行应用的本机。局域网设备直连一律拒绝，手工构造请求头也无效；容器 / 网桥 / VPN 的地址不算本机（否则容器里的进程会等同于「运行应用的那台电脑」）
-- **不区分管理员**：飞牛端由飞牛账号体系控制（能打开门户的账号即可管理）；桌面端「谁运行应用，那台电脑就是管理员」
-
-### 已实施的防护
-
-- **路径穿越防护**：目录名 / 文件名逐段校验（禁止 `/`、`\`、`..`、隐藏段），并做真实路径（symlink）二次校验——读取、下载、删除、上传四条链路都覆盖
-- **设备名过滤**：仅保留字母、数字、中文、`-`、`_`，其余自动剔除；设备名映射文件有条数与长度上限
-- **CSRF 防护**：所有会改变状态的接口（上传 / 删除 / 改保存目录 / 批量下载）都要求自定义请求头 `X-Aellus-Client`——浏览器跨站时该头会触发预检，而服务端不返回任何 CORS 许可，跨站请求发不出去
-- **上传的文件不会被当成页面执行**：下载与缩略图接口共用同一套内联白名单，HTML / SVG / XML 等可携带脚本的类型一律 `application/octet-stream` + `attachment`
-- **响应头**：`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`、CSP（默认全禁，仅放开同源资源与必需的内联脚本）
-- **身份头信任**：只信飞牛统一网关注入的身份头；裸端口入口会剥离客户端伪造的 `X-Trim-*`；网关入口仅允许同源 iframe 嵌入（防点击劫持）
-- **日志**：只记录 TCP 对端地址（不信任 `X-Forwarded-For`，避免被伪造 IP 栽赃），单文件超过 5MB 自动轮转
-- **飞牛授权目录**：fpk 端强制保存目录必须落在飞牛授权目录树内，由飞牛注入边界
-- **上传临时文件**：写在保存目录内的隐藏子目录 `.aellus-tmp`（与保存目录同盘，改名即落盘、不占系统盘；对列表与 API 不可见；超过 6 小时的残留会在下次上传时清理，也可直接整目录删除）
-
-### 局限（已知且明确接受）
-
-- **局域网内读取无保护**：知道地址的任何设备都能浏览、下载保存目录内的文件——这是「零安装直传」的代价，不信任局域网时请勿部署
-- **桌面端无身份认证**：面向可信环境（本机即管理员），请勿在公共网络使用
-- **飞牛端网关 Socket 未额外收紧文件权限**（依赖应用目录自身的访问控制）
-- 未审计第三方组件：`qrcode.js`（本地文件，仅首页二维码使用；其余前端代码均为自有）
 
 ---
 
@@ -335,7 +314,7 @@ const (
 
 **Q：Windows 双击没反应？**
 - 本程序是「无控制台窗口」的 GUI 程序，正常运行时本就不会弹出黑窗口；双击后请查看**系统托盘**是否有图标，并确认默认浏览器是否已打开
-- 若完全无反应，可能是端口被占用或杀毒软件拦截，建议在终端手动 `.\aellus.exe` 看报错
+- 若完全无反应，可能是端口被占用或杀毒软件拦截，建议在终端手动 `.\Aellus.exe` 看报错
 
 **Q：Linux 终端中文显示成黑方块？**
 - 部分终端字体缺中文字形导致；Linux 版默认已输出英文规避。如需中文，设 `AELLUS_LANG=zh` 并确保终端字体含中文字形
@@ -366,7 +345,7 @@ const (
 | 运行平台 | macOS / Windows / Linux + 飞牛 fnOS（单文件，零运行时依赖） |
 | 后端 | Go 1.21+（标准库为主：`net/http` / `embed` / Windows 托盘用 `syscall`；macOS 菜单栏用 getlantern/systray） |
 | 前端 | 原生 HTML5 / CSS3 / JavaScript（无框架） |
-| 打包 | 静态资源 `//go:embed` 编译进二进制；macOS `build-mac.sh` 打 .app；飞牛 `fnpack` 打 .fpk |
+| 打包 | 静态资源 `//go:embed` 编译进二进制；macOS 打 `.app`、Windows 打 `Aellus.exe`（两者封成 zip），飞牛用 `fnpack` 直接打 `Aellus.fpk` |
 | 传输 | HTTP（局域网点对点，不走云端） |
 
 ---

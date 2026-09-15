@@ -26,7 +26,7 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"saveDirDisplay": saveDirDisplay,
 		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
-		"isLocal":        a.canManage(r),                   // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
+		"canManage":      a.canManage(r),                   // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
 		"deviceName":     a.deviceNameOf(deviceID(r)),      // 当前设备 ID 对应的上次设备名（供上传页自动填充）
 	})
 }
@@ -157,8 +157,8 @@ func (a *App) resolvePickedDir(name string) string {
 
 // handleSetSaveDir POST /api/set-savedir 修改文件保存路径。
 // body: {"dir": "/abs/path"}；dir 为空则恢复默认（桌面 file-drops / fnOS 授权共享目录）。
-// 权限与删除逻辑一致：仅本机访问（飞牛桌面 iframe 在本机加载 / 桌面端本机）可改，
-// 飞牛里装的浏览器、局域网其他设备均不可改。
+// 权限与删除逻辑一致（见 canManage）：飞牛端要求请求携带网关注入的身份头（即从门户内
+// 发起，登录态已由飞牛网关校验）；桌面端要求来自本机；局域网设备经 IP:端口 直连一律拒绝。
 //
 // 平台差异（由 Platform.EnforceAuthBoundary / PersistSaveDirAllowed 控制）：
 //   - 桌面端：可存任意绝对路径，并持久化到 aellus-settings.json（用户自主决定落盘位置）。
@@ -267,7 +267,7 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePickDir 调用系统原生"选取文件夹"对话框，返回用户选择的绝对路径。
-// 仅在本机（localhost / 127.0.0.1）访问时可用；fpk 端不支持本地目录选择，返回 501。
+// 仅本机来源可调用（见 isLocalRequest）；fpk 端无本机浏览器，不支持目录选择，返回 501。
 func (a *App) handlePickDir(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})

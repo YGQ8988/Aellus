@@ -87,7 +87,7 @@ body.home .container {
 	border-radius: var(--radius);
 	color: hsl(var(--primary-foreground));
 	letter-spacing: .3px;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-family: var(--font-mono);
 	font-size: 14px;
 	user-select: none;
 	transition: opacity .2s;
@@ -209,20 +209,8 @@ body.home .container {
 	}
 }
 
-/* 设置弹窗 / 扫码弹窗 遮罩层：背景与删除确认弹窗(.alert-dialog-overlay)保持一致 */
-.settings-overlay,
-.qr-modal {
-	position: fixed;
-	inset: 0;
-	display: none;
-	align-items: center;
-	justify-content: center;
-	padding: 16px;
-	background: rgb(0 0 0 / .45);
-	backdrop-filter: blur(2px);
-	-webkit-backdrop-filter: blur(2px);
-}
-
+/* 设置弹窗 / 扫码弹窗：遮罩与面板的公共样式来自 components.css 的
+   .modal-overlay / .modal-card（与删除确认弹窗、相机弹窗同一套），这里只留差异。 */
 .settings-overlay {
 	z-index: 100;
 }
@@ -246,9 +234,6 @@ body.home .container {
      保证「只能滚动弹窗里的内容」在鼠标滚轮与手机触摸下都成立） */
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
-	background: hsl(var(--card));
-	border: 1px solid hsl(var(--border));
-	border-radius: var(--radius-lg);
 
 }
 
@@ -288,29 +273,10 @@ body.home .container {
 	line-height: 1.6;
 }
 
-/* 关闭按钮 → ghost 图标按钮 */
+/* 关闭按钮：外观来自 .modal-close（components.css），这里只定尺寸 */
 .settings-close {
 	width: 32px;
 	height: 32px;
-	min-height: 0;
-	border: none;
-	border-radius: calc(var(--radius) - 2px);
-	background: transparent;
-	color: hsl(var(--muted-foreground));
-	font-size: 18px;
-	cursor: pointer;
-	transition: background .15s, color .15s;
-}
-
-.settings-close:active {
-	background: hsl(var(--accent));
-}
-
-@media (hover: hover) and (pointer: fine) {
-	.settings-close:hover {
-		background: hsl(var(--accent));
-		color: hsl(var(--foreground));
-	}
 }
 
 .settings-body {
@@ -342,42 +308,15 @@ body.home .container {
 	line-height: 1.6;
 }
 
-/* 设置弹窗操作按钮：primary（主操作，深色底白字）+ text（次操作，透明文字按钮）两级 */
-.btn-set-primary {
-	flex-shrink: 0;
-	padding: 8px 16px;
-	min-height: 40px;
-	border: 1px solid hsl(var(--primary));
-	border-radius: calc(var(--radius) - 2px);
-	background: hsl(var(--primary));
-	color: hsl(var(--primary-foreground));
-	font-size: 14px;
-	font-weight: 500;
-	cursor: pointer;
-	transition: background .15s, opacity .15s;
-}
-
-.btn-set-primary:active {
-	opacity: .85;
-}
-
-@media (hover: hover) and (pointer: fine) {
-	.btn-set-primary:hover {
-		background: hsl(var(--primary) / .9);
-	}
-}
-
+/* 设置弹窗的保存按钮直接用全局 button 样式（.btn-primary）；"恢复默认"复用
+   .btn-outline 的描边与交互（HTML 同时挂两个类），这里只保留静默色 / 紧凑尺寸等差异。 */
 .btn-set-text {
 	align-self: center;
 	width: auto;
 	padding: 6px 14px;
-	border: 1px solid hsl(var(--input));
-	border-radius: calc(var(--radius) - 2px);
 	background: transparent;
 	color: hsl(var(--muted-foreground));
 	font-size: 13px;
-	cursor: pointer;
-	transition: background .15s, color .15s, border-color .15s;
 }
 
 .btn-set-text:active {
@@ -486,7 +425,7 @@ body.home .container {
 	background: hsl(var(--muted));
 	color: hsl(var(--foreground));
 	cursor: pointer;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-family: var(--font-mono);
 	font-size: 14px;
 	line-height: 1.4;
 	text-align: left;
@@ -568,7 +507,7 @@ body.home .container {
 	border-radius: calc(var(--radius) - 4px);
 	cursor: pointer;
 	user-select: none;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-family: var(--font-mono);
 	font-size: 13px;
 	line-height: 1.4;
 	word-break: break-all;
@@ -592,7 +531,7 @@ body.home .container {
 	text-align: center;
 	font-size: 13px;
 	color: hsl(var(--muted-foreground));
-	font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+	font-family: var(--font-sans);
 }
 
 /* 输入框模式（桌面端 / 非飞牛）：无授权目录概念，直接输入绝对路径。
@@ -621,7 +560,7 @@ body.home .container {
 	border-radius: calc(var(--radius) - 2px);
 	background: hsl(var(--muted));
 	color: hsl(var(--foreground));
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-family: var(--font-mono);
 	font-size: 14px;
 	line-height: 1.4;
 	transition: border-color .15s, box-shadow .15s;
@@ -641,7 +580,7 @@ body.home .container {
 
 .dir-input::placeholder {
 	color: hsl(var(--muted-foreground));
-	font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+	font-family: var(--font-sans);
 }
 
 .dir-save-btn {
@@ -710,9 +649,6 @@ body.home .container {
 	flex-direction: column;
 	gap: 12px;
 	align-items: center;
-	background: hsl(var(--card));
-	border: 1px solid hsl(var(--border));
-	border-radius: var(--radius-lg);
 	padding: 22px 20px;
 }
 
@@ -730,24 +666,10 @@ body.home .container {
 	color: hsl(var(--foreground));
 }
 
+/* 关闭按钮：外观来自 .modal-close（components.css），这里只留差异（紧凑内边距） */
 .qr-close {
-	border: none;
-	background: transparent;
-	color: hsl(var(--muted-foreground));
-	font-size: 18px;
 	line-height: 1;
-	min-height: 0;
-	cursor: pointer;
 	padding: 4px 6px;
-	border-radius: calc(var(--radius) - 2px);
-	transition: background .15s, color .15s;
-}
-
-@media (hover: hover) and (pointer: fine) {
-	.qr-close:hover {
-		background: hsl(var(--accent));
-		color: hsl(var(--foreground));
-	}
 }
 
 .qr-code {
@@ -771,7 +693,7 @@ body.home .container {
 	margin: 0;
 	word-break: break-all;
 	text-align: center;
-	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-family: var(--font-mono);
 }
 
 .qr-tip {

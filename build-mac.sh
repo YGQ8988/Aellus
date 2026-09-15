@@ -3,7 +3,7 @@
 # 分架构打包：arm64 与 amd64 各自独立构建 .app 并压缩成 zip。
 # 产物命名（架构体现在压缩包名，.app 统一叫 Aellus.app）：
 #   - dist/Aellus-<version>-mac-arm64.zip   （Apple Silicon）
-#   - dist/Aellus-<version>-mac-x86_64.zip  （Intel）
+#   - dist/Aellus-<version>-mac-x64.zip     （Intel）
 # 前置：1) 安装 Go   2) 安装 Xcode 命令行工具: xcode-select --install
 # 因为 systray 在 macOS 走 cgo(Cocoa)，无法从 Windows 交叉编译，必须在 Mac 本机编译。
 # 用法：./build-mac.sh [version]（不传则读 fnos/manifest 的 version，保证与 fpk / Windows 包一致）
@@ -26,26 +26,17 @@ fi
 VERSION="${VERSION:-1.0.1}"
 echo "构建版本：${VERSION}"
 
-# 兼容旧版 macOS：cgo 默认用本机 SDK 版本写入 Mach-O 的 LC_BUILD_VERSION.minos，
-# 在 macOS 26 上编译会写成 26.0，导致 macOS 13 等旧系统内核拒绝加载（"应用已损坏"）。
-# 显式设为 11.0（Big Sur）：既让 macOS 13 能加载，又保证 UserNotifications 框架
-# strong link（< 10.14 或 < 11.0 都会被弱链接，通知授权静默失效、不弹授权横幅）。
-# 代码用了 UNNotificationPresentationOptionBanner（macOS 11+），故下限为 11.0。
+# cgo 编译目标固定 macOS 11.0（兼容 macOS 11+，并保证通知框架 strong link）
 export MACOSX_DEPLOYMENT_TARGET=11.0
-# 强制 cgo 编译目标=11.0。本机 clang 默认 minos=13.0，而 Go cgo 子进程不会把
-# MACOSX_DEPLOYMENT_TARGET 透传给 clang，导致 systray/项目 .m 编译出的 object 被抬到 13.0，
-# 既刷 "built for newer macOS version (13.0)" 警告，又在 macOS 11 真机上因弱链接符号缺失而崩溃。
-# 显式 CGO_CFLAGS 让所有 cgo object 真正按 11.0 编译，覆盖 macOS 11.0–26。
 export CGO_CFLAGS="-mmacosx-version-min=11.0"
 
 # 本机架构：arm64 / x86_64
 HOST_ARCH="$(uname -m)"
 
-# arch_label：把 goarch / 本机架构映射为命名标识（arm64 / x86_64）。
+# arch_label：把 goarch / 本机架构（uname -m）映射为命名标识（arm64 / x64）。
 arch_label() {
   case "$1" in
-    arm64)        echo "arm64" ;;
-    amd64|x86_64) echo "x86_64" ;;
+    amd64|x86_64) echo "x64" ;;
     *)            echo "$1" ;;
   esac
 }
@@ -61,7 +52,7 @@ build_app() {
   echo ""
   echo ">> 编译 ${goarch}（本机 ${HOST_ARCH} → ${zip_name}）"
   GOOS=darwin GOARCH="${goarch}" CGO_ENABLED=1 \
-    go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o ".build/aellus-${goarch}" .
+    go build -trimpath -ldflags="-s -w" -o ".build/aellus-${goarch}" .
 
   rm -rf "${app_dir}"
   mkdir -p "${app_dir}/Contents/MacOS" "${app_dir}/Contents/Resources"
@@ -146,5 +137,5 @@ echo ""
 echo "按架构解压对应 zip 后双击 Aellus.app 即可（顶部菜单栏出现 Aellus 图标，点开有『打开浏览器 / 退出』）。"
 echo "首次运行请先移除 quarantine 再双击（本机生成的 app 通常已无 quarantine，保险起见执行一次）："
 echo "  unzip dist/Aellus-${VERSION}-mac-arm64.zip   # Apple Silicon"
-echo "  unzip dist/Aellus-${VERSION}-mac-x86_64.zip  # Intel"
+echo "  unzip dist/Aellus-${VERSION}-mac-x64.zip  # Intel"
 echo "  xattr -dr com.apple.quarantine Aellus.app"
