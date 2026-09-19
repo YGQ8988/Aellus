@@ -123,6 +123,18 @@ body.home .container {
 	background: hsl(var(--primary-foreground) / 0.28);
 }
 
+/* 点击按钮 / ESC 关闭弹窗后焦点仍留在按钮上，会残留浏览器默认蓝色线框：
+   鼠标触发不显示，仅键盘导航（Tab）显示焦点环，保证可访问性 */
+.lan-qr:focus,
+.lan-copy:focus {
+	outline: none;
+}
+.lan-qr:focus-visible,
+.lan-copy:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 2px;
+}
+
 @media (hover: hover) and (pointer: fine) {
 
 	.lan-qr:hover,
@@ -209,6 +221,15 @@ body.home .container {
 	}
 }
 
+/* 同上：ESC 关闭设置弹窗后按钮残留焦点线框问题 */
+.settings-btn:focus {
+	outline: none;
+}
+.settings-btn:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 2px;
+}
+
 /* 设置弹窗 / 扫码弹窗：遮罩与面板的公共样式来自 components.css 的
    .modal-overlay / .modal-card（与删除确认弹窗、相机弹窗同一套），这里只留差异。 */
 .settings-overlay {
@@ -234,7 +255,16 @@ body.home .container {
      保证「只能滚动弹窗里的内容」在鼠标滚轮与手机触摸下都成立） */
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
-
+	/* 飞牛（Linux Chromium）默认经典滚动条会在右侧占位：槽口是直角矩形，
+	   上下端顶在面板右上/右下角、盖住卡片圆角 → 透明轨道 + 圆角滑块，保持可滚动 */
+	scrollbar-width: thin;
+	scrollbar-color: hsl(var(--muted-foreground) / .35) transparent;
+}
+.settings-panel::-webkit-scrollbar { width: 8px; }
+.settings-panel::-webkit-scrollbar-track { background: transparent; }
+.settings-panel::-webkit-scrollbar-thumb {
+	background: hsl(var(--muted-foreground) / .35);
+	border-radius: 9999px;
 }
 
 .settings-head {

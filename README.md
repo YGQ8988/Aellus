@@ -94,15 +94,15 @@ chmod +x Aellus-1.0.1-linux-x64
 Aellus 已启动 (Go 单文件版)
 保存目录：.../Desktop/file-drops
 本机局域网 IP：192.168.1.111
-访问地址：http://localhost:8000
-手机访问：http://192.168.1.111:8000
+访问地址：http://localhost:5115
+手机访问：http://192.168.1.111:5115
 按 Ctrl+C 停止
 ```
 
 ### 2. 访问使用
 
-- **本机**：浏览器打开 `http://localhost:8000`（Windows 双击后会自动打开）
-- **手机 / 其他设备**：浏览器打开启动时显示的 `http://<主机局域网IP>:8000`
+- **本机**：浏览器打开 `http://localhost:5115`（Windows 双击后会自动打开）
+- **手机 / 其他设备**：浏览器打开启动时显示的 `http://<主机局域网IP>:5115`
 
 首页提供两个入口：
 - 📤 **上传文件** → 填设备名 → 选文件 / 拍照 / 录像 → 上传
@@ -257,7 +257,7 @@ aellus/
 
 | 变量 | 作用 | 默认 |
 |------|------|------|
-| `AELLUS_PORT` | 监听端口（被占用自动 +1） | `8000` |
+| `AELLUS_PORT` | 监听端口（被占用自动 +1） | `5115` |
 | `AELLUS_SAVE_DIR` | 保存目录（飞牛 cmd/main 注入） | 桌面 `~/Desktop/file-drops` |
 | `AELLUS_LANG` | 控制台输出语言：`en` / `zh` | Linux=`en`，其余=`zh` |
 | `AELLUS_HEADLESS` | `1` 时跳过托盘 GUI，仅常驻 HTTP（CI / 调试） | 未设置 |
@@ -273,7 +273,7 @@ aellus/
 ```go
 const (
     saveDirName = "file-drops"  // 文件保存目录名（桌面端路径：~/Desktop/file-drops）
-    DefaultPort = 8000          // 默认端口；被占用自动尝试 8001、8002……
+    DefaultPort = 5115          // 默认端口；被占用自动尝试 5116、5117……
 )
 ```
 
@@ -327,14 +327,14 @@ const (
 - 所有**写操作**都必须带客户端标识头 `X-Aellus-Client: 1`（服务端据此拒绝跨站请求；不带会返回 `403 缺少客户端标识头`）：
 
   ```bash
-  NAS=http://192.168.1.111:8000; H='X-Aellus-Client: 1'
+  NAS=http://192.168.1.111:5115; H='X-Aellus-Client: 1'
   curl -s -X POST "$NAS/upload" -H "$H" -F "device=MAC" -F "files=@$HOME/a.zip" -F "rels=a.zip"
   curl -s -X POST "$NAS/api/delete" -H "$H" -H "Content-Type: application/json" -d '{"dir":"MAC","file":"20260804_112601079_a.zip"}'
   curl -s -X POST "$NAS/api/set-savedir" -H "$H" -H "Content-Type: application/json" -d '{"dir":"/vol1/1000/photo"}'
   ```
 
 - 只读接口（`/api/dirs`、`/api/files`、`/api/thumb`、`/api/download`）不需要该头
-- **上传**：局域网内任何设备都能调；**删除 / 改保存目录**还需要「管理入口」——桌面端在本机执行，飞牛端只能在门户内（脚本直连 `IP:8000` 会返回 `403 无删除权限`，可直接在 NAS 上操作文件系统）
+- **上传**：局域网内任何设备都能调；**删除 / 改保存目录**还需要「管理入口」——桌面端在本机执行，飞牛端只能在门户内（脚本直连 `IP:5115` 会返回 `403 无删除权限`，可直接在 NAS 上操作文件系统）
 
 ---
 

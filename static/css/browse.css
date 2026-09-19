@@ -78,7 +78,14 @@
 .file-item .thumb { width: 72px; height: 72px; }
 .file-item .thumb-video { width: 72px; height: 72px; }
 .file-item .thumb-other, .file-item .thumb-folder { width: 72px; height: 72px; }
-.file-item .thumb-other svg { width: 36px; height: 36px; color: hsl(var(--muted-foreground)); }
+.file-item .thumb-other svg { width: 28px; height: 28px; color: hsl(var(--muted-foreground)); }
+/* 与上传页已上传列表 .up-thumb-ph 一致：非图片/视频文件显示居中大号扩展名文字 */
+.file-item .thumb-other.thumb-ext {
+  font-size: 18px; font-weight: 600; letter-spacing: .5px;
+  color: hsl(var(--muted-foreground));
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  padding: 0 4px;
+}
 /* 文件夹项：可点击进入，无下载/删除 */
 .file-item .thumb-folder svg { width: 40px; height: 40px; color: hsl(var(--muted-foreground)); }
 .file-item .fname { word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }

@@ -1,6 +1,6 @@
 // 读取页逻辑：选目录 → 列文件 → 下载 / 预览
 //（$ / formatSize / formatDay / formatTime 等通用工具来自 ui.js 共享层）
-const IMG_EXTS = ['png','jpg','jpeg','gif','webp','bmp','heic'];
+const IMG_EXTS = ['png','jpg','jpeg','gif','webp','bmp','heic','avif','icns'];
 const VID_EXTS = ['mp4','mov','m4v','webm'];
 
 // 图标 SVG（跨平台渲染一致）
@@ -193,7 +193,11 @@ async function openDir(path, page) {
       return IMG_EXTS.includes(ext) || VID_EXTS.includes(ext);
     }).map(f => {
       const u = 'api/download?dir=' + encodeURIComponent(path) + '&file=' + encodeURIComponent(f.name);
-      return { name: f.name, previewUrl: u + '&inline=1', ext: f.name.split('.').pop().toLowerCase() };
+      const ext = f.name.split('.').pop().toLowerCase();
+      // icns 是容器格式，浏览器不原生显示 → 预览走服务端转 PNG（thumb 接口大图），
+      // 下载仍用原文件（downloadUrl），灯箱下载按钮据此取原文件。
+      const isIcns = ext === 'icns';
+      return { name: f.name, previewUrl: isIcns ? u.replace('api/download', 'api/thumb') + '&w=800' : u + '&inline=1', downloadUrl: u, ext: ext };
     });
     canManage = !!data.canDelete;
     $('filesList').innerHTML = data.files.map(renderFile).join('');
@@ -290,7 +294,15 @@ function renderFile(f) {
       thumb = `<video class="thumb-video" src="${url}" preload="metadata" data-name="${escapeAttr(f.name)}" style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)"></video>`;
     }
   } else {
-    thumb = `<div class="thumb-other">${SVG_FILE}</div>`;
+    // 其他文件：与上传页已上传列表一致——居中大号扩展名文字；
+    // 无扩展名 / 隐藏文件不显示文字，退回通用文件图标
+    let extText = '';
+    if (ext && f.name.indexOf('.') > 0 && !f.name.startsWith('.')) {
+      extText = ext.toUpperCase().slice(0, 4);
+    }
+    thumb = extText
+      ? `<div class="thumb-other thumb-ext">${escapeHtml(extText)}</div>`
+      : `<div class="thumb-other">${SVG_FILE}</div>`;
   }
   const mainCursor = previewable ? ' style="cursor:pointer"' : '';
   const mainClick = previewable ? ` data-name="${escapeAttr(f.name)}" onclick="openLightboxFromEl(this)"` : '';
@@ -731,8 +743,11 @@ async function lbDownload() {
   btn.classList.add('loading');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>';
+  // 下载当前文件：优先用 downloadUrl（icns 等转换预览格式取原文件），
+  // 其余格式从 previewUrl 去掉 inline 标记即为下载地址
+  const dlUrl = f.downloadUrl || f.previewUrl.replace('&inline=1', '');
   try {
-    const blob = await fetchBlob(f.previewUrl.replace('&inline=1', ''));
+    const blob = await fetchBlob(dlUrl);
     if (blob) downloadBlob(blob, f.name);
   } finally {
     btn.classList.remove('loading');
