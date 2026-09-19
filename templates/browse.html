@@ -25,6 +25,7 @@
           <input type="checkbox" id="selectAllDirs" class="checkbox" onchange="toggleSelectAll(this.checked, 'dirsList')">
           <span>全选</span>
         </label>
+        <button class="btn-batch btn-selected" id="btnCancelDirs" onclick="clearAllChecks('dirsList','selectAllDirs')" style="display:none;">取消</button>
         <div class="batch-actions">
           <button class="btn-batch btn-selected" id="btnDownloadDirs" onclick="downloadSelectedDirs(this)" disabled>下载</button>
           <button class="btn-batch btn-del-selected" id="btnDelDirs" onclick="deleteSelectedDirs(this)" disabled>删除</button>
@@ -50,6 +51,7 @@
           <input type="checkbox" id="selectAll" class="checkbox" onchange="toggleSelectAll(this.checked, 'filesList')">
           <span>全选</span>
         </label>
+        <button class="btn-batch btn-selected" id="btnCancelFiles" onclick="clearAllChecks('filesList','selectAll')" style="display:none;">取消</button>
         <div class="batch-actions">
           <button class="btn-batch btn-selected" id="btnSelected" onclick="downloadSelected(this)" disabled>下载</button>
           <button class="btn-batch btn-del-selected" id="btnDelSelected" onclick="deleteSelected(this)" disabled>删除</button>
