@@ -2,14 +2,14 @@
 
 ### This script is called before the application is uninstalled.
 
-### 卸载向导「保留应用配置」开关：用户卸载确认页的选择以环境变量 keep_config
-### 注入本脚本（field 名直传，无 wizard_ 前缀）。
-###   true（默认）→ 保留：fnOS 卸载时系统本就保留 var（TRIM_PKGVAR）持久卷，
-###                 Aellus 的配置随 var 保留，重新安装后继续生效。
-###   false / 0    → 用户选择不保留：清除 Aellus 落在 var 中的应用配置
-###                 （aellus-settings.json、devices.json、info.log、app.pid、logs/）。
-### 说明：应用此时已停止（ctl_stop=true），且 var 目录不在系统删除清单里，
-###       这里清理是安全且正确的时机（卸载回调拿不到向导值）。
+### 卸载确认页「保留应用配置」开关以环境变量 keep_config 注入本脚本
+### （field 名直传，无 wizard_ 前缀）。
+###   true（默认）→ 保留：fnOS 卸载本就保留 var 持久卷（TRIM_PKGVAR），
+###                  Aellus 配置随 var 保留，重新安装后继续生效。
+###   false / 0    → 清除 Aellus 应用配置：aellus-settings.json、devices.json、
+###                  info.log、app.pid、logs/。
+### 说明：应用此时已停止（ctl_stop=true），var 目录不在系统删除清单中，
+###       此处是清理配置唯一且正确的时机（卸载回调拿不到向导值）。
 
 KEEP="${keep_config:-}"
 if [ "$KEEP" != "false" ] && [ "$KEEP" != "0" ]; then
@@ -24,8 +24,8 @@ case "$VAR_DIR" in
   *) exit 0 ;;
 esac
 
-# 删除 var 目录内容（目录项本身无父目录写权限，rm -rf 整个目录会失败，
-# 改为删目录内已知文件 + rmdir 清空后的空目录，失败忽略）。
+# 删除 var 目录内容：目录项本身无父目录写权限，rm -rf 整个目录会失败，
+# 故删目录内已知文件 + rmdir 清空后的空目录（失败忽略）。
 rm -rf "${VAR_DIR}/aellus-settings.json" "${VAR_DIR}/devices.json" "${VAR_DIR}/info.log" "${VAR_DIR}/app.pid" "${VAR_DIR}/logs"
 rmdir "${VAR_DIR}" 2>/dev/null
 exit 0
