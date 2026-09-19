@@ -2,4 +2,34 @@
 
 ### This script is called after the user uninstalls the application.
 
+### 兜底方案：读取 Aellus 设置中的「卸载时保留应用配置」（keepConfigOnUninstall，
+### 由应用设置持久化在 ${TRIM_PKGVAR}/aellus-settings.json；当前版本主路径为
+### 卸载确认页开关 → uninstall_init，本脚本仅在设置文件仍存在时做兜底清理）。
+###   true（默认）→ 保留配置（fnOS 卸载本就保留 var 持久卷）。
+###   false        → 清除 Aellus 落在 var 中的应用配置。
+
+# 从应用设置读取（缺字段 / 文件缺失 → 默认保留 true）
+KEEP="true"
+SETTINGS="${TRIM_PKGVAR:-}/aellus-settings.json"
+if [ -f "$SETTINGS" ]; then
+  V=$(grep -o '"keepConfigOnUninstall"[[:space:]]*:[[:space:]]*[a-z]*' "$SETTINGS" 2>/dev/null | head -1 | grep -o '[a-z]*$' 2>/dev/null)
+  if [ -n "$V" ]; then
+    KEEP="$V"
+  fi
+fi
+
+if [ "$KEEP" != "false" ] && [ "$KEEP" != "0" ]; then
+  exit 0
+fi
+
+# 防御式校验：仅当 TRIM_PKGVAR 符合飞牛应用数据目录结构时才执行删除。
+VAR_DIR="${TRIM_PKGVAR:-}"
+case "$VAR_DIR" in
+  /vol*/@appdata/*) ;;
+  *) exit 0 ;;
+esac
+
+# 删除 var 目录内容（与 uninstall_init 保持一致：删目录内已知文件 + rmdir 空目录）。
+rm -rf "${VAR_DIR}/aellus-settings.json" "${VAR_DIR}/devices.json" "${VAR_DIR}/info.log" "${VAR_DIR}/app.pid" "${VAR_DIR}/logs"
+rmdir "${VAR_DIR}" 2>/dev/null
 exit 0
