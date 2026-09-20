@@ -34,38 +34,17 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 ---
 
-## 📸 界面预览
+## 🛒 FnDepot 商店源
 
-### 飞牛（fnOS）
+本项目已提供 [FnDepot](https://github.com/EWEDLCM/FnDepot) 第三方应用源的 `fnpack.json`，可在飞牛上通过 FnDepot 客户端一键安装 Aellus。
 
-| 首页 | 访问二维码 | 上传 | 浏览 | 设置 |
-|------|-----------|------|------|------|
-| <img src="screenshots/飞牛_首页.png" width="200" alt="飞牛 首页"> | <img src="screenshots/飞牛_访问二维码.png" width="200" alt="飞牛 访问二维码"> | <img src="screenshots/飞牛_上传.png" width="200" alt="飞牛 上传"> | <img src="screenshots/飞牛_浏览.png" width="200" alt="飞牛 浏览"> | <img src="screenshots/飞牛_设置.png" width="200" alt="飞牛 设置"> |
+在 FnDepot 客户端「外部源管理」「添加源」中填入本仓库地址：
 
-### Android
+```text
+https://github.com/YGQ8988/Aellus
+```
 
-| 首页 | 上传 | 浏览 | 关于 |
-|------|------|------|------|
-| <img src="screenshots/Android_首页.jpg" width="200" alt="Android 首页"> | <img src="screenshots/Android_上传.jpg" width="200" alt="Android 上传"> | <img src="screenshots/Android_浏览.jpg" width="200" alt="Android 浏览"> | <img src="screenshots/Android_关于.jpg" width="200" alt="Android 关于"> |
-
-### iOS
-
-| 首页 | 上传 | 浏览 | 关于 |
-|------|------|------|------|
-| <img src="screenshots/IOS_首页.png" width="200" alt="iOS 首页"> | <img src="screenshots/IOS_上传.png" width="200" alt="iOS 上传"> | <img src="screenshots/IOS_浏览.png" width="200" alt="iOS 浏览"> | <img src="screenshots/IOS_关于.png" width="200" alt="iOS 关于"> |
-
----
-
-## 🖥 环境依赖
-
-| 项 | 要求 |
-|----|------|
-| 操作系统 | macOS / Windows / Linux（同一份 Go 代码交叉编译） |
-| 运行时 | **无需安装任何运行时**（不依赖 Python / Node / 浏览器内核），双击即用 |
-| 网络 | 主机与手机 / 其他设备在**同一局域网**内 |
-| 自行编译（可选） | Go 1.21+ |
-
-> 已发布的版本是**单文件可执行程序**：前端 `static/`、`templates/` 在编译期通过 `//go:embed` 打进二进制，运行时目录里不需要这些文件。
+客户端会读取仓库根目录的 `fnpack.json`，按设备架构（x86 / arm）自动选择对应的安装包。
 
 ---
 
@@ -134,6 +113,41 @@ bash build-fnos.sh    # dist/Aellus-<version>-fnos-{x64,arm64}.fpk    （直接�
 > `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
 >
 > fpk 构建通过 `-tags fpk` 选择 `internal/platform/platform_fpks.go`（headless 实现），显式排除所有桌面代码（系统托盘 / 原生通知 / 原生文件夹选择 / systray 依赖）；桌面端构建不加该标签，使用 `platform_impl.go`，保持托盘与通知体验。
+
+---
+
+## 📸 界面预览
+
+### 飞牛（fnOS）
+
+| 首页 | 访问二维码 | 上传 | 浏览 | 设置 |
+|------|-----------|------|------|------|
+| <img src="screenshots/飞牛_首页.png" width="200" alt="飞牛 首页"> | <img src="screenshots/飞牛_访问二维码.png" width="200" alt="飞牛 访问二维码"> | <img src="screenshots/飞牛_上传.png" width="200" alt="飞牛 上传"> | <img src="screenshots/飞牛_浏览.png" width="200" alt="飞牛 浏览"> | <img src="screenshots/飞牛_设置.png" width="200" alt="飞牛 设置"> |
+
+### Android
+
+| 首页 | 上传 | 浏览 | 关于 |
+|------|------|------|------|
+| <img src="screenshots/Android_首页.jpg" width="200" alt="Android 首页"> | <img src="screenshots/Android_上传.jpg" width="200" alt="Android 上传"> | <img src="screenshots/Android_浏览.jpg" width="200" alt="Android 浏览"> | <img src="screenshots/Android_关于.jpg" width="200" alt="Android 关于"> |
+
+### iOS
+
+| 首页 | 上传 | 浏览 | 关于 |
+|------|------|------|------|
+| <img src="screenshots/IOS_首页.png" width="200" alt="iOS 首页"> | <img src="screenshots/IOS_上传.png" width="200" alt="iOS 上传"> | <img src="screenshots/IOS_浏览.png" width="200" alt="iOS 浏览"> | <img src="screenshots/IOS_关于.png" width="200" alt="iOS 关于"> |
+
+---
+
+## 🖥 环境依赖
+
+| 项 | 要求 |
+|----|------|
+| 操作系统 | macOS / Windows / Linux（同一份 Go 代码交叉编译） |
+| 运行时 | **无需安装任何运行时**（不依赖 Python / Node / 浏览器内核），双击即用 |
+| 网络 | 主机与手机 / 其他设备在**同一局域网**内 |
+| 自行编译（可选） | Go 1.21+ |
+
+> 已发布的版本是**单文件可执行程序**：前端 `static/`、`templates/` 在编译期通过 `//go:embed` 打进二进制，运行时目录里不需要这些文件。
 
 ---
 
