@@ -34,6 +34,88 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 ---
 
+## 🛒 FnDepot 商店源
+
+本项目已提供 [FnDepot](https://github.com/EWEDLCM/FnDepot) 第三方应用源的 `fnpack.json`，可在飞牛上通过 FnDepot 客户端一键安装 Aellus。
+
+在 FnDepot 客户端「外部源管理」「添加源」中填入本仓库地址：
+
+```text
+https://github.com/YGQ8988/Aellus
+```
+
+客户端会读取仓库根目录的 `fnpack.json`，按设备架构（x86 / arm）自动选择对应的安装包。
+
+---
+
+## 🚀 快速使用
+
+### 1. 运行
+
+**Windows：** 解压 `dist/Aellus-<version>-windows-x64.zip`（版本号以实际为准），双击里面的 `Aellus.exe`。程序会自动打开默认浏览器并跳转到访问地址，同时在**系统托盘**显示图标——右键菜单可「打开浏览器」或「退出」。
+
+**macOS：**
+```bash
+chmod +x Aellus-1.0.1-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
+# 或 chmod +x Aellus-1.0.1-darwin-x64  # Intel
+./Aellus-1.0.1-darwin-arm64
+```
+或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
+
+**Linux：**
+```bash
+chmod +x Aellus-1.0.1-linux-x64
+./Aellus-1.0.1-linux-x64
+```
+
+启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
+```
+Aellus 已启动 (Go 单文件版)
+保存目录：.../Desktop/file-drops
+本机局域网 IP：192.168.1.111
+访问地址：http://localhost:5115
+手机访问：http://192.168.1.111:5115
+按 Ctrl+C 停止
+```
+
+### 2. 访问使用
+
+- **本机**：浏览器打开 `http://localhost:5115`（Windows 双击后会自动打开）
+- **手机 / 其他设备**：浏览器打开启动时显示的 `http://<主机局域网IP>:5115`
+
+首页提供两个入口：
+- 📤 **上传文件** → 填设备名 → 选文件 / 拍照 / 录像 → 上传
+- 📂 **读取文件** → 选择目录 → 浏览文件 → 下载或预览
+
+### 3. 自行构建
+
+三个构建脚本各自独立，在对应环境运行：
+
+| 产物 | 脚本 | 运行环境 | 说明 |
+|------|------|---------|------|
+| macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x64 独立打成 zip，已签名 |
+| 全平台 | `build-all.sh` | 任意平台 | macOS / Linux 裸二进制 + Windows `Aellus.exe`（打成 zip） |
+| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
+
+```bash
+bash build-mac.sh     # dist/Aellus-<version>-mac-{arm64,x64}.zip      （内含 Aellus.app）
+bash build-all.sh     # dist/Aellus-<version>-darwin-{arm64,x64}、-linux-{x64,arm64,x86}（裸二进制）
+                      # dist/Aellus-<version>-windows-{x64,arm64,x86}.zip（内含 Aellus.exe）
+bash build-fnos.sh    # dist/Aellus-<version>-fnos-{x64,arm64}.fpk    （直接可安装）
+```
+
+> 命名风格统一：**文件名带版本与架构**；macOS `.app` 与 Windows `Aellus.exe` 打成 zip（解压即用），飞牛 `.fpk` 与 macOS / Linux 裸二进制不套压缩包（直接使用）。
+> 架构标识统一为 `x64`（64 位 x86）/ `x86`（32 位 x86）/ `arm64`。
+> 飞牛 `.fpk` **特意不套 zip**：fpk 内部是 gzip 流，macOS 自带归档工具的「必要时继续展开」会把它连同 zip 一起解开，用户解压后拿不到 fpk 文件（只得到解开的文件夹）。
+>
+> 三个脚本的产物都输出到 `dist/`，并共用 `.build/` 中间目录，**不能并行执行**（结束时会各自清理），需串行运行。
+>
+> `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
+>
+> fpk 构建通过 `-tags fpk` 选择 `internal/platform/platform_fpks.go`（headless 实现），显式排除所有桌面代码（系统托盘 / 原生通知 / 原生文件夹选择 / systray 依赖）；桌面端构建不加该标签，使用 `platform_impl.go`，保持托盘与通知体验。
+
+---
+
 ## 📸 界面预览
 
 ### 飞牛（fnOS）
@@ -66,74 +148,6 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 | 自行编译（可选） | Go 1.21+ |
 
 > 已发布的版本是**单文件可执行程序**：前端 `static/`、`templates/` 在编译期通过 `//go:embed` 打进二进制，运行时目录里不需要这些文件。
-
----
-
-## 🚀 快速使用
-
-### 1. 运行
-
-**Windows：** 解压 `dist/Aellus-<version>-windows-x64.zip`（版本号以实际为准），双击里面的 `Aellus.exe`。程序会自动打开默认浏览器并跳转到访问地址，同时在**系统托盘**显示图标——右键菜单可「打开浏览器」或「退出」。
-
-**macOS：**
-```bash
-chmod +x Aellus-1.0.1-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
-# 或 chmod +x Aellus-1.0.1-darwin-x64  # Intel
-./Aellus-1.0.1-darwin-arm64
-```
-或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
-
-**Linux：**
-```bash
-chmod +x Aellus-1.0.1-linux-x64
-./Aellus-1.0.1-linux-x64
-```
-
-启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
-```
-Aellus 已启动 (Go 单文件版)
-保存目录：.../Desktop/file-drops
-本机局域网 IP：192.168.1.111
-访问地址：http://localhost:8000
-手机访问：http://192.168.1.111:8000
-按 Ctrl+C 停止
-```
-
-### 2. 访问使用
-
-- **本机**：浏览器打开 `http://localhost:8000`（Windows 双击后会自动打开）
-- **手机 / 其他设备**：浏览器打开启动时显示的 `http://<主机局域网IP>:8000`
-
-首页提供两个入口：
-- 📤 **上传文件** → 填设备名 → 选文件 / 拍照 / 录像 → 上传
-- 📂 **读取文件** → 选择目录 → 浏览文件 → 下载或预览
-
-### 3. 自行构建
-
-三个构建脚本各自独立，在对应环境运行：
-
-| 产物 | 脚本 | 运行环境 | 说明 |
-|------|------|---------|------|
-| macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x64 独立打成 zip，已签名 |
-| 全平台 | `build-all.sh` | 任意平台 | macOS / Linux 裸二进制 + Windows `Aellus.exe`（打成 zip） |
-| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
-
-```bash
-bash build-mac.sh     # dist/Aellus-<version>-mac-{arm64,x64}.zip      （内含 Aellus.app）
-bash build-all.sh     # dist/Aellus-<version>-darwin-{arm64,x64}、-linux-{x64,arm64,x86}（裸二进制）
-                      # dist/Aellus-<version>-windows-{x64,arm64,x86}.zip（内含 Aellus.exe）
-bash build-fnos.sh    # dist/Aellus-<version>-fnos-{x64,arm64}.fpk    （直接可安装）
-```
-
-> 命名风格统一：**文件名带版本与架构**；macOS `.app` 与 Windows `Aellus.exe` 打成 zip（解压即用），飞牛 `.fpk` 与 macOS / Linux 裸二进制不套压缩包（直接使用）。
-> 架构标识统一为 `x64`（64 位 x86）/ `x86`（32 位 x86）/ `arm64`。
-> 飞牛 `.fpk` **特意不套 zip**：fpk 内部是 gzip 流，macOS 自带归档工具的「必要时继续展开」会把它连同 zip 一起解开，用户解压后拿不到 fpk 文件（只得到解开的文件夹）。
->
-> 三个脚本的产物都输出到 `dist/`，并共用 `.build/` 中间目录，**不能并行执行**（结束时会各自清理），需串行运行。
->
-> `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
->
-> fpk 构建通过 `-tags fpk` 选择 `internal/platform/platform_fpks.go`（headless 实现），显式排除所有桌面代码（系统托盘 / 原生通知 / 原生文件夹选择 / systray 依赖）；桌面端构建不加该标签，使用 `platform_impl.go`，保持托盘与通知体验。
 
 ---
 
@@ -257,7 +271,7 @@ aellus/
 
 | 变量 | 作用 | 默认 |
 |------|------|------|
-| `AELLUS_PORT` | 监听端口（被占用自动 +1） | `8000` |
+| `AELLUS_PORT` | 监听端口（被占用自动 +1） | `5115` |
 | `AELLUS_SAVE_DIR` | 保存目录（飞牛 cmd/main 注入） | 桌面 `~/Desktop/file-drops` |
 | `AELLUS_LANG` | 控制台输出语言：`en` / `zh` | Linux=`en`，其余=`zh` |
 | `AELLUS_HEADLESS` | `1` 时跳过托盘 GUI，仅常驻 HTTP（CI / 调试） | 未设置 |
@@ -273,7 +287,7 @@ aellus/
 ```go
 const (
     saveDirName = "file-drops"  // 文件保存目录名（桌面端路径：~/Desktop/file-drops）
-    DefaultPort = 8000          // 默认端口；被占用自动尝试 8001、8002……
+    DefaultPort = 5115          // 默认端口；被占用自动尝试 5116、5117……
 )
 ```
 
@@ -327,14 +341,14 @@ const (
 - 所有**写操作**都必须带客户端标识头 `X-Aellus-Client: 1`（服务端据此拒绝跨站请求；不带会返回 `403 缺少客户端标识头`）：
 
   ```bash
-  NAS=http://192.168.1.111:8000; H='X-Aellus-Client: 1'
+  NAS=http://192.168.1.111:5115; H='X-Aellus-Client: 1'
   curl -s -X POST "$NAS/upload" -H "$H" -F "device=MAC" -F "files=@$HOME/a.zip" -F "rels=a.zip"
   curl -s -X POST "$NAS/api/delete" -H "$H" -H "Content-Type: application/json" -d '{"dir":"MAC","file":"20260804_112601079_a.zip"}'
   curl -s -X POST "$NAS/api/set-savedir" -H "$H" -H "Content-Type: application/json" -d '{"dir":"/vol1/1000/photo"}'
   ```
 
 - 只读接口（`/api/dirs`、`/api/files`、`/api/thumb`、`/api/download`）不需要该头
-- **上传**：局域网内任何设备都能调；**删除 / 改保存目录**还需要「管理入口」——桌面端在本机执行，飞牛端只能在门户内（脚本直连 `IP:8000` 会返回 `403 无删除权限`，可直接在 NAS 上操作文件系统）
+- **上传**：局域网内任何设备都能调；**删除 / 改保存目录**还需要「管理入口」——桌面端在本机执行，飞牛端只能在门户内（脚本直连 `IP:5115` 会返回 `403 无删除权限`，可直接在 NAS 上操作文件系统）
 
 ---
 

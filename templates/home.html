@@ -421,8 +421,16 @@
         if(overlay && overlay.classList.contains('active')){
           closeSettings();
         } else {
-          closeDirPopup();
+          var qr=document.getElementById('qrModal');
+          if(qr && qr.classList.contains('active')){
+            closeQR();
+          } else {
+            closeDirPopup();
+          }
         }
+        // ESC 是键盘交互：关闭后触发按钮（设置/二维码）会残留 :focus-visible 态，
+        // 显示出一圈 --ring 描边（深色主题下即“黑框”）。主动移除焦点消除。
+        if(document.activeElement && document.activeElement.blur){ document.activeElement.blur(); }
       }
     });
   });

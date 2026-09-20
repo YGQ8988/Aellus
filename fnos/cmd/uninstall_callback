@@ -1,5 +1,8 @@
 #!/bin/bash
 
-### This script is called after the user uninstalls the application.
+### This script is called after the application is uninstalled.
 
+### 卸载时是否保留应用配置由卸载确认页开关决定（keep_config → uninstall_init，
+### 在系统删除文件之前执行，应用已停止、var 持久卷保留，是清理配置的唯一正确时机）。
+### 本脚本在系统删除文件之后运行，卸载向导值已不可用，无需再执行任何操作。
 exit 0

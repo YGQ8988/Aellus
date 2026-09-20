@@ -27,8 +27,8 @@ if [ -z "${SHARE_DIR}" ]; then
 fi
 mkdir -p "${SHARE_DIR}"
 
-# 端口优先级：向导自定义 > manifest 声明 > 默认 8000
-PORT="${wizard_port:-${TRIM_SERVICE_PORT:-8000}}"
+# 端口优先级：向导自定义 > manifest 声明 > 默认 5115
+PORT="${wizard_port:-${TRIM_SERVICE_PORT:-5115}}"
 
 log_msg() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> ${LOG_FILE}

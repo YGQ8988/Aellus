@@ -20,7 +20,7 @@ import (
 // === 常量 ===
 const (
 	saveDirName   = "file-drops"                                 // 文件保存目录名（实际路径在桌面上：~/Desktop/file-drops）
-	DefaultPort   = 8000                                         // 默认端口；被占用时自动尝试 8001、8002……
+	DefaultPort   = 5115                                         // 默认端口；被占用时自动尝试 5116、5117……
 	SettingsFile  = "aellus-settings.json"                       // 保存目录持久化配置文件名
 	SaveDirName   = saveDirName                                  // 导出别名（config.go 等同包文件直接用小写 saveDirName 即可）
 	trimAPISocket = "/var/run/trim_open_gateway_apiscope.socket" // 飞牛开放 API 后端网关 Unix Socket
@@ -188,7 +188,7 @@ const pageBaseCtxKey ctxKey = 0
 
 // withPrefix 统一归一化飞牛门户的 /app/<appname> 路径前缀。
 // 门户既可能经统一网关 Socket 访问，也可能以「端口 + 路径」方式访问
-// （http://NAS-IP:8000/app/aellus），这里对两种情形一致处理：
+// （http://NAS-IP:5115/app/aellus），这里对两种情形一致处理：
 //   - 路径正好等于前缀（无尾斜杠）：302 补上尾斜杠，否则页面内相对路径
 //     （static/... 、api/...）会解析到上一层目录，导致样式/脚本全部 404；
 //   - 路径带前缀：剥离前缀，使内部路由与裸端口完全一致；

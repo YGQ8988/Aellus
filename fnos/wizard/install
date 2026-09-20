@@ -4,13 +4,13 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "Aellus 默认使用 8000 端口。如该端口已被占用，可在此自定义。"
+        "helpText": "Aellus 默认使用 5115 端口。如该端口已被占用，可在此自定义。"
       },
       {
         "type": "text",
         "field": "wizard_port",
         "label": "服务端口",
-        "initValue": "8000",
+        "initValue": "5115",
         "rules": [
           {
             "required": true,

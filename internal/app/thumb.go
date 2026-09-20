@@ -30,7 +30,7 @@ func isDecodeableImage(ext string) bool {
 // HTML/SVG/XML 等可携带脚本的类型不在此列，防止存储型 XSS。纯函数。
 func isInlineSafe(ext string) bool {
 	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".ico",
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".ico", ".avif", ".heic",
 		".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v",
 		".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a",
 		".pdf":
@@ -151,6 +151,7 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ext := strings.ToLower(filepath.Ext(full))
+	const maxPixels = 40_000_000 // 4000 万像素，约 160MB RGBA：超大图回退原文件，避免全图解码 OOM
 
 	// 不支持的类型（webp/heic/bmp 等）或解码失败：回退为原文件流式返回。
 	// 输出头必须走 setFileOutputHeaders 统一判定（图片内联、其余一律附件下载）：
@@ -159,27 +160,48 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 	serveOriginal := func() {
 		setFileOutputHeaders(w, file, outputInlineImage)
 		w.Header().Set("Last-Modified", info.ModTime().UTC().Format(http.TimeFormat))
-		w.Header().Set("Cache-Control", "public, max-age=300")
+		// 短缓存 + 每次重验证：文件内容变了（mtime 变）立刻反映，未变则 304 零流量。
+		// 不能再用长 max-age 强缓存——服务端代码升级后浏览器会一直持旧缩略图。
+		w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
 		f.Seek(0, io.SeekStart)
 		http.ServeContent(w, r, file, info.ModTime(), f)
 	}
-	if !isDecodeableImage(ext) {
+	// icns（Apple 图标容器）：浏览器无法直接显示，解析提取最大的可解码图像块
+	//（内嵌 PNG/JPEG）交给下方通用流程转 PNG；解析失败回退原文件（下载路径不受影响）。
+	var icnsPNG []byte // 非空表示本次为 icns 且已成功提取图像块
+	decodeSource := io.ReadSeeker(f)
+	decodeable := isDecodeableImage(ext)
+	if ext == ".icns" {
+		raw, rerr := io.ReadAll(io.LimitReader(f, icnsMaxSize))
+		if rerr == nil {
+			if imgBytes, ierr := extractIcnsImage(raw); ierr == nil {
+				// 裁剪图标四周透明边距，让内容占满缩略图（真实 macOS 图标画布常带安全边距）
+				if trimmed := tryTrimIcnsImage(imgBytes, maxPixels); trimmed != nil {
+					icnsPNG = trimmed
+				} else {
+					icnsPNG = imgBytes
+				}
+				decodeSource = bytes.NewReader(icnsPNG)
+				decodeable = true
+			}
+		}
+	}
+	if !decodeable {
 		serveOriginal()
 		return
 	}
-	// 先解码头部获取尺寸，超大图片直接回退原文件，避免全图解码 OOM
-	cfg, _, cerr := image.DecodeConfig(f)
+	// 先解码头部获取尺寸
+	cfg, _, cerr := image.DecodeConfig(decodeSource)
 	if cerr != nil {
 		serveOriginal()
 		return
 	}
-	const maxPixels = 40_000_000 // 4000 万像素，约 160MB RGBA
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > maxPixels {
 		serveOriginal()
 		return
 	}
-	f.Seek(0, io.SeekStart)
-	img, format, derr := image.Decode(f)
+	decodeSource.Seek(0, io.SeekStart)
+	img, format, derr := image.Decode(decodeSource)
 	if derr != nil {
 		serveOriginal()
 		return
@@ -193,7 +215,14 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 	// 只缩小、不放大：源图宽度已经不超过目标宽度时直接返回原文件。
 	// 否则 1×100 这种极端长宽比的图会被放大成 240×24000（57600 倍像素），
 	// 一条免登录请求就能分配几百 MB ~ 几十 GB 内存，把进程撑死（DoS）。
+	// icns 例外：其原文件浏览器无法显示，必须输出提取的 PNG（即使不缩放）。
 	if sw <= width {
+		if icnsPNG != nil {
+			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
+			http.ServeContent(w, r, file, info.ModTime(), bytes.NewReader(icnsPNG))
+			return
+		}
 		serveOriginal()
 		return
 	}
@@ -219,7 +248,7 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
 		_ = jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: 82})
 	}
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Cache-Control", "public, max-age=0, must-revalidate")
 	// 用 ServeContent 输出：自动处理 If-Modified-Since(304) 与 Range，文件不变时零流量重传
 	http.ServeContent(w, r, file, info.ModTime(), bytes.NewReader(buf.Bytes()))
 }

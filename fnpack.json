@@ -1,0 +1,43 @@
+{
+  "schema_version": "2",
+  "source_info": {
+    "name": "Aellus 应用源",
+    "author": "YGQ8988",
+    "homepage": "https://github.com/YGQ8988/Aellus",
+    "description": "Aellus · 飞牛 NAS 局域网文件互传工具的外部应用源"
+  },
+  "apps": {
+    "Aellus": {
+      "display_name": "Aellus·局域网传输",
+      "desc": "飞牛 NAS 局域网文件互传工具。零流量、零安装、无需注册，手机 / 电脑 / 平板有浏览器即可访问上传、浏览、下载文件，数据直连飞牛、不经过任何中转服务器。<br><br>【文件保护】删除文件、修改保存路径仅在飞牛应用中心（桌面门户）内打开时可用；其他设备访问只能浏览与下载，避免误删。<br><br>【安全可控】文件保存目录由管理员在飞牛「应用设置 → 授权目录」中授权接管，应用严格限定在授权目录范围内读写、不越界。",
+      "platform": ["x86", "arm"],
+      "categories": ["系统工具"],
+      "icon_url": "https://raw.githubusercontent.com/YGQ8988/Aellus/main/fnos/ICON.PNG",
+      "run_as": "package",
+      "install_type": "",
+      "is_docker": false,
+      "service_port": "5115",
+      "maintainer": "染洛凉",
+      "maintainer_url": "https://github.com/YGQ8988/Aellus",
+      "distributor": "一西啊",
+      "distributor_url": "https://space.bilibili.com/320421193",
+      "releases": {
+        "1.0.3": {
+          "changelog": "1.增加 icns 格式文件预览图\n2.无法预览文件预览图与上传保持一致\n3.飞牛卸载增加是否保留配置选项\n4.若干样式优化",
+          "packages": {
+            "x86": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/v1.0.3/Aellus-1.0.3-fnos-x64.fpk",
+              "sha256": "609768299e1b65edfdf3e832466d982687bc7776ea9bf06f3781b2e46298ede7",
+              "size": 5617034
+            },
+            "arm": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/v1.0.3/Aellus-1.0.3-fnos-arm64.fpk",
+              "sha256": "64dc57bbef3367b0cd508411b14c5215d9ef890a26415f900aa796be44949a37",
+              "size": 5247793
+            }
+          }
+        }
+      }
+    }
+  }
+}
