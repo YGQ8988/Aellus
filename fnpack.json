@@ -31,12 +31,12 @@
           "changelog": "1.增加 icns 格式文件预览图\n2.无法预览文件预览图与上传保持一致\n3.飞牛卸载增加是否保留配置选项\n4.若干样式优化",
           "packages": {
             "x86": {
-              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/v1.0.3/Aellus-1.0.3-fnos-x64.fpk",
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.3/Aellus-1.0.3-fnos-x64.fpk",
               "sha256": "609768299e1b65edfdf3e832466d982687bc7776ea9bf06f3781b2e46298ede7",
               "size": 5617034
             },
             "arm": {
-              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/v1.0.3/Aellus-1.0.3-fnos-arm64.fpk",
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.3/Aellus-1.0.3-fnos-arm64.fpk",
               "sha256": "64dc57bbef3367b0cd508411b14c5215d9ef890a26415f900aa796be44949a37",
               "size": 5247793
             }
