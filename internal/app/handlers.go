@@ -453,7 +453,13 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("inline") == "1" {
 		mode = outputInlineMedia
 	}
-	setFileOutputHeaders(w, file, mode)
+	// attachment 模式用「显示名」（去掉上传时拼接的时间戳前缀）作为下载文件名，
+	// 与页面展示一致；手机扫码直接访问下载 URL 时的文件名也由这里决定。
+	outName := file
+	if mode == outputDownload {
+		outName = stripUploadPrefix(file)
+	}
+	setFileOutputHeaders(w, outName, mode)
 
 	// ServeContent 会自己处理 Range 请求、Content-Length、Last-Modified 等，
 	// 它不会自动加 Content-Disposition，所以上面的设置能原样生效。

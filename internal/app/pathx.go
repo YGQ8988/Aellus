@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -114,6 +115,16 @@ func resolveUploadTarget(root, deviceDir, rawName string) (string, string, error
 		return "", "", fmt.Errorf("path escapes save dir")
 	}
 	return dstPath, displayName, nil
+}
+
+// uploadNamePrefixRe 匹配本工具普通文件上传时拼接的时间戳前缀（20060102_150405.000000_）。
+var uploadNamePrefixRe = regexp.MustCompile(`^\d{8}_\d{6}\.\d{6}_`)
+
+// stripUploadPrefix 去掉上传时拼接的时间戳前缀，返回实际上传时的原始文件名；
+// 非本工具上传（无此前缀）的名字原样返回。与前端 displayName 同一规则，
+// 用于单文件下载接口 attachment 模式的下载文件名与页面展示保持一致。
+func stripUploadPrefix(name string) string {
+	return uploadNamePrefixRe.ReplaceAllString(name, "")
 }
 
 // isValidName 判断一个“单段名字”（目录名或文件名）是否合法：

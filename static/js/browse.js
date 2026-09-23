@@ -320,6 +320,7 @@ function renderFile(f) {
         </div>
         <div class="file-actions">
           <a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>
+          <a class="share-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onShare(this)">分享</a>
           ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDelete(this)">删除</a>' : ''}
         </div>
       </div>
@@ -476,10 +477,62 @@ async function onSingleDownload(btn) {
   btn.innerHTML = '<span class="spinner"></span>下载中';
   try {
     const blob = await fetchBlob(btn.dataset.url);
-    if (blob) downloadBlob(blob, btn.dataset.name);
+    if (blob) downloadBlob(blob, displayName(btn.dataset.name));
   } finally {
     btn.classList.remove('loading');
     btn.textContent = '下载';
+  }
+}
+
+// ---- 分享：弹出文件下载链接二维码 ----
+// 地址 = 当前 origin + <base> 前缀 + 相对下载路径（桌面端 /api/...，飞牛网关 /app/<name>/api/...），
+// 手机扫码即可直接下载；弹窗复用首页「扫码访问」的 qr-modal 结构（样式差异在 browse.css）。
+async function onShare(btn) {
+  const modal = $('shareModal');
+  const box = $('shareQrCode');
+  const urlEl = $('shareQrUrl');
+  const nameEl = $('shareFileName');
+  if (nameEl) nameEl.textContent = displayName(btn.dataset.name || '');
+  const baseEl = document.querySelector('base');
+  const baseHref = baseEl ? baseEl.getAttribute('href') : '/';
+  // 二维码地址不能用 location.origin：本机常用 localhost 访问，扫码方无法访问 localhost。
+  // 桌面直连（base=/）改用 api/addr 返回的服务端局域网地址（与首页「扫码访问」同源）；
+  // 飞牛网关（base=/app/.../）下网关路径只在其门户 origin 下有效，沿用 location.origin。
+  let origin = location.origin;
+  if (baseHref === '/') {
+    try {
+      const res = await fetch('api/addr');
+      const d = await res.json();
+      if (d && d.url) origin = d.url;
+    } catch (e) {}
+  }
+  const url = origin + baseHref + btn.dataset.url;
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    box.innerHTML = qr.createSvgTag(8, 4);
+    urlEl.textContent = url;
+  } catch (e) {
+    box.innerHTML = '<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">二维码生成失败</p>';
+  }
+  if (window.lockScroll) lockScroll();
+  modal.classList.add('active');
+  document.addEventListener('keydown', shareKeyHandler);
+}
+
+function closeShare() {
+  $('shareModal').classList.remove('active');
+  if (window.unlockScroll) unlockScroll();
+  document.removeEventListener('keydown', shareKeyHandler);
+}
+
+// 分享弹窗 ESC 关闭（与灯箱同一模式：打开时注册、关闭时移除，避免常驻监听互相干扰）
+function shareKeyHandler(e) {
+  if (e.key === 'Escape') {
+    closeShare();
+    // ESC 是键盘交互：关闭后触发按钮会残留 :focus-visible 描边，主动移除焦点消除
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
 }
 
@@ -748,7 +801,7 @@ async function lbDownload() {
   const dlUrl = f.downloadUrl || f.previewUrl.replace('&inline=1', '');
   try {
     const blob = await fetchBlob(dlUrl);
-    if (blob) downloadBlob(blob, f.name);
+    if (blob) downloadBlob(blob, displayName(f.name));
   } finally {
     btn.classList.remove('loading');
     btn.disabled = false;

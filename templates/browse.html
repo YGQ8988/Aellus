@@ -83,6 +83,21 @@
   <button class="to-top" id="toTop" title="返回顶部" aria-label="返回顶部" onclick="scrollToTop()">
     <svg class="icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
   </button>
+
+  <!-- 分享二维码弹窗（外观同首页「扫码访问」弹窗） -->
+  <div class="qr-modal modal-overlay" id="shareModal" onclick="if(event.target===this)closeShare()">
+    <div class="qr-inner modal-card">
+      <div class="qr-head">
+        <h3>分享文件</h3>
+        <button class="qr-close modal-close" onclick="closeShare()" aria-label="关闭">✕</button>
+      </div>
+      <p class="share-name" id="shareFileName"></p>
+      <div class="qr-code" id="shareQrCode"></div>
+      <p class="qr-url" id="shareQrUrl"></p>
+      <p class="qr-tip">手机扫描二维码，即可直接下载该文件</p>
+    </div>
+  </div>
+  <script src="static/js/qrcode.js"></script>
   <script src="static/js/ui.js"></script>
   <script src="static/js/browse.js"></script>
 </body>
