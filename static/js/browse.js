@@ -3,6 +3,23 @@
 const IMG_EXTS = ['png','jpg','jpeg','gif','webp','bmp','heic','avif','icns'];
 const VID_EXTS = ['mp4','mov','m4v','webm'];
 
+// 是否被 iframe 嵌入打开（飞牛微应用：应用入口 type=iframe，见 fnos/app/ui/config）。
+// 微应用内隐藏所有下载入口：iframe 里的下载受客户端限制（点了没反应 / 存不下来），
+// 引导改用「分享」二维码（手机扫码直连下载）或用浏览器打开地址。
+// 用嵌入判断而不是 UA：跨域访问 window.top 会抛异常，同样说明处于被嵌入状态。
+// 说明：只隐藏前端按钮，服务端下载接口保持开放——浏览器直连时功能完全不变。
+const IN_EMBEDDED_FRAME = (function () {
+  try { return window.self !== window.top; } catch (e) { return true; }
+})();
+
+if (IN_EMBEDDED_FRAME) {
+  // 批量栏 / 灯箱里的固定下载按钮：直接隐藏（这两个位置的 display 不被其它逻辑改写）
+  ['btnSelected', 'btnDownloadDirs', 'lbDownload'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
 // 图标 SVG（跨平台渲染一致）
 const SVG_FOLDER  = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
 const SVG_FILE    = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
@@ -21,36 +38,6 @@ let lbIndex = 0;       // 灯箱当前索引
 // 的顶层 canDelete 下发——同一请求内所有条目一致（见 Go 端 canManage）。渲染列表前更新；
 // 前端判定仅用于按钮显隐，真正的强制在服务端。
 let canManage = false;
-// 是否隐藏「下载」入口：飞牛手机客户端（App 内置 WebView）里下载不可靠——
-// 该 WebView 没有可用的下载管理器，blob / 附件下载常被直接丢弃或存到找不到的位置，
-// 点了没反应或找不到文件。故在客户端里隐藏下载，保留浏览、预览与「分享」
-// （分享生成下载二维码，用别的设备或本机浏览器下载，正好补上这个能力）。
-let hideDownload = false;
-
-// detectFnosClient 探测是否为「飞牛客户端」：飞牛环境（/api/settings 的 hasTrim）
-// 且 UA 为移动端 —— 桌面浏览器访问飞牛 NAS 时下载正常，不该一并隐藏。
-async function detectFnosClient() {
-  try {
-    const res = await fetch('api/settings');
-    const d = await res.json();
-    const mobile = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent || '');
-    hideDownload = !!(d && d.hasTrim && mobile);
-  } catch (e) {
-    hideDownload = false; // 探测失败按「非客户端」处理，保留下载
-  }
-  applyHideDownload();
-}
-
-// applyHideDownload 应用到常驻按钮（批量下载 ×2 与灯箱下载）；
-// 列表里的单文件下载按钮由 renderFile 按 hideDownload 决定是否渲染。
-function applyHideDownload() {
-  ['btnDownloadDirs', 'btnSelected'].forEach(function (id) {
-    const b = document.getElementById(id);
-    if (b) b.style.display = hideDownload ? 'none' : '';
-  });
-  const lb = $('lbDownload');
-  if (lb) lb.style.display = hideDownload ? 'none' : '';
-}
 
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
@@ -350,7 +337,7 @@ function renderFile(f) {
           </div>
         </div>
         <div class="file-actions">
-          ${hideDownload ? '' : `<a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>`}
+          ${IN_EMBEDDED_FRAME ? '' : '<a class="dl-btn" data-url="' + url + '" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>'}
           <a class="share-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onShare(this)">分享</a>
           ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDelete(this)">删除</a>' : ''}
         </div>
@@ -748,11 +735,10 @@ function showLbImage(dir) {
   const showNav = previewFiles.length > 1;
   $('lbPrev').style.display = showNav ? 'flex' : 'none';
   $('lbNext').style.display = showNav ? 'flex' : 'none';
-  // 重置顶部下载按钮为图标态（飞牛客户端里保持隐藏）
+  // 重置顶部下载按钮为图标态
   const dlBtn = $('lbDownload');
   dlBtn.classList.remove('loading');
   dlBtn.disabled = false;
-  dlBtn.style.display = hideDownload ? 'none' : '';
   dlBtn.innerHTML = SVG_DOWNLOAD;
   // 删除按钮：无管理权限（局域网设备直连）时隐藏（切换图片时同步显隐）
   $('lbDelete').style.display = canManage ? '' : 'none';
@@ -932,12 +918,7 @@ async function apiDelete(dir, name) {
   }
 }
 
-// 启动：先探测是否为飞牛客户端（决定下载入口是否隐藏），再加载目录列表——
-// 顺序不能反，否则列表会先渲染出下载按钮再被隐藏，出现闪烁。
-(async function () {
-  await detectFnosClient();
-  loadDirs();
-})();
+loadDirs();
 
 // 滚动吸顶毛玻璃：未滚动时 nav 与 batch-bar 分开、无背景；一旦下滑即整条满宽模糊
 const topBars = document.querySelectorAll('.top-bar');
