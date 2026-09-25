@@ -106,7 +106,18 @@ func (a *App) Serve(ln net.Listener, port int) {
 	a.mountPrefix = strings.TrimSuffix(strings.TrimSpace(os.Getenv("FNNAS_GATEWAY_PREFIX")), "/")
 
 	// 裸端口：先剥离伪造的 X-Trim-*，再归一化前缀，最后进入路由。
-	raw := a.withLog(withSecurityHeaders(a.stripTrimHeaders(a.withPrefix(a.buildMux(port))), frameAncestorsAny))
+	// iframe 嵌入策略按平台区分：
+	//   - 飞牛端：门户会以「端口 + 路径」或跨端口 iframe 的方式嵌入应用，
+	//     必须允许任意来源，否则门户里打不开；且该入口本身没有管理权限。
+	//   - 桌面端：本机浏览器直接访问就拥有删除 / 改保存目录的权限，却没有任何
+	//     门户嵌入需求——若沿用 '*'，恶意网页可以 iframe 进来用透明层诱导点击删除
+	//     （请求由应用自身 JS 发出、自带 X-Aellus-Client，CSRF 层拦不住）。
+	//     故桌面端收紧为 'self'，防点击劫持。
+	frameAncestors := frameAncestorsSelf
+	if a.platform.EnforceAuthBoundary() {
+		frameAncestors = frameAncestorsAny
+	}
+	raw := a.withLog(withSecurityHeaders(a.stripTrimHeaders(a.withPrefix(a.buildMux(port))), frameAncestors))
 	go func() {
 		log.Fatal(newHTTPServer(raw).Serve(ln))
 	}()

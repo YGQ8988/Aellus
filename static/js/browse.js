@@ -846,7 +846,10 @@ function formatCount(n) {
   return String(n);
 }
 // 注：formatSize / formatDay / formatTime 已统一到 ui.js 共享层（全站同一实现）
-function escapeAttr(s) { return s.replace(/"/g, '&quot;'); }
+// 属性值转义：直接复用 ui.js 的 escapeHtml（已转义 & < > " '）。
+// 此前只转义 "，而服务端允许 & 出现在文件名里——含 & 的名字写进属性后，
+// dataset.name 解出来的会是与磁盘不一致的值，删除 / 下载就会命中错误目标。
+function escapeAttr(s) { return escapeHtml(s); }
 // jsLit：生成可安全放进 HTML 内联事件处理器（onclick="..."）里的 JS 字符串字面量。
 // 先用 JSON.stringify 做 JS 层转义（处理 ' " \ 及控制字符），再把 " 转成 &quot; 适配外层双引号属性。
 // 仅用于 onclick="fn(${jsLit(x)})" 这类「把用户数据作为 JS 字符串参数」的场景；
