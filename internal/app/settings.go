@@ -42,6 +42,11 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
 		"canManage":      manage,                           // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
 		"deviceName":     a.deviceNameOf(deviceID(r)),      // 当前设备 ID 对应的上次设备名（供上传页自动填充）
+		// 请求是否经飞牛统一网关到达：飞牛的应用入口（应用中心微应用 / 手机 App 客户端）
+		// 都经网关转发，网关会注入 X-Trim-Userid；而局域网其它设备「输入 IP + 端口」
+		// 直连走裸端口、不经网关（裸端口入口还会剥离伪造的 X-Trim-*）。
+		// 前端据此在飞牛客户端内隐藏下载入口（那里的下载不可靠），直连下载不受影响。
+		"viaGateway": gatewayUser(r) != "",
 	})
 }
 

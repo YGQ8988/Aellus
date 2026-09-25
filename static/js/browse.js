@@ -21,20 +21,22 @@ let lbIndex = 0;       // 灯箱当前索引
 // 的顶层 canDelete 下发——同一请求内所有条目一致（见 Go 端 canManage）。渲染列表前更新；
 // 前端判定仅用于按钮显隐，真正的强制在服务端。
 let canManage = false;
-// 是否隐藏「下载」入口：飞牛手机客户端（App 内置 WebView）里下载不可靠——
-// 该 WebView 没有可用的下载管理器，blob / 附件下载常被直接丢弃或存到找不到的位置，
-// 点了没反应或找不到文件。故在客户端里隐藏下载，保留浏览、预览与「分享」
+// 是否隐藏「下载」入口：在飞牛里打开（应用中心微应用 / 手机 App 客户端）时下载不可靠——
+// 这些入口没有可用的下载管理器，blob / 附件下载常被直接丢弃或存到找不到的位置，
+// 点了没反应或找不到文件。故在其中隐藏下载，保留浏览、预览与「分享」
 // （分享生成下载二维码，用别的设备或本机浏览器下载，正好补上这个能力）。
 let hideDownload = false;
 
-// detectFnosClient 探测是否为「飞牛客户端」：飞牛环境（/api/settings 的 hasTrim）
-// 且 UA 为移动端 —— 桌面浏览器访问飞牛 NAS 时下载正常，不该一并隐藏。
+// detectFnosClient 探测是否「在飞牛里打开」：判据是请求是否经飞牛统一网关
+// （/api/settings 的 viaGateway，对应网关注入的 X-Trim-Userid）。
+//   - 飞牛微应用 / App 客户端入口 → 经网关 → 隐藏下载；
+//   - 其它电脑「输入 IP + 端口」直连 → 裸端口、不经网关 → 下载正常，保持显示。
+// 不用 UA 或平台判断：同一台电脑可能既开客户端又开浏览器，入口才是真正的区分点。
 async function detectFnosClient() {
   try {
     const res = await fetch('api/settings');
     const d = await res.json();
-    const mobile = /Android|iPhone|iPad|iPod|Mobile|HarmonyOS/i.test(navigator.userAgent || '');
-    hideDownload = !!(d && d.hasTrim && mobile);
+    hideDownload = !!(d && d.viaGateway);
   } catch (e) {
     hideDownload = false; // 探测失败按「非客户端」处理，保留下载
   }
