@@ -70,13 +70,6 @@
 input[type=file] { display: none; }
 
 /* 网页内相机弹窗 → shadcn Dialog */
-.cam-modal { background: rgb(0 0 0 / 0.8); z-index: 9999; padding: 12px; }
-.cam-inner { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 16px; }
-.cam-inner video, .cam-preview { width: 100%; max-height: 70vh; border-radius: calc(var(--radius) - 2px); background: #000; object-fit: contain; overflow: hidden; }
-.cam-preview img, .cam-preview video { width: 100%; border-radius: calc(var(--radius) - 2px); display: block; }
-.cam-bar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.cam-bar button { padding: 12px 18px; border-radius: calc(var(--radius) - 2px); font-size: 15px; border: 1px solid transparent; }
-.cam-status { color: hsl(var(--muted-foreground)); font-size: 13px; min-height: 18px; }
 
 @media (min-width: 768px) {
   .upload-wrap { max-width: 1120px; }
