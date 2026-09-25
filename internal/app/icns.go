@@ -56,14 +56,20 @@ func extractIcnsImage(data []byte, want int) ([]byte, error) {
 	var fallback []byte // 都不够 want 时的兜底：最大的一块
 	fallbackArea := 0
 	off := 8 // 跳过 magic + 总长度
-	for off+8 <= len(data) {
-		size := int(binary.BigEndian.Uint32(data[off+4 : off+8]))
-		if size < 8 {
+	// 块数量上限：最小块只有 8 字节，20MB 内理论上可塞 ~260 万个块，
+	// 每个图像块还要跑一次 DecodeConfig——畸形文件会让这里空转，故设上限。
+	const maxIcnsChunks = 4096
+	for chunks := 0; off+8 <= len(data) && chunks < maxIcnsChunks; chunks++ {
+		// 用 int64 做算术再比较：32 位构建下 uint32 转 int 可能溢出/回绕，
+		// 导致下面的长度与偏移判断失效（越界读取）。
+		size64 := int64(binary.BigEndian.Uint32(data[off+4 : off+8]))
+		if size64 < 8 {
 			return nil, fmt.Errorf("图像块长度非法")
 		}
-		if off+size > len(data) {
+		if int64(off)+size64 > int64(len(data)) {
 			break // 文件被截断：忽略剩余块，用已找到的块
 		}
+		size := int(size64)
 		typ := string(data[off : off+4])
 		body := data[off+8 : off+size]
 		if isIcnsImageChunk(typ) {

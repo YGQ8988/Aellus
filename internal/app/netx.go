@@ -138,7 +138,10 @@ func isVirtualIface(name string) bool {
 		"lo", "utun", "tun", "tap", "ppp", "ipsec", "wg", "vpn", "zt", "tailscale",
 		"fl0", "awdl", "llw", "p2p", "anpi",
 		// 容器 / 网桥 / 虚拟网络（Linux 为主，NAS 上常见）
-		"br-", "vbr", "ovs", "virbr", "cni", "flannel", "cali", "kube", "vmenet", "vmbr",
+		// 注意 br0 / br1 / lxdbr / podman 这类不带分隔符的常见网桥名也要覆盖，
+		// 否则它们的地址会被 isLocalIP 误判为「本机」而授予管理权限。
+		"br-", "br0", "br1", "vbr", "ovs", "virbr", "cni", "flannel", "cali", "kube",
+		"vmenet", "vmbr", "lxdbr", "podman",
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(n, p) {

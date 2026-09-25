@@ -210,14 +210,18 @@
     return origFetch.call(window, url, options);
   };
 
-  // 诊断日志：控制台输出本机 IP（当前访问设备）与服务端 IP（运行 Aellus 的设备），
-  // 便于排查删除权限等「本机 / 飞牛环境」判定问题（打开浏览器开发者工具控制台可见）。
+  // 诊断日志（默认关闭）：输出本机 IP 与服务端 IP / 运行环境，便于排查删除权限等
+  // 「本机 / 飞牛环境」判定问题。默认不打印——控制台里的内网地址会在共享屏幕、录屏
+  // 或用户贴控制台日志时泄露内网拓扑。需要排查时在控制台执行
+  // localStorage.setItem('aellus_debug','1') 再刷新页面即可开启。
   try {
-    fetch('api/addr').then(function(r){ return r.json(); }).then(function(d){
-      console.log('[Aellus] 本机 IP（当前访问设备）: ' + (d.clientIP || '未知'));
-      console.log('[Aellus] 服务端 IP（运行 Aellus 的设备）: ' + (d.ip || '未知'));
-      console.log('[Aellus] 服务端运行环境: ' + (d.platform || '未知'));
-    }).catch(function(){});
+    if (localStorage.getItem('aellus_debug')) {
+      fetch('api/addr').then(function(r){ return r.json(); }).then(function(d){
+        console.log('[Aellus] 本机 IP（当前访问设备）: ' + (d.clientIP || '未知'));
+        console.log('[Aellus] 服务端 IP（运行 Aellus 的设备）: ' + (d.ip || '未知'));
+        console.log('[Aellus] 服务端运行环境: ' + (d.platform || '未知'));
+      }).catch(function(){});
+    }
   } catch (e) {}
 
   // 暴露到全局：同时挂到 window.ui 命名空间与顶层全局，

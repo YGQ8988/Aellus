@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -249,7 +250,10 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "无法创建目录：" + err.Error()})
+		// 不回显 err 原文：它含完整内部路径与系统 errno，可辅助目录结构探测。
+		// 详情只写到操作日志，客户端拿通用提示。
+		a.logOp(fmt.Sprintf("创建保存目录失败 dir=%s 错误=%v", dir, err))
+		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "无法创建该目录（请确认路径有效且有写入权限）"})
 		return
 	}
 	// MkdirAll 后再次确认真实落点仍在允许的根内（防「待建目录经软链指向上级」的 TOCTOU 变种）。
@@ -266,7 +270,8 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	// 可写性校验
 	test := filepath.Join(dir, ".aellus-write-test")
 	if err := os.WriteFile(test, []byte("ok"), 0644); err != nil {
-		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "目录不可写：" + err.Error()})
+		a.logOp(fmt.Sprintf("保存目录不可写 dir=%s 错误=%v", dir, err))
+		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "该目录不可写（请确认权限）"})
 		return
 	}
 	os.Remove(test)

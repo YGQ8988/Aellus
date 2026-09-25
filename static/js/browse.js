@@ -234,7 +234,8 @@ function buildBreadcrumb() {
   const parts = ['<a class="bc-link" href="./" onclick="clearAellusDir()">← 返回首页</a>'];
   if (allDirs.length > 1) {
     parts.push('<span class="bc-sep">/</span>');
-    parts.push('<a class="bc-link bc-dirs" href="javascript:backToDirs()">目录</a>');
+    // 不用 href="javascript:..."：它依赖 CSP 的 'unsafe-inline'，一旦收紧 CSP 就静默失效。
+    parts.push('<a class="bc-link bc-dirs" href="#" onclick="backToDirs(); return false;">目录</a>');
   }
   const segs = (currentDir || '').split('/').filter(s => s !== '');
   if (segs.length === 0) {
