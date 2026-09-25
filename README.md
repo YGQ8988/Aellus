@@ -20,10 +20,11 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 - **上传 / 读取 / 下载**：手机或 PC 浏览器一键发送文件到主机，或浏览已上传文件并下载
 - **按设备分目录**：上传时填设备名（自动记忆，下次无需重复输入），文件自动归档到保存目录下的 `<设备名>/` 子目录
-- **自动加时间戳**：文件名带精确到毫秒的时间戳，永不覆盖
+- **自动加时间戳**：文件名带精确到毫秒的时间戳，永不覆盖（下载时自动还原成原始文件名）
 - **删除保护**：删除文件、修改保存路径只对「管理入口」开放——飞牛端为门户内（经统一网关校验飞牛登录态），桌面端为运行应用的本机（容器 / 网桥 / VPN 地址不算本机）；局域网其它设备只能浏览、上传与下载
-- **图片 / 视频预览**：上传后即时预览，读取页缩略图可在线播放，全屏灯箱浏览
-- **批量打包下载**：勾选多个文件或整目录一键打包 zip
+- **图片 / 视频预览**：上传后即时预览，读取页缩略图可在线播放，全屏灯箱浏览；支持 Apple 图标 `.icns` 预览，其它格式显示扩展名标识
+- **分享下载二维码**：读取页每个文件可弹出下载直链二维码，手机扫码即可下载该文件
+- **批量打包下载**：勾选多个文件或整目录一键打包 zip（包内文件名与页面展示一致）
 - **响应式布局**：同时适配 PC 与手机浏览器
 - **保存目录可配置**：在首页设置里修改文件保存路径，配置持久化到本地配置文件，重启自动生效
 - **桌面端常驻**：macOS 菜单栏 / Windows 系统托盘常驻图标，后台运行不抢焦点
@@ -56,16 +57,16 @@ https://github.com/YGQ8988/Aellus
 
 **macOS：**
 ```bash
-chmod +x Aellus-1.0.1-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
-# 或 chmod +x Aellus-1.0.1-darwin-x64  # Intel
-./Aellus-1.0.1-darwin-arm64
+chmod +x Aellus-1.0.4-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
+# 或 chmod +x Aellus-1.0.4-darwin-x64  # Intel
+./Aellus-1.0.4-darwin-arm64
 ```
 或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
 
 **Linux：**
 ```bash
-chmod +x Aellus-1.0.1-linux-x64
-./Aellus-1.0.1-linux-x64
+chmod +x Aellus-1.0.4-linux-x64
+./Aellus-1.0.4-linux-x64
 ```
 
 启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
@@ -84,7 +85,7 @@ Aellus 已启动 (Go 单文件版)
 - **手机 / 其他设备**：浏览器打开启动时显示的 `http://<主机局域网IP>:5115`
 
 首页提供两个入口：
-- 📤 **上传文件** → 填设备名 → 选文件 / 拍照 / 录像 → 上传
+- 📤 **上传文件** → 填设备名 → 选文件 / 拍照 / 录像（拍照与录像调起系统原生相机）→ 上传
 - 📂 **读取文件** → 选择目录 → 浏览文件 → 下载或预览
 
 ### 3. 自行构建
@@ -169,7 +170,8 @@ aellus/
 │   ├── pathx.go                  # 路径安全（设备名/文件名/穿越防护）
 │   ├── resolve.go                # 目录/文件路径解析
 │   ├── devnames.go               # 设备名映射（devices.json 读写）
-│   ├── thumb.go                  # 缩略图生成
+│   ├── thumb.go                  # 缩略图生成（只缩小不放大、超大图回退原文件）
+│   ├── icns.go                   # icns 容器解析（取够用的最小图像块 + 裁透明/纯色边距）
 │   ├── trim.go                   # 飞牛授权目录 API
 │   ├── middleware.go             # 中间件（日志/安全响应头/no-cache）
 │   ├── logx.go                   # 日志写入（含轮转与注入清洗）
@@ -201,11 +203,13 @@ aellus/
 │   └── browse.html               # 读取页
 ├── static/                       # 前端静态资源（已编译进二进制）
 │   ├── css/                      # 样式：common / components / home / upload / browse
-│   ├── js/                       # 脚本：ui.js（通用 UI + 设备 ID + 客户端标识头）/ upload.js / browse.js / qrcode.js
+│   ├── js/                       # 脚本：base.js（页面 <base> 基准路径）/ ui.js（通用 UI + 设备 ID + 客户端标识头）/ upload.js / browse.js / qrcode.js
 │   └── img/                      # 图标与图片：logo-icon.png / icon.png / favicon.svg / 打赏二维码
 ├── build-mac.sh                  # macOS .app 构建脚本
 ├── build-all.sh                  # 全平台构建脚本（macOS/Linux 裸二进制 + Windows exe 打成 zip）
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本（分架构，直接产出 .fpk）
+├── changeLog.md                  # 版本更新记录
+├── fnpack.json                   # FnDepot 第三方应用源描述文件
 ├── aellus.icns                   # macOS 应用图标
 ├── winres/                       # Windows 图标相关（源图标 + 工具脚本）
 │   ├── aellus.ico                # Windows 应用图标（多尺寸，go-winres 打包进 exe）
@@ -213,7 +217,7 @@ aellus/
 │   └── check_pe_icon.py          # 校验脚本：检查 exe 是否含图标/版本资源
 ├── rsrc_windows_{amd64,arm64,386}.syso  # Windows 图标/清单/版本资源（go build 在根目录自动链接）
 ├── screenshots/                  # 界面预览截图（README「界面预览」章节引用：飞牛 / Android / iOS）
-├── fnos/                         # 飞牛 fnOS 打包资源（manifest / config / cmd）
+├── fnos/                         # 飞牛 fnOS 打包资源（manifest / config / cmd / wizard）
 └── README.md
 ```
 
@@ -347,7 +351,7 @@ const (
   curl -s -X POST "$NAS/api/set-savedir" -H "$H" -H "Content-Type: application/json" -d '{"dir":"/vol1/1000/photo"}'
   ```
 
-- 只读接口（`/api/dirs`、`/api/files`、`/api/thumb`、`/api/download`）不需要该头
+- 只读接口（`/api/dirs`、`/api/files`、`/api/thumb`、`/api/download`、`/api/settings`、`/api/addr`）不需要该头；`/api/authpaths`、`/api/listdir` 同样不需要，但要求管理权限（无权限返回 `403 无权限`）
 - **上传**：局域网内任何设备都能调；**删除 / 改保存目录**还需要「管理入口」——桌面端在本机执行，飞牛端只能在门户内（脚本直连 `IP:5115` 会返回 `403 无删除权限`，可直接在 NAS 上操作文件系统）
 
 ---
