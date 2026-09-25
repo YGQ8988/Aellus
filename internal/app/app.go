@@ -171,9 +171,14 @@ func (a *App) serveGateway(socketPath string, port int) {
 		log.Printf("[gateway] Unix Socket 监听失败，门户内删除/设置将不可用: %v", err)
 		return
 	}
-	// Socket 位于应用 target 目录（普通用户无法进入该目录），放开文件权限不影响安全，
-	// 同时兼容飞牛网关以其它用户/用户组连接。
-	_ = os.Chmod(socketPath, 0666)
+	// 权限收紧为 0660（所有者 + 同组可读写），不再是 0666（任意本地用户可连）。
+	// 原因：该入口不剥离 X-Trim-*，且 gatewayUser 只要任一身份头非空即视为已登录门户，
+	// 即「能连上这个 socket」==「通过飞牛登录态校验」。放成 0666 时，NAS 上任意本地
+	// 进程/其它应用都能自造 X-Trim-Userid 拿到删除文件、改保存目录的完整权限。
+	// 保留同组可访问是为了兼容飞牛网关以其它用户/用户组连接；若确认网关与本机同用户，
+	// 可进一步收紧到 0600。（更彻底的做法是 Accept 后用 SO_PEERCRED 校验对端 uid/gid，
+	// 需平台相关实现，暂不引入。）
+	_ = os.Chmod(socketPath, 0660)
 	// 标记网关可用：此后删除 / 改保存目录只认网关注入的身份头（见 canManage）。
 	a.gatewayActive.Store(true)
 	log.Printf("[gateway] 已接入飞牛统一网关（Socket=%s Prefix=%s）", socketPath, a.mountPrefix)

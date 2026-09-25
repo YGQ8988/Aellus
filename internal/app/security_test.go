@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"image"
+	"image/color"
+	"image/gif"
 	"image/png"
 	"mime/multipart"
 	"net/http"
@@ -31,7 +33,8 @@ import (
 //  8. 缩略图只缩小、不放大（防「放大式」内存耗尽 DoS）；
 //  9. 上传表单文本字段限长（防内存耗尽）、日志值清洗（防日志注入）；
 // 10. 批量下载不得把隐藏目录内容（含 .aellus-tmp 上传临时文件）打包进 ZIP；
-// 11. 批量下载的临时 ZIP 必须落在保存目录内，不得占用系统临时目录。
+// 11. 批量下载的临时 ZIP 必须落在保存目录内，不得占用系统临时目录；
+// 12. GIF 帧数统计必须在不解码像素的前提下得出（多帧解压炸弹防护的前置条件）。
 
 // secTestPlatform 是 Platform 接口的最小实现，供本文件测试使用。
 type secTestPlatform struct {
@@ -554,5 +557,88 @@ func TestBatchDownloadTempFileInsideSaveDir(t *testing.T) {
 		for _, e := range ents {
 			t.Errorf("响应结束后临时文件未清理: %s", e.Name())
 		}
+	}
+}
+
+// TestGIFFirstFrameBlocksDecodeBomb 覆盖 P12：GIF 多帧解压炸弹防护。
+//
+// 标准库解码 GIF 会把【全部帧】都解出来（每帧按画布大小分配内存），几 MB 的多帧
+// GIF 就能放大成数 GB。缩略图只需要第一帧：gifFirstFrame 必须把第一帧截成单帧 GIF，
+// 使后续解码只解一帧、内存恒等于单帧面积（从而让 maxPixels 检查重新有效）。
+func TestGIFFirstFrameBlocksDecodeBomb(t *testing.T) {
+	// 用标准库编一个 3 帧 GIF 作为样本（含图形控制扩展分支）。
+	const w, h = 8, 8
+	pal := color.Palette{color.Black, color.White}
+	var frames []*image.Paletted
+	for i := 0; i < 3; i++ {
+		img := image.NewPaletted(image.Rect(0, 0, w, h), pal)
+		if i%2 == 0 {
+			img.Pix[0] = 1
+		}
+		frames = append(frames, img)
+	}
+	var buf bytes.Buffer
+	if err := gif.EncodeAll(&buf, &gif.GIF{Image: frames, Delay: []int{0, 0, 0}}); err != nil {
+		t.Fatalf("构造 GIF 样本失败: %v", err)
+	}
+	data := buf.Bytes()
+
+	// 样本自检：原文件确实是 3 帧（否则下面的断言没有意义）。
+	orig, oerr := gif.DecodeAll(bytes.NewReader(data))
+	if oerr != nil {
+		t.Fatalf("样本 GIF 无法解码: %v", oerr)
+	}
+	if len(orig.Image) != 3 {
+		t.Fatalf("样本应有 3 帧，实际 %d", len(orig.Image))
+	}
+
+	one, ok := gifFirstFrame(data)
+	if !ok {
+		t.Fatal("合法 GIF 应能截取到第一帧（ok=true）")
+	}
+	// 关键断言：截取后的 GIF 只有一帧——解码内存不再随帧数放大。
+	single, serr := gif.DecodeAll(bytes.NewReader(one))
+	if serr != nil {
+		t.Fatalf("截取出的单帧 GIF 无法解码: %v", serr)
+	}
+	if len(single.Image) != 1 {
+		t.Errorf("截取后应只有 1 帧，实际 %d（多帧会放大内存）", len(single.Image))
+	}
+	// 画布尺寸必须保持原样，不能变形。
+	if single.Config.Width != orig.Config.Width || single.Config.Height != orig.Config.Height {
+		t.Errorf("画布尺寸被改变: %dx%d → %dx%d",
+			orig.Config.Width, orig.Config.Height, single.Config.Width, single.Config.Height)
+	}
+	// 通用解码入口也要能解（thumb.go 走的是 image.Decode）。
+	if _, _, derr := image.Decode(bytes.NewReader(one)); derr != nil {
+		t.Errorf("image.Decode 解码单帧 GIF 失败: %v", derr)
+	}
+
+	// 只缺 Trailer 的 GIF 仍应截取成功：单帧化只读到第一帧为止，不依赖文件尾。
+	// （这也是它比"整文件交给标准库解码"更健壮的地方。）
+	if _, ok := gifFirstFrame(data[:len(data)-1]); !ok {
+		t.Error("缺少 Trailer 但第一帧完整时，仍应能截取第一帧")
+	}
+
+	// 畸形 / 截断数据不得 panic，且必须返回 ok=false（调用方据此回退，不去解原文件）。
+	noFrame := append(append([]byte{}, data[:13]...), 0x3B) // 只有头 + 结束符：没有任何图像帧
+	for _, bad := range [][]byte{
+		nil,
+		{},
+		[]byte("not a gif at all"),
+		data[:6],  // 只有 Header
+		data[:11], // Header + 不完整的屏幕描述符
+		noFrame,
+	} {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("畸形 GIF 数据触发 panic: %v", r)
+				}
+			}()
+			if _, ok := gifFirstFrame(bad); ok {
+				t.Errorf("畸形/截断数据不应被判为合法 GIF（ok 应为 false）")
+			}
+		}()
 	}
 }

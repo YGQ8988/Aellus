@@ -63,9 +63,14 @@ func withinAuthRoots(p string, roots []string) bool {
 	for _, root := range roots {
 		cr := filepath.Clean(root)
 		if cp == cr || strings.HasPrefix(cp, cr+string(filepath.Separator)) {
-			return true
+			// 字符串落在授权根内【还不够】：p 本身或其任一层父目录可能是软链，
+			// 真实位置在授权之外（共享目录对局域网可写，谁都能建这种软链）。
+			// 若只凭字符串前缀就放行，软链即可把保存目录引到授权边界之外——
+			// 后续 realInside(saveDir, ...) 会把双方都解析成外部路径，判定为"内部"。
+			// 故命中后必须再过一次真实路径校验。
+			return realInside(root, p)
 		}
-		// symlink 增强：p 或 root 为软链时，解析真实路径再比对。
+		// 字符串不在根内，但解析软链后可能确实落在里面（如 root 自身是软链）。
 		if realInside(root, p) {
 			return true
 		}
