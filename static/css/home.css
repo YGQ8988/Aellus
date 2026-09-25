@@ -255,16 +255,6 @@ body.home .container {
      保证「只能滚动弹窗里的内容」在鼠标滚轮与手机触摸下都成立） */
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
-	/* 飞牛（Linux Chromium）默认经典滚动条会在右侧占位：槽口是直角矩形，
-	   上下端顶在面板右上/右下角、盖住卡片圆角 → 透明轨道 + 圆角滑块，保持可滚动 */
-	scrollbar-width: thin;
-	scrollbar-color: hsl(var(--muted-foreground) / .35) transparent;
-}
-.settings-panel::-webkit-scrollbar { width: 8px; }
-.settings-panel::-webkit-scrollbar-track { background: transparent; }
-.settings-panel::-webkit-scrollbar-thumb {
-	background: hsl(var(--muted-foreground) / .35);
-	border-radius: 9999px;
 }
 
 .settings-head {

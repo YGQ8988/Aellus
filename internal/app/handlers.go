@@ -31,6 +31,7 @@ const (
 	maxDeviceFieldBytes = 4 << 10 // device 字段（设备名）
 	maxRelPathBytes     = 8 << 10 // 单个 rels 字段（相对路径，Linux PATH_MAX 为 4096）
 	maxRelEntries       = 20000   // rels 条数上限
+	maxBatchFiles       = 10000   // 批量下载一次可指定的文件条数上限（防重复放大）
 )
 
 // uploadTempDir 返回临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
@@ -518,11 +519,23 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
+		// 条数上限 + 去重：请求体虽只限 1MB，却能列出数十万条且允许重复，
+		// 每个条目都会重新 os.Open + 压缩一遍——1MB 请求可放大成数十 TB 写入
+		// （临时 ZIP 落在保存卷上）。这是免登录接口，必须堵住。
+		if len(req.Files) > maxBatchFiles {
+			http.Error(w, "一次打包的文件过多", http.StatusBadRequest)
+			return
+		}
+		seenReq := map[string]bool{}
 		for _, f := range req.Files {
 			if !isValidName(f) { // 逐个校验，防穿越
 				http.Error(w, "非法文件名", http.StatusBadRequest)
 				return
 			}
+			if seenReq[f] {
+				continue
+			}
+			seenReq[f] = true
 			names = append(names, f)
 		}
 	}
@@ -547,6 +560,8 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 
 	buf := make([]byte, 1<<20) // 1MB 缓冲
 	zw := zip.NewWriter(tmp)
+	// seen 记录已写入 ZIP 的条目名（去时间戳前缀后），用于给重名条目加序号。
+	seen := map[string]int{}
 	for _, name := range names {
 		full := filepath.Join(dirAbs, name)
 		// 双重校验：isInside 防路径穿越（仅字符串判断），realInside 解析符号链接防逃逸。
@@ -559,8 +574,23 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		// 在 ZIP 里用原始文件名（不要用带 timestamp 的磁盘名，方便用户识别）
-		zwEntry, err := zw.Create(name)
+		// 在 ZIP 里用原始文件名（不要用带 timestamp 的磁盘名，方便用户识别）——
+		// 与页面列表展示、单文件下载保持一致（见 stripUploadPrefix）。
+		// 去前缀后可能重名（同名文件被多次上传），重名时加序号：ZIP 允许同名条目，
+		// 但解压时后者会覆盖前者，等于静默丢文件。
+		entryName := stripUploadPrefix(name)
+		if entryName == "" {
+			// 极端情况：文件名恰好等于纯时间戳前缀（去完前缀为空）→ 回退用原名，
+			// 避免写入空名条目（解压时会产生无名文件）。
+			entryName = name
+		}
+		if n, dup := seen[entryName]; dup {
+			ext := filepath.Ext(entryName)
+			base := strings.TrimSuffix(entryName, ext)
+			entryName = fmt.Sprintf("%s(%d)%s", base, n+1, ext)
+		}
+		seen[stripUploadPrefix(name)]++
+		zwEntry, err := zw.Create(entryName)
 		if err != nil {
 			src.Close()
 			continue

@@ -495,17 +495,17 @@ async function onShare(btn) {
   if (nameEl) nameEl.textContent = displayName(btn.dataset.name || '');
   const baseEl = document.querySelector('base');
   const baseHref = baseEl ? baseEl.getAttribute('href') : '/';
-  // 二维码地址不能用 location.origin：本机常用 localhost 访问，扫码方无法访问 localhost。
-  // 桌面直连（base=/）改用 api/addr 返回的服务端局域网地址（与首页「扫码访问」同源）；
-  // 飞牛网关（base=/app/.../）下网关路径只在其门户 origin 下有效，沿用 location.origin。
+  // 二维码地址一律取 /api/addr 返回的「裸端口直连」地址，不能用 location.origin：
+  //   - 本机常用 localhost 访问，扫码方根本访问不到 localhost；
+  //   - 飞牛门户若用 location.origin，路径要过网关登录态，手机扫码后下载不了。
+  // 裸端口是免登录的上传/下载入口，且同样接受门户前缀（/app/<name>/api/...，
+  // 由 Go 端 withPrefix 归一化），所以门户内也照样可用——baseHref 照常拼在后面。
   let origin = location.origin;
-  if (baseHref === '/') {
-    try {
-      const res = await fetch('api/addr');
-      const d = await res.json();
-      if (d && d.url) origin = d.url;
-    } catch (e) {}
-  }
+  try {
+    const res = await fetch('api/addr');
+    const d = await res.json();
+    if (d && d.url) origin = d.url;
+  } catch (e) {}
   const url = origin + baseHref + btn.dataset.url;
   try {
     const qr = qrcode(0, 'M');
