@@ -266,12 +266,19 @@ func (a *App) writeJSON(w http.ResponseWriter, status int, v interface{}) {
 }
 
 // servePage 渲染一个静态 HTML 页面（home/upload/browse）。
-// 页面本身没有服务端数据（动态内容全靠前端 JS fetch），唯一模板变量是 Base——
-// 当前请求的页面基准路径（局域网直连 "/"，门户内 "/app/<appname>/"），写入 <base>，
-// 保证 static/... 、api/... 等相对路径在两种访问方式下都解析正确。
+// 页面本身没有服务端数据（动态内容全靠前端 JS fetch），模板变量只给：
+//   - Base：当前请求的页面基准路径（局域网直连 "/"，门户内 "/app/<appname>/"），
+//     写入 <base>，保证 static/... 、api/... 等相对路径在两种访问方式下都解析正确；
+//   - ViaGateway：请求是否经飞牛统一网关（飞牛 App 客户端 / 应用中心微应用入口）。
+//     上传页据它隐藏「照片 / 拍摄 / 录像」快捷按钮（客户端 WebView 的文件选择行为
+//     不可靠，入口留着反而点了没反应），与下载入口隐藏用的是同一判据（见 settings.go）。
 func (a *App) servePage(w http.ResponseWriter, r *http.Request, name string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.tmpl.ExecuteTemplate(w, name, map[string]string{"Base": pageBase(r)}); err != nil {
+	via := ""
+	if gatewayUser(r) != "" {
+		via = "1"
+	}
+	if err := a.tmpl.ExecuteTemplate(w, name, map[string]string{"Base": pageBase(r), "ViaGateway": via}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
