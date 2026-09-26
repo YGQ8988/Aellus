@@ -635,19 +635,6 @@ function openLightboxFromEl(el) {
   if (i >= 0) openLightbox(i);
 }
 
-// 让底部工具条宽度等于当前显示的图片/视频宽度（图片尺寸动态，须用 JS 同步）
-function syncBarWidth() {
-  const bar = $('lbBar');
-  if (!bar || $('lightbox').style.display !== 'flex') return;
-  const lbImg = $('lbImg');
-  const lbVideo = $('lbVideo');
-  let w = 0;
-  if (lbImg.style.display !== 'none' && lbImg.offsetWidth > 0) w = lbImg.offsetWidth;
-  else if (lbVideo.style.display !== 'none' && lbVideo.offsetWidth > 0) w = lbVideo.offsetWidth;
-  if (w > 0) bar.style.width = w + 'px';
-}
-window.addEventListener('resize', syncBarWidth);
-
 function closeLightbox() {
   $('lightbox').style.display = 'none';
   $('lbVideo').pause();
@@ -738,14 +725,11 @@ function showLbImage(dir) {
       lbImg.classList.add('loaded');             // 同一张（如重新打开），直接显示，避免卡在透明态
     } else {
       lbImg.classList.remove('loaded');         // 先淡出，加载完成再淡入（消除翻页闪动）
-      lbImg.onload = () => { lbImg.classList.add('loaded'); syncBarWidth(); };
+      lbImg.onload = () => { lbImg.classList.add('loaded'); };
       lbImg.src = newSrc;
       preloadNeighbors();                        // 预加载相邻图片，左右翻页秒出
     }
   }
-  // 视频/图片加载完成后同步（顶部已无底栏，syncBarWidth 内部空函数安全返回）
-  lbVideo.onloadedmetadata = syncBarWidth;
-  syncBarWidth();
   // 仅 1 个文件时隐藏左右箭头
   const showNav = previewFiles.length > 1;
   $('lbPrev').style.display = showNav ? 'flex' : 'none';

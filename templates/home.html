@@ -34,6 +34,7 @@
               <input type="hidden" id="saveDirDisplay" value="" data-path="">
               <div class="dir-input-wrap" id="dirInputWrap" hidden>
                 <input type="text" id="dirInput" class="dir-input" placeholder="输入保存目录的绝对路径" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSaveDirInput();}">
+                <button type="button" class="btn-outline dir-browse-btn" id="dirBrowseBtn" onclick="browseSaveDir()">浏览…</button>
                 <button type="button" class="btn-primary dir-save-btn" onclick="saveSaveDirInput()">保存</button>
               </div>
             </div>
@@ -293,6 +294,33 @@
         }
         else { msg.className='settings-msg show err'; msg.textContent=d.error||'保存失败'; }
       }).catch(()=>{ msg.className='settings-msg show err'; msg.textContent='网络错误'; });
+  }
+  // 桌面端「浏览…」：调系统原生文件夹选择框（/api/pick-dir，仅桌面端 + 仅本机可用；
+  // 飞牛端按钮不显示）。服务端选完会自动走 set-savedir 的校验与持久化，前端只需回填界面。
+  function browseSaveDir(){
+    var msg=document.getElementById('saveDirMsg');
+    var btn=document.getElementById('dirBrowseBtn');
+    if(btn){ btn.disabled=true; }
+    msg.className='settings-msg show'; msg.textContent='请在弹出的系统窗口中选择文件夹…';
+    fetch('api/pick-dir',{method:'POST'})
+      .then(r=>r.json()).then(function(d){
+        if(d&&d.ok){
+          var disp=d.saveDirDisplay||d.saveDir;
+          msg.className='settings-msg show ok'; msg.textContent='已保存：'+disp;
+          var hidden=document.getElementById('saveDirDisplay');
+          hidden.value=d.saveDir; hidden.dataset.path=d.saveDir; hidden.dataset.display=disp;
+          renderDirTrigger(d.saveDir, disp);
+          var inp=document.getElementById('dirInput'); if(inp){ inp.value=d.saveDir; }
+          document.getElementById('resetDirBtn').style.display='';
+          try{ sessionStorage.removeItem('aellus_currentDir'); }catch(e){}
+        } else if(d&&d.cancelled){
+          msg.className='settings-msg'; msg.textContent='';   // 用户取消：静默复原
+        } else {
+          msg.className='settings-msg show err'; msg.textContent=(d&&d.error)||'选择失败';
+        }
+      }).catch(function(){
+        msg.className='settings-msg show err'; msg.textContent='网络错误';
+      }).finally(function(){ if(btn){ btn.disabled=false; } });
   }
   function resetSaveDir(){
     var msg=document.getElementById('saveDirMsg');

@@ -603,7 +603,8 @@ body.home .container {
 	font-family: var(--font-sans);
 }
 
-.dir-save-btn {
+.dir-save-btn,
+.dir-browse-btn {
 	flex-shrink: 0;
 }
 
