@@ -52,13 +52,19 @@ function fileUploadName(f) {
 //   - HTTPS：不带 capture → 弹出系统选择器，用户可自选「拍照 / 录像 / 照片图库」；
 //     拍完走的就是普通文件选择流程，上传天然可用（实测飞牛客户端下这条路径最稳）。
 //
+// capture 在 HTML 里【静态】声明（见 upload.html），这里只按需调整：
+// 部分 WebView（如飞牛 App）只识别 HTML 里静态存在的 capture，动态 setAttribute
+// 不生效——早期版本的静态写法在飞牛 App HTTP 下能直接调相机，改成动态后就失效了。
+//
 // 注意用 location.protocol 而不是 window.isSecureContext：localhost 即使走 http
 // 也算安全上下文，用它判断会把「本机 HTTP 访问」当成 HTTPS（弹选择器），与本意相反。
 function openCamera(mode) {
   const input = mode === 'video' ? $('recInput') : $('camInput');
   if (location.protocol === 'https:') {
+    // HTTPS（飞牛门户）：移除 capture → 弹系统选择器，可自选拍照/录像/照片图库
     input.removeAttribute('capture');
   } else {
+    // HTTP：确保 capture 在（静态已声明，这里兜底）→ 直接调起原生相机/摄像机
     input.setAttribute('capture', 'environment');
   }
   input.click();

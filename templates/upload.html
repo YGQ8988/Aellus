@@ -44,10 +44,11 @@
             录像
           </button>
           <input type="file" id="fileInputPhoto" multiple accept="image/*">
-          <!-- capture 属性由 openCamera 按访问方式动态设置：
-               HTTPS 不带（弹系统选择器可自选拍照/录像/图库），HTTP 带（直接调原生相机） -->
-          <input type="file" id="camInput" accept="image/*">
-          <input type="file" id="recInput" accept="video/*">
+          <!-- capture 默认【静态】带上：部分 WebView（如飞牛 App）只识别 HTML 里静态存在
+               capture 的 input，动态 setAttribute 不生效（手机浏览器则两者都认）。
+               HTTPS（门户）打开时由 openCamera 动态移除，改弹系统选择器。 -->
+          <input type="file" id="camInput" accept="image/*" capture="environment">
+          <input type="file" id="recInput" accept="video/*" capture="environment">
         </div>
 
         <input type="file" id="fileInput" multiple>
