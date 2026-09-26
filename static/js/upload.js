@@ -46,24 +46,17 @@ function fileUploadName(f) {
 // 表现极不稳定——录像额外申请麦克风常被拒导致整体失败、MediaRecorder 可能残缺导致录完
 // 拿不到文件，同一份代码在 Safari / Chrome / 各家客户端里行为也不一致。
 //
-// capture 属性按访问【协议】决定——两者都是系统原生能力，只是入口不同：
-//   - HTTP：带 capture → 一步调起原生相机/摄像机，操作最快（手机浏览器支持；
-//     桌面浏览器本来就会忽略 capture，自然退化为选择本地文件，这是浏览器行为）。
-//   - HTTPS：不带 capture → 弹出系统选择器，用户可自选「拍照 / 录像 / 照片图库」；
-//     拍完走的就是普通文件选择流程，上传天然可用（实测飞牛客户端下这条路径最稳）。
+// capture 一律保留（HTML 静态声明，见 upload.html）→ 一步直接调起原生相机 / 摄像机。
+// 手机浏览器不看协议：HTTP 局域网直连与 HTTPS（用户自配 DDNS / 反代远程访问）下
+// capture 都有效，无需按协议做任何分支；桌面浏览器本就忽略 capture，自然退化为
+// 选择本地文件，这是浏览器行为。
 //
-// capture 在 HTML 里【静态】声明（见 upload.html）。关键：HTTP 时这里【什么都不做】——
-// 部分 WebView（飞牛 App）只认「从未被 JS 碰过」的静态属性：即使 setAttribute 的值与
-// 静态声明完全相同，只要被 JS 写过一次，该 WebView 就会忽略 capture（表现与没声明一样）。
-//
-// 注意用 location.protocol 而不是 window.isSecureContext：localhost 即使走 http
-// 也算安全上下文，用它判断会把「本机 HTTP 访问」当成 HTTPS（弹选择器），与本意相反。
+// 关键：capture 只在 HTML 里【静态】声明，JS 运行时【不碰】——部分 WebView（飞牛 App）
+// 只认「从未被 JS 写过」的静态属性：即使 setAttribute 的值与静态声明完全相同，
+// 只要被 JS 写过一次（setAttribute / removeAttribute 都算），该 WebView 就会忽略
+// capture（表现与没声明一样，点了没反应）。
 function openCamera(mode) {
   const input = mode === 'video' ? $('recInput') : $('camInput');
-  if (location.protocol === 'https:') {
-    // HTTPS（飞牛门户）：移除 capture → 弹系统选择器，可自选拍照/录像/照片图库
-    input.removeAttribute('capture');
-  }
   input.click();
 }
 

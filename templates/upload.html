@@ -44,9 +44,10 @@
             录像
           </button>
           <input type="file" id="fileInputPhoto" multiple accept="image/*">
-          <!-- capture 默认【静态】带上：部分 WebView（如飞牛 App）只识别 HTML 里静态存在
-               capture 的 input，动态 setAttribute 不生效（手机浏览器则两者都认）。
-               HTTPS（门户）打开时由 openCamera 动态移除，改弹系统选择器。 -->
+          <!-- capture 一律【静态】带上、JS 运行时绝不改写：部分 WebView（如飞牛 App）
+               只识别 HTML 里静态存在 capture 的 input——只要被 JS 写过一次（哪怕值与
+               静态声明完全相同），该 WebView 就会忽略 capture、表现为点了没反应。
+               手机浏览器（HTTP / 含 DDNS 的 HTTPS）据此一步直接调起相机 / 摄像机。 -->
           <input type="file" id="camInput" accept="image/*" capture="environment">
           <input type="file" id="recInput" accept="video/*" capture="environment">
         </div>
