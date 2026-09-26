@@ -46,15 +46,17 @@ function fileUploadName(f) {
 // 表现极不稳定——录像额外申请麦克风常被拒导致整体失败、MediaRecorder 可能残缺导致录完
 // 拿不到文件，同一份代码在 Safari / Chrome / 各家客户端里行为也不一致。
 //
-// capture 属性按访问方式决定——两者都是系统原生能力，只是入口不同：
-//   - HTTP（非安全上下文）：带 capture → 一步调起原生相机/摄像机，操作最快；
-//     桌面端浏览器本就忽略 capture，自然退化为选择本地文件。
+// capture 属性按访问【协议】决定——两者都是系统原生能力，只是入口不同：
+//   - HTTP：带 capture → 一步调起原生相机/摄像机，操作最快（手机浏览器支持；
+//     桌面浏览器本来就会忽略 capture，自然退化为选择本地文件，这是浏览器行为）。
 //   - HTTPS：不带 capture → 弹出系统选择器，用户可自选「拍照 / 录像 / 照片图库」；
 //     拍完走的就是普通文件选择流程，上传天然可用（实测飞牛客户端下这条路径最稳）。
+//
+// 注意用 location.protocol 而不是 window.isSecureContext：localhost 即使走 http
+// 也算安全上下文，用它判断会把「本机 HTTP 访问」当成 HTTPS（弹选择器），与本意相反。
 function openCamera(mode) {
   const input = mode === 'video' ? $('recInput') : $('camInput');
-  // isSecureContext 为 undefined 的老浏览器按非安全上下文处理（直接调相机）
-  if (window.isSecureContext === true) {
+  if (location.protocol === 'https:') {
     input.removeAttribute('capture');
   } else {
     input.setAttribute('capture', 'environment');
