@@ -374,6 +374,16 @@ const (
 
 ---
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=ygq8988%2Faellus&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## ☕ 赞赏
 
 如果 Aellus 对您有所帮助，可以请我们喝一杯咖啡吗？
