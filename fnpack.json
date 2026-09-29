@@ -43,7 +43,7 @@
           }
         },
         "1.0.4": {
-          "changelog": "1.飞牛卸载增加是否保留配置选项\\n2.新增分享按钮,点击弹出文件下载二维码\\n3.拍摄/录像改为调用系统原生相机\\n4.若干样式/安全优化",
+          "changelog": "1.飞牛卸载增加是否保留配置选项\n2.新增分享按钮,点击弹出文件下载二维码\n3.拍摄/录像改为调用系统原生相机\n4.若干样式/安全优化",
           "packages": {
             "x86": {
               "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.4/Aellus-1.0.4-fnos-x64.fpk",
