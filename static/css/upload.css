@@ -70,13 +70,6 @@
 input[type=file] { display: none; }
 
 /* 网页内相机弹窗 → shadcn Dialog */
-.cam-modal { background: rgb(0 0 0 / 0.8); z-index: 9999; padding: 12px; }
-.cam-inner { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 16px; }
-.cam-inner video, .cam-preview { width: 100%; max-height: 70vh; border-radius: calc(var(--radius) - 2px); background: #000; object-fit: contain; overflow: hidden; }
-.cam-preview img, .cam-preview video { width: 100%; border-radius: calc(var(--radius) - 2px); display: block; }
-.cam-bar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.cam-bar button { padding: 12px 18px; border-radius: calc(var(--radius) - 2px); font-size: 15px; border: 1px solid transparent; }
-.cam-status { color: hsl(var(--muted-foreground)); font-size: 13px; min-height: 18px; }
 
 @media (min-width: 768px) {
   .upload-wrap { max-width: 1120px; }
@@ -89,6 +82,12 @@ input[type=file] { display: none; }
   .upload-actions { display: none; }
   .upload-action-btn { padding: 0 26px; font-size: 15px; }
 }
+
+/* 飞牛客户端内同样隐藏这排快捷按钮（与 PC 端一致）：飞牛 App WebView 对文件选择 /
+   capture 的处理不可靠（点了弹不出相机或没反应），入口留着反而造成困惑；隐藏后
+   点上方上传区域仍可选文件。html.via-gateway 由服务端按网关注入头渲染（见
+   app.go servePage），与下载入口隐藏同一判据——浏览器直连（裸端口）不受影响。 */
+html.via-gateway .upload-actions { display: none; }
 
 /* ============================================================
    上传进度列表（逐文件卡片：上排缩略图/文件名/速度 + 取消叉号，下排独立进度条）

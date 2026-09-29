@@ -255,16 +255,6 @@ body.home .container {
      保证「只能滚动弹窗里的内容」在鼠标滚轮与手机触摸下都成立） */
 	overscroll-behavior: contain;
 	-webkit-overflow-scrolling: touch;
-	/* 飞牛（Linux Chromium）默认经典滚动条会在右侧占位：槽口是直角矩形，
-	   上下端顶在面板右上/右下角、盖住卡片圆角 → 透明轨道 + 圆角滑块，保持可滚动 */
-	scrollbar-width: thin;
-	scrollbar-color: hsl(var(--muted-foreground) / .35) transparent;
-}
-.settings-panel::-webkit-scrollbar { width: 8px; }
-.settings-panel::-webkit-scrollbar-track { background: transparent; }
-.settings-panel::-webkit-scrollbar-thumb {
-	background: hsl(var(--muted-foreground) / .35);
-	border-radius: 9999px;
 }
 
 .settings-head {
@@ -564,12 +554,14 @@ body.home .container {
 	font-family: var(--font-sans);
 }
 
-/* 输入框模式（桌面端 / 非飞牛）：无授权目录概念，直接输入绝对路径。
-   视觉与 dir-trigger 保持一致（同款边框/圆角/字体），右侧挂保存按钮。 */
+/* 只读展示模式（桌面端 / 非飞牛）：路径框只展示当前保存目录的绝对路径，
+   不可手输；修改路径通过「选择目录」（系统原生文件夹选择器，服务端自动保存）。
+   视觉与 dir-trigger 保持一致（同款边框/圆角/字体）。 */
 .dir-input-wrap {
 	display: flex;
 	gap: 8px;
 	align-items: center;
+	justify-content: space-between;   /* 路径框靠左、按钮靠右（中间留空） */
 	width: 100%;
 }
 
@@ -581,9 +573,12 @@ body.home .container {
 }
 
 .dir-input {
-	flex: 1;
-	min-width: 0;
+	flex: 0 1 auto;                 /* 不占满剩余空间；宽度由 JS 按路径实际长度设置 */
+	width: auto;
+	max-width: 100%;
+	min-width: 0;                   /* 允许收缩（超长时不会撑破弹窗） */
 	padding: 8px 12px;
+	height: 40px;
 	min-height: 40px;
 	box-sizing: border-box;
 	border: 1px solid hsl(var(--input));
@@ -592,8 +587,25 @@ body.home .container {
 	color: hsl(var(--foreground));
 	font-family: var(--font-mono);
 	font-size: 14px;
-	line-height: 1.4;
+	line-height: 24px;              /* 40px - 上下 padding 16px = 单行内容高 */
+	resize: none;
+	overflow-x: auto;               /* 路径超长：框内横向滚动展示 */
+	overflow-y: hidden;
+	white-space: nowrap;            /* 单行不换行 */
+	vertical-align: middle;
 	transition: border-color .15s, box-shadow .15s;
+}
+
+/* 横向滚动条：细条半透明，与弹窗风格一致 */
+.dir-input::-webkit-scrollbar {
+	height: 6px;
+}
+.dir-input::-webkit-scrollbar-thumb {
+	background: hsl(var(--muted-foreground) / .35);
+	border-radius: 3px;
+}
+.dir-input::-webkit-scrollbar-track {
+	background: transparent;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -613,7 +625,22 @@ body.home .container {
 	font-family: var(--font-sans);
 }
 
-.dir-save-btn {
+/* 只读展示态：去掉 hover / focus 的"可编辑"暗示，视觉上明确是静态文本展示 */
+.dir-input[readonly] {
+	cursor: default;
+	background: hsl(var(--muted) / .55);
+}
+@media (hover: hover) and (pointer: fine) {
+	.dir-input[readonly]:hover {
+		border-color: hsl(var(--input));
+	}
+}
+.dir-input[readonly]:focus {
+	border-color: hsl(var(--input));
+	box-shadow: none;
+}
+
+.dir-browse-btn {
 	flex-shrink: 0;
 }
 

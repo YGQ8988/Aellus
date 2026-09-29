@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -116,8 +117,19 @@ func resolveUploadTarget(root, deviceDir, rawName string) (string, string, error
 	return dstPath, displayName, nil
 }
 
+// uploadNamePrefixRe 匹配本工具普通文件上传时拼接的时间戳前缀（20060102_150405.000000_）。
+var uploadNamePrefixRe = regexp.MustCompile(`^\d{8}_\d{6}\.\d{6}_`)
+
+// stripUploadPrefix 去掉上传时拼接的时间戳前缀，返回实际上传时的原始文件名；
+// 非本工具上传（无此前缀）的名字原样返回。与前端 displayName 同一规则，
+// 用于单文件下载接口 attachment 模式的下载文件名与页面展示保持一致。
+func stripUploadPrefix(name string) string {
+	return uploadNamePrefixRe.ReplaceAllString(name, "")
+}
+
 // isValidName 判断一个“单段名字”（目录名或文件名）是否合法：
-// 不能是空、不能是 . 或 ..、不能以 . 开头（隐藏）、不能包含路径分隔符或 ".."。
+// 不能是空、不能是 . 或 ..、不能以 . 开头（隐藏）、不能包含路径分隔符或 ".."，
+// 且长度不超过 255 字节、不含控制字符。
 // 目录和文件在我们的设计里都只应该是单层名字，不允许有任何路径层级。
 func isValidName(name string) bool {
 	if name == "" || name == "." || name == ".." {
@@ -131,6 +143,16 @@ func isValidName(name string) bool {
 	}
 	if strings.Contains(name, "..") {
 		return false
+	}
+	// 纵深防御：单段名字上限 255 字节（常见文件系统的上限）；
+	// 控制字符会污染日志与响应头（换行可伪造日志条目），一并拒绝。
+	if len(name) > 255 {
+		return false
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
 	}
 	return true
 }

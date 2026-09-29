@@ -124,6 +124,12 @@ func withSecurityHeaders(next http.Handler, frameAncestors string) http.Handler 
 				"frame-ancestors "+frameAncestors+"; "+
 				"base-uri 'self'; "+
 				"form-action 'self'")
+		// 老浏览器不识别 CSP 的 frame-ancestors，补 X-Frame-Options 兜底。
+		// 只在收紧为 'self' 时下发：飞牛门户需要跨域 iframe 嵌入，
+		// 那里一旦带上这个头，老浏览器里的门户页面就打不开了。
+		if frameAncestors == frameAncestorsSelf {
+			h.Set("X-Frame-Options", "SAMEORIGIN")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

@@ -46,7 +46,8 @@ func (a *App) writeLog(path, msg string) {
 		_ = os.Remove(old) // Windows 下 Rename 不能覆盖已存在的目标文件
 		_ = os.Rename(path, old)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// 0600：日志里有完整的文件名清单与访问者 IP，不应被本机其它用户/应用读取。
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return
 	}

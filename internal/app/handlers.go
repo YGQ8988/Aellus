@@ -31,6 +31,7 @@ const (
 	maxDeviceFieldBytes = 4 << 10 // device 字段（设备名）
 	maxRelPathBytes     = 8 << 10 // 单个 rels 字段（相对路径，Linux PATH_MAX 为 4096）
 	maxRelEntries       = 20000   // rels 条数上限
+	maxBatchFiles       = 10000   // 批量下载一次可指定的文件条数上限（防重复放大）
 )
 
 // uploadTempDir 返回临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
@@ -45,7 +46,10 @@ const (
 // 该目录以 "." 开头：列表接口（/api/dirs、/api/files）过滤它，批量下载（WalkDir）
 // 整棵跳过（见 handleBatchDownload），也无法通过 API 下载 / 删除其中的文件。
 //
-// 返回空串表示保存目录不可用或该子目录是软链等异常，调用方回退系统临时目录（保证功能可用）。
+// 返回空串表示保存目录不可用或该子目录是软链等异常。
+// 调用方【必须中止操作并返回错误】，不要回退系统临时目录——那正是上面要避免的
+// 情形（NAS 上 tmpfs / 小根分区被写满会引发系统级故障）；而且此时文件最终也无法
+// 落盘到保存目录，与其白白传完再失败，不如一开始就拒绝。
 func (a *App) uploadTempDir() string {
 	dir := filepath.Join(a.getSaveDir(), uploadTempDirName)
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -71,6 +75,12 @@ func (a *App) cleanStaleUploadTemps(dir string) {
 	cutoff := time.Now().Add(-6 * time.Hour)
 	for _, e := range entries {
 		if e.IsDir() {
+			continue
+		}
+		// 只清理上传临时文件：批量下载的 ZIP 也放在这个目录里，而打包大目录可能持续
+		// 很久（低速写入时 mtime 长时间不更新），按 6 小时一刀切会删掉还在进行中的
+		// 打包产物，导致下载拿到半截文件。
+		if !strings.HasPrefix(e.Name(), "aellus-upload-") {
 			continue
 		}
 		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
@@ -113,6 +123,12 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	upDevID := deviceID(r) // 设备 ID（供设备名映射记录）
 	// 临时文件落地点（保存目录内隐藏子目录，失败时回退系统临时目录），并顺手清理上次残留。
 	tmpDir := a.uploadTempDir()
+	if tmpDir == "" {
+		// 保存目录不可用：不回退系统临时目录（见 uploadTempDir 注释），直接拒绝，
+		// 否则大文件会把 NAS 的系统盘/根分区写满。
+		a.writeJSON(w, http.StatusInternalServerError, UploadResp{OK: false, Message: "保存目录不可用，无法接收上传"})
+		return
+	}
 	a.cleanStaleUploadTemps(tmpDir)
 	var rels []string // 所有文件的相对路径，按出现顺序收集
 	var scratch bytes.Buffer
@@ -231,7 +247,8 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		if terr != nil {
 			os.Remove(pf.tmpPath)
 			cleanupPending()
-			a.writeJSON(w, http.StatusBadRequest, UploadResp{OK: false, Message: "文件无法保存：" + rawName + "（" + terr.Error() + "）"})
+			// 不回显 terr 原文（含内部路径），只说明是名称/路径不合法。
+			a.writeJSON(w, http.StatusBadRequest, UploadResp{OK: false, Message: "文件无法保存：" + rawName + "（名称或路径不合法）"})
 			return
 		}
 
@@ -239,6 +256,16 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		if rerr := os.Rename(pf.tmpPath, dstPath); rerr != nil {
 			src, oerr := os.Open(pf.tmpPath)
 			if oerr != nil {
+				cleanupPending()
+				a.writeJSON(w, http.StatusInternalServerError, UploadResp{OK: false})
+				return
+			}
+			// 回退分支的 os.Create 会跟随软链：realInside 校验与真正写入之间有窗口，
+			// 目标若在此期间被换成软链，就会写到授权目录之外。用 Lstat 复核一次——
+			// 它不跟随链接，能认出"这一层就是软链"（os.Rename 本就不跟随，故仅此分支需要）。
+			if fi, lerr := os.Lstat(dstPath); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+				src.Close()
+				os.Remove(pf.tmpPath)
 				cleanupPending()
 				a.writeJSON(w, http.StatusInternalServerError, UploadResp{OK: false})
 				return
@@ -453,7 +480,13 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("inline") == "1" {
 		mode = outputInlineMedia
 	}
-	setFileOutputHeaders(w, file, mode)
+	// attachment 模式用「显示名」（去掉上传时拼接的时间戳前缀）作为下载文件名，
+	// 与页面展示一致；手机扫码直接访问下载 URL 时的文件名也由这里决定。
+	outName := file
+	if mode == outputDownload {
+		outName = stripUploadPrefix(file)
+	}
+	setFileOutputHeaders(w, outName, mode)
 
 	// ServeContent 会自己处理 Range 请求、Content-Length、Last-Modified 等，
 	// 它不会自动加 Content-Disposition，所以上面的设置能原样生效。
@@ -512,11 +545,23 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
+		// 条数上限 + 去重：请求体虽只限 1MB，却能列出数十万条且允许重复，
+		// 每个条目都会重新 os.Open + 压缩一遍——1MB 请求可放大成数十 TB 写入
+		// （临时 ZIP 落在保存卷上）。这是免登录接口，必须堵住。
+		if len(req.Files) > maxBatchFiles {
+			http.Error(w, "一次打包的文件过多", http.StatusBadRequest)
+			return
+		}
+		seenReq := map[string]bool{}
 		for _, f := range req.Files {
 			if !isValidName(f) { // 逐个校验，防穿越
 				http.Error(w, "非法文件名", http.StatusBadRequest)
 				return
 			}
+			if seenReq[f] {
+				continue
+			}
+			seenReq[f] = true
 			names = append(names, f)
 		}
 	}
@@ -530,6 +575,10 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	// 不用系统临时目录——NAS 上它常是 tmpfs / 很小的小根分区，打包大目录会把它写满，
 	// 造成系统级故障。uploadTempDir 返回空串时 CreateTemp 自动回退系统临时目录，保证可用。
 	tmpDir := a.uploadTempDir()
+	if tmpDir == "" {
+		http.Error(w, "保存目录不可用，无法打包", http.StatusInternalServerError)
+		return
+	}
 	tmp, err := os.CreateTemp(tmpDir, "aellus-download-*.zip")
 	if err != nil {
 		http.Error(w, "创建临时文件失败", http.StatusInternalServerError)
@@ -541,6 +590,8 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 
 	buf := make([]byte, 1<<20) // 1MB 缓冲
 	zw := zip.NewWriter(tmp)
+	// seen 记录已写入 ZIP 的条目名（去时间戳前缀后），用于给重名条目加序号。
+	seen := map[string]int{}
 	for _, name := range names {
 		full := filepath.Join(dirAbs, name)
 		// 双重校验：isInside 防路径穿越（仅字符串判断），realInside 解析符号链接防逃逸。
@@ -553,8 +604,23 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		// 在 ZIP 里用原始文件名（不要用带 timestamp 的磁盘名，方便用户识别）
-		zwEntry, err := zw.Create(name)
+		// 在 ZIP 里用原始文件名（不要用带 timestamp 的磁盘名，方便用户识别）——
+		// 与页面列表展示、单文件下载保持一致（见 stripUploadPrefix）。
+		// 去前缀后可能重名（同名文件被多次上传），重名时加序号：ZIP 允许同名条目，
+		// 但解压时后者会覆盖前者，等于静默丢文件。
+		entryName := stripUploadPrefix(name)
+		if entryName == "" {
+			// 极端情况：文件名恰好等于纯时间戳前缀（去完前缀为空）→ 回退用原名，
+			// 避免写入空名条目（解压时会产生无名文件）。
+			entryName = name
+		}
+		if n, dup := seen[entryName]; dup {
+			ext := filepath.Ext(entryName)
+			base := strings.TrimSuffix(entryName, ext)
+			entryName = fmt.Sprintf("%s(%d)%s", base, n+1, ext)
+		}
+		seen[stripUploadPrefix(name)]++
+		zwEntry, err := zw.Create(entryName)
 		if err != nil {
 			src.Close()
 			continue
@@ -603,12 +669,13 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	dirAbs, err := a.resolveDir(req.Dir)
 	if err != nil {
-		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		// 不回显 err：解析错误里带有完整路径，交给客户端等于泄露目录结构。
+		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "目录不存在或非法"})
 		return
 	}
 	full, err := a.resolveFile(dirAbs, req.File)
 	if err != nil {
-		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		a.writeJSON(w, http.StatusBadRequest, map[string]string{"error": "文件不存在或非法"})
 		return
 	}
 	// 删除权限：由 canManage 判定——

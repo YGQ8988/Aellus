@@ -106,7 +106,18 @@ func (a *App) Serve(ln net.Listener, port int) {
 	a.mountPrefix = strings.TrimSuffix(strings.TrimSpace(os.Getenv("FNNAS_GATEWAY_PREFIX")), "/")
 
 	// 裸端口：先剥离伪造的 X-Trim-*，再归一化前缀，最后进入路由。
-	raw := a.withLog(withSecurityHeaders(a.stripTrimHeaders(a.withPrefix(a.buildMux(port))), frameAncestorsAny))
+	// iframe 嵌入策略按平台区分：
+	//   - 飞牛端：门户会以「端口 + 路径」或跨端口 iframe 的方式嵌入应用，
+	//     必须允许任意来源，否则门户里打不开；且该入口本身没有管理权限。
+	//   - 桌面端：本机浏览器直接访问就拥有删除 / 改保存目录的权限，却没有任何
+	//     门户嵌入需求——若沿用 '*'，恶意网页可以 iframe 进来用透明层诱导点击删除
+	//     （请求由应用自身 JS 发出、自带 X-Aellus-Client，CSRF 层拦不住）。
+	//     故桌面端收紧为 'self'，防点击劫持。
+	frameAncestors := frameAncestorsSelf
+	if a.platform.EnforceAuthBoundary() {
+		frameAncestors = frameAncestorsAny
+	}
+	raw := a.withLog(withSecurityHeaders(a.stripTrimHeaders(a.withPrefix(a.buildMux(port))), frameAncestors))
 	go func() {
 		log.Fatal(newHTTPServer(raw).Serve(ln))
 	}()
@@ -171,9 +182,14 @@ func (a *App) serveGateway(socketPath string, port int) {
 		log.Printf("[gateway] Unix Socket 监听失败，门户内删除/设置将不可用: %v", err)
 		return
 	}
-	// Socket 位于应用 target 目录（普通用户无法进入该目录），放开文件权限不影响安全，
-	// 同时兼容飞牛网关以其它用户/用户组连接。
-	_ = os.Chmod(socketPath, 0666)
+	// 权限收紧为 0660（所有者 + 同组可读写），不再是 0666（任意本地用户可连）。
+	// 原因：该入口不剥离 X-Trim-*，且 gatewayUser 只要任一身份头非空即视为已登录门户，
+	// 即「能连上这个 socket」==「通过飞牛登录态校验」。放成 0666 时，NAS 上任意本地
+	// 进程/其它应用都能自造 X-Trim-Userid 拿到删除文件、改保存目录的完整权限。
+	// 保留同组可访问是为了兼容飞牛网关以其它用户/用户组连接；若确认网关与本机同用户，
+	// 可进一步收紧到 0600。（更彻底的做法是 Accept 后用 SO_PEERCRED 校验对端 uid/gid，
+	// 需平台相关实现，暂不引入。）
+	_ = os.Chmod(socketPath, 0660)
 	// 标记网关可用：此后删除 / 改保存目录只认网关注入的身份头（见 canManage）。
 	a.gatewayActive.Store(true)
 	log.Printf("[gateway] 已接入飞牛统一网关（Socket=%s Prefix=%s）", socketPath, a.mountPrefix)
@@ -250,12 +266,19 @@ func (a *App) writeJSON(w http.ResponseWriter, status int, v interface{}) {
 }
 
 // servePage 渲染一个静态 HTML 页面（home/upload/browse）。
-// 页面本身没有服务端数据（动态内容全靠前端 JS fetch），唯一模板变量是 Base——
-// 当前请求的页面基准路径（局域网直连 "/"，门户内 "/app/<appname>/"），写入 <base>，
-// 保证 static/... 、api/... 等相对路径在两种访问方式下都解析正确。
+// 页面本身没有服务端数据（动态内容全靠前端 JS fetch），模板变量只给：
+//   - Base：当前请求的页面基准路径（局域网直连 "/"，门户内 "/app/<appname>/"），
+//     写入 <base>，保证 static/... 、api/... 等相对路径在两种访问方式下都解析正确；
+//   - ViaGateway：请求是否经飞牛统一网关（飞牛 App 客户端 / 应用中心微应用入口）。
+//     上传页据它隐藏「照片 / 拍摄 / 录像」快捷按钮（客户端 WebView 的文件选择行为
+//     不可靠，入口留着反而点了没反应），与下载入口隐藏用的是同一判据（见 settings.go）。
 func (a *App) servePage(w http.ResponseWriter, r *http.Request, name string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := a.tmpl.ExecuteTemplate(w, name, map[string]string{"Base": pageBase(r)}); err != nil {
+	via := ""
+	if gatewayUser(r) != "" {
+		via = "1"
+	}
+	if err := a.tmpl.ExecuteTemplate(w, name, map[string]string{"Base": pageBase(r), "ViaGateway": via}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

@@ -21,6 +21,38 @@ let lbIndex = 0;       // 灯箱当前索引
 // 的顶层 canDelete 下发——同一请求内所有条目一致（见 Go 端 canManage）。渲染列表前更新；
 // 前端判定仅用于按钮显隐，真正的强制在服务端。
 let canManage = false;
+// 是否隐藏「下载」入口：在飞牛里打开（应用中心微应用 / 手机 App 客户端）时下载不可靠——
+// 这些入口没有可用的下载管理器，blob / 附件下载常被直接丢弃或存到找不到的位置，
+// 点了没反应或找不到文件。故在其中隐藏下载，保留浏览、预览与「分享」
+// （分享生成下载二维码，用别的设备或本机浏览器下载，正好补上这个能力）。
+let hideDownload = false;
+
+// detectFnosClient 探测是否「在飞牛里打开」：判据是请求是否经飞牛统一网关
+// （/api/settings 的 viaGateway，对应网关注入的 X-Trim-Userid）。
+//   - 飞牛微应用 / App 客户端入口 → 经网关 → 隐藏下载；
+//   - 其它电脑「输入 IP + 端口」直连 → 裸端口、不经网关 → 下载正常，保持显示。
+// 不用 UA 或平台判断：同一台电脑可能既开客户端又开浏览器，入口才是真正的区分点。
+async function detectFnosClient() {
+  try {
+    const res = await fetch('api/settings');
+    const d = await res.json();
+    hideDownload = !!(d && d.viaGateway);
+  } catch (e) {
+    hideDownload = false; // 探测失败按「非客户端」处理，保留下载
+  }
+  applyHideDownload();
+}
+
+// applyHideDownload 应用到常驻按钮（批量下载 ×2 与灯箱下载）；
+// 列表里的单文件下载按钮由 renderFile 按 hideDownload 决定是否渲染。
+function applyHideDownload() {
+  ['btnDownloadDirs', 'btnSelected'].forEach(function (id) {
+    const b = document.getElementById(id);
+    if (b) b.style.display = hideDownload ? 'none' : '';
+  });
+  const lb = $('lbDownload');
+  if (lb) lb.style.display = hideDownload ? 'none' : '';
+}
 
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
@@ -234,7 +266,8 @@ function buildBreadcrumb() {
   const parts = ['<a class="bc-link" href="./" onclick="clearAellusDir()">← 返回首页</a>'];
   if (allDirs.length > 1) {
     parts.push('<span class="bc-sep">/</span>');
-    parts.push('<a class="bc-link bc-dirs" href="javascript:backToDirs()">目录</a>');
+    // 不用 href="javascript:..."：它依赖 CSP 的 'unsafe-inline'，一旦收紧 CSP 就静默失效。
+    parts.push('<a class="bc-link bc-dirs" href="#" onclick="backToDirs(); return false;">目录</a>');
   }
   const segs = (currentDir || '').split('/').filter(s => s !== '');
   if (segs.length === 0) {
@@ -319,7 +352,8 @@ function renderFile(f) {
           </div>
         </div>
         <div class="file-actions">
-          <a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>
+          ${hideDownload ? '' : `<a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>`}
+          <a class="share-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onShare(this)">分享</a>
           ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDelete(this)">删除</a>' : ''}
         </div>
       </div>
@@ -476,10 +510,62 @@ async function onSingleDownload(btn) {
   btn.innerHTML = '<span class="spinner"></span>下载中';
   try {
     const blob = await fetchBlob(btn.dataset.url);
-    if (blob) downloadBlob(blob, btn.dataset.name);
+    if (blob) downloadBlob(blob, displayName(btn.dataset.name));
   } finally {
     btn.classList.remove('loading');
     btn.textContent = '下载';
+  }
+}
+
+// ---- 分享：弹出文件下载链接二维码 ----
+// 地址 = 当前 origin + <base> 前缀 + 相对下载路径（桌面端 /api/...，飞牛网关 /app/<name>/api/...），
+// 手机扫码即可直接下载；弹窗复用首页「扫码访问」的 qr-modal 结构（样式差异在 browse.css）。
+async function onShare(btn) {
+  const modal = $('shareModal');
+  const box = $('shareQrCode');
+  const urlEl = $('shareQrUrl');
+  const nameEl = $('shareFileName');
+  if (nameEl) nameEl.textContent = displayName(btn.dataset.name || '');
+  const baseEl = document.querySelector('base');
+  const baseHref = baseEl ? baseEl.getAttribute('href') : '/';
+  // 二维码地址一律取 /api/addr 返回的「裸端口直连」地址，不能用 location.origin：
+  //   - 本机常用 localhost 访问，扫码方根本访问不到 localhost；
+  //   - 飞牛门户若用 location.origin，路径要过网关登录态，手机扫码后下载不了。
+  // 裸端口是免登录的上传/下载入口，且同样接受门户前缀（/app/<name>/api/...，
+  // 由 Go 端 withPrefix 归一化），所以门户内也照样可用——baseHref 照常拼在后面。
+  let origin = location.origin;
+  try {
+    const res = await fetch('api/addr');
+    const d = await res.json();
+    if (d && d.url) origin = d.url;
+  } catch (e) {}
+  const url = origin + baseHref + btn.dataset.url;
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    box.innerHTML = qr.createSvgTag(8, 4);
+    urlEl.textContent = url;
+  } catch (e) {
+    box.innerHTML = '<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">二维码生成失败</p>';
+  }
+  if (window.lockScroll) lockScroll();
+  modal.classList.add('active');
+  document.addEventListener('keydown', shareKeyHandler);
+}
+
+function closeShare() {
+  $('shareModal').classList.remove('active');
+  if (window.unlockScroll) unlockScroll();
+  document.removeEventListener('keydown', shareKeyHandler);
+}
+
+// 分享弹窗 ESC 关闭（与灯箱同一模式：打开时注册、关闭时移除，避免常驻监听互相干扰）
+function shareKeyHandler(e) {
+  if (e.key === 'Escape') {
+    closeShare();
+    // ESC 是键盘交互：关闭后触发按钮会残留 :focus-visible 描边，主动移除焦点消除
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   }
 }
 
@@ -548,19 +634,6 @@ function openLightboxFromEl(el) {
   const i = previewFiles.findIndex(p => p.name === name);
   if (i >= 0) openLightbox(i);
 }
-
-// 让底部工具条宽度等于当前显示的图片/视频宽度（图片尺寸动态，须用 JS 同步）
-function syncBarWidth() {
-  const bar = $('lbBar');
-  if (!bar || $('lightbox').style.display !== 'flex') return;
-  const lbImg = $('lbImg');
-  const lbVideo = $('lbVideo');
-  let w = 0;
-  if (lbImg.style.display !== 'none' && lbImg.offsetWidth > 0) w = lbImg.offsetWidth;
-  else if (lbVideo.style.display !== 'none' && lbVideo.offsetWidth > 0) w = lbVideo.offsetWidth;
-  if (w > 0) bar.style.width = w + 'px';
-}
-window.addEventListener('resize', syncBarWidth);
 
 function closeLightbox() {
   $('lightbox').style.display = 'none';
@@ -652,22 +725,20 @@ function showLbImage(dir) {
       lbImg.classList.add('loaded');             // 同一张（如重新打开），直接显示，避免卡在透明态
     } else {
       lbImg.classList.remove('loaded');         // 先淡出，加载完成再淡入（消除翻页闪动）
-      lbImg.onload = () => { lbImg.classList.add('loaded'); syncBarWidth(); };
+      lbImg.onload = () => { lbImg.classList.add('loaded'); };
       lbImg.src = newSrc;
       preloadNeighbors();                        // 预加载相邻图片，左右翻页秒出
     }
   }
-  // 视频/图片加载完成后同步（顶部已无底栏，syncBarWidth 内部空函数安全返回）
-  lbVideo.onloadedmetadata = syncBarWidth;
-  syncBarWidth();
   // 仅 1 个文件时隐藏左右箭头
   const showNav = previewFiles.length > 1;
   $('lbPrev').style.display = showNav ? 'flex' : 'none';
   $('lbNext').style.display = showNav ? 'flex' : 'none';
-  // 重置顶部下载按钮为图标态
+  // 重置顶部下载按钮为图标态（飞牛客户端里保持隐藏）
   const dlBtn = $('lbDownload');
   dlBtn.classList.remove('loading');
   dlBtn.disabled = false;
+  dlBtn.style.display = hideDownload ? 'none' : '';
   dlBtn.innerHTML = SVG_DOWNLOAD;
   // 删除按钮：无管理权限（局域网设备直连）时隐藏（切换图片时同步显隐）
   $('lbDelete').style.display = canManage ? '' : 'none';
@@ -748,7 +819,7 @@ async function lbDownload() {
   const dlUrl = f.downloadUrl || f.previewUrl.replace('&inline=1', '');
   try {
     const blob = await fetchBlob(dlUrl);
-    if (blob) downloadBlob(blob, f.name);
+    if (blob) downloadBlob(blob, displayName(f.name));
   } finally {
     btn.classList.remove('loading');
     btn.disabled = false;
@@ -793,7 +864,10 @@ function formatCount(n) {
   return String(n);
 }
 // 注：formatSize / formatDay / formatTime 已统一到 ui.js 共享层（全站同一实现）
-function escapeAttr(s) { return s.replace(/"/g, '&quot;'); }
+// 属性值转义：直接复用 ui.js 的 escapeHtml（已转义 & < > " '）。
+// 此前只转义 "，而服务端允许 & 出现在文件名里——含 & 的名字写进属性后，
+// dataset.name 解出来的会是与磁盘不一致的值，删除 / 下载就会命中错误目标。
+function escapeAttr(s) { return escapeHtml(s); }
 // jsLit：生成可安全放进 HTML 内联事件处理器（onclick="..."）里的 JS 字符串字面量。
 // 先用 JSON.stringify 做 JS 层转义（处理 ' " \ 及控制字符），再把 " 转成 &quot; 适配外层双引号属性。
 // 仅用于 onclick="fn(${jsLit(x)})" 这类「把用户数据作为 JS 字符串参数」的场景；
@@ -844,7 +918,12 @@ async function apiDelete(dir, name) {
   }
 }
 
-loadDirs();
+// 启动：先探测是否为飞牛客户端（决定下载入口是否隐藏），再加载目录列表——
+// 顺序不能反，否则列表会先渲染出下载按钮再被隐藏，出现闪烁。
+(async function () {
+  await detectFnosClient();
+  loadDirs();
+})();
 
 // 滚动吸顶毛玻璃：未滚动时 nav 与 batch-bar 分开、无背景；一旦下滑即整条满宽模糊
 const topBars = document.querySelectorAll('.top-bar');

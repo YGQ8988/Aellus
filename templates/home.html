@@ -33,8 +33,8 @@
               <div class="dir-popup" id="dirPopup" role="listbox" hidden></div>
               <input type="hidden" id="saveDirDisplay" value="" data-path="">
               <div class="dir-input-wrap" id="dirInputWrap" hidden>
-                <input type="text" id="dirInput" class="dir-input" placeholder="输入保存目录的绝对路径" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSaveDirInput();}">
-                <button type="button" class="btn-primary dir-save-btn" onclick="saveSaveDirInput()">保存</button>
+                <textarea id="dirInput" class="dir-input" rows="1" readonly placeholder="尚未设置保存目录" autocomplete="off" spellcheck="false"></textarea>
+                <button type="button" class="btn-outline dir-browse-btn" id="dirBrowseBtn" onclick="browseSaveDir()">选择目录</button>
               </div>
             </div>
             <button class="btn-outline btn-set-text" id="resetDirBtn" onclick="resetSaveDir()">恢复默认</button>
@@ -172,7 +172,7 @@
           if(d.hasTrim){
             tip.textContent='保存路径由飞牛授权目录决定（可在已授权目录及其子目录中选择），修改后重启保留。添加 / 移除授权请在飞牛「应用设置 → 授权目录」操作。';
           } else {
-            tip.textContent='接收到的文件将保存到该目录（修改后立即生效，重启后保留）。';
+            tip.textContent='接收到的文件将保存到该目录（点击「选择目录」可修改，修改后立即生效，重启后保留）。';
           }
         }
         // 复用已拿到的 settings 数据初始化路径选择器，不再重复请求 /api/settings
@@ -211,6 +211,25 @@
     }
     if(trigger){ trigger.setAttribute('aria-expanded','false'); }
   }
+  // 路径框宽度自适应：按文本真实宽度设置，短路径框宽=文本宽（不占满），
+  // 长路径=弹窗可用宽度（内部横向滚动）。textarea 的 fit-content 取的是固有
+  // 宽度（默认 cols），不可靠，所以用 canvas 实测文本像素宽。
+  function fitDirInputWidth(){
+    var inp=document.getElementById('dirInput');
+    var wrap=document.getElementById('dirInputWrap');
+    if(!inp || !wrap || wrap.hidden) return;
+    var txt=inp.value || inp.getAttribute('placeholder') || '';
+    var c=document.createElement('canvas');
+    var ctx=c.getContext('2d');
+    var fs=getComputedStyle(inp);
+    ctx.font=(fs.fontSize||'14px')+' '+(fs.fontFamily||'monospace');
+    var textW=ctx.measureText(txt).width;
+    var pad=(parseFloat(fs.paddingLeft)||0)+(parseFloat(fs.paddingRight)||0);
+    var btn=document.getElementById('dirBrowseBtn');
+    var avail=wrap.clientWidth - (btn?btn.offsetWidth:0) - 8; // 8 = gap
+    var w=Math.min(textW+pad+6, Math.max(avail, 60));          // +6 预留滚动条/留白
+    inp.style.width=Math.round(w)+'px';
+  }
   // 把 hidden input 上的当前路径同步到 trigger 上的可见文案。
   // displayPath 为语义化展示路径（飞牛端 /vol1/... 的转换结果），input 仍用内部路径。
   function renderDirTrigger(currentPath, displayPath){
@@ -220,7 +239,8 @@
     var trig=document.getElementById('dirTriggerPath');
     if(trig){ trig.textContent = disp || '加载中…'; }
     var inp=document.getElementById('dirInput');
-    if(inp){ inp.value=path; }
+    if(inp){ inp.value=path; inp.scrollLeft=inp.scrollWidth; }   // 长路径滚动到尾部（结尾是文件/目录名）
+    fitDirInputWidth();
   }
   // 在 popup 里渲染一组路径选项；每一项点击 -> 选中、收 popup、触发保存。
   // labels 为内部路径 -> 语义化展示路径映射（飞牛端 /vol1/... 转换结果），仅用于展示。
@@ -259,19 +279,7 @@
     };
     paths.forEach(makeOpt);
   }
-  // 输入框模式（桌面端）：读取输入框值并保存
-  function saveSaveDirInput(){
-    var inp=document.getElementById('dirInput');
-    if(!inp) return;
-    var val=(inp.value||'').trim();
-    var msg=document.getElementById('saveDirMsg');
-    if(!val){
-      msg.className='settings-msg show err'; msg.textContent='请输入目录路径';
-      inp.focus();
-      return;
-    }
-    saveSaveDir(val);
-  }
+  // 保存路径：POST /api/set-savedir（输入框 / 下拉选项 / 选择目录 / 恢复默认共用）
   function saveSaveDir(path){
     var dir=path||document.getElementById('saveDirDisplay').dataset.path||'';
     var msg=document.getElementById('saveDirMsg');
@@ -293,6 +301,34 @@
         }
         else { msg.className='settings-msg show err'; msg.textContent=d.error||'保存失败'; }
       }).catch(()=>{ msg.className='settings-msg show err'; msg.textContent='网络错误'; });
+  }
+  // 桌面端「浏览…」：调系统原生文件夹选择框（/api/pick-dir，仅桌面端 + 仅本机可用；
+  // 飞牛端按钮不显示）。服务端选完会自动走 set-savedir 的校验与持久化，前端只需回填界面。
+  function browseSaveDir(){
+    var msg=document.getElementById('saveDirMsg');
+    var btn=document.getElementById('dirBrowseBtn');
+    if(btn){ btn.disabled=true; }
+    msg.className='settings-msg show'; msg.textContent='请在弹出的系统窗口中选择文件夹…';
+    fetch('api/pick-dir',{method:'POST'})
+      .then(r=>r.json()).then(function(d){
+        if(d&&d.ok){
+          var disp=d.saveDirDisplay||d.saveDir;
+          msg.className='settings-msg show ok'; msg.textContent='已保存：'+disp;
+          var hidden=document.getElementById('saveDirDisplay');
+          hidden.value=d.saveDir; hidden.dataset.path=d.saveDir; hidden.dataset.display=disp;
+          renderDirTrigger(d.saveDir, disp);
+          var inp=document.getElementById('dirInput'); if(inp){ inp.value=d.saveDir; inp.scrollLeft=inp.scrollWidth; }
+          fitDirInputWidth();
+          document.getElementById('resetDirBtn').style.display='';
+          try{ sessionStorage.removeItem('aellus_currentDir'); }catch(e){}
+        } else if(d&&d.cancelled){
+          msg.className='settings-msg'; msg.textContent='';   // 用户取消：静默复原
+        } else {
+          msg.className='settings-msg show err'; msg.textContent=(d&&d.error)||'选择失败';
+        }
+      }).catch(function(){
+        msg.className='settings-msg show err'; msg.textContent='网络错误';
+      }).finally(function(){ if(btn){ btn.disabled=false; } });
   }
   function resetSaveDir(){
     var msg=document.getElementById('saveDirMsg');
@@ -335,12 +371,14 @@
     fetch('api/authpaths').then(r=>r.json()).then(function(d){
       var roots=(d&&d.paths)||[];
       var hasTrim=d&&d.hasTrim;
-      // 桌面端（非飞牛）：切换为输入框模式，让用户直接填写路径
+      // 桌面端（非飞牛）：切换为只读展示模式，路径框仅展示当前绝对路径，
+      // 修改路径只能通过「选择目录」（系统原生文件夹选择器，服务端自动保存）
       if(!roots.length && !hasTrim){
         if(trigger){ trigger.style.display='none'; }
         if(popup){ popup.hidden=true; }
         if(inputWrap){ inputWrap.hidden=false; }
-        if(dirInput){ dirInput.value=cur; }
+        if(dirInput){ dirInput.value=cur; dirInput.scrollLeft=dirInput.scrollWidth; }
+        fitDirInputWidth();
         renderDirTrigger(cur);
         return;
       }

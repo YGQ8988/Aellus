@@ -40,126 +40,25 @@ function fileUploadName(f) {
   return f.relPath || f.webkitRelativePath || f.name;
 }
 
-// 拍照/录像：优先用网页内相机（getUserMedia），失败（非安全上下文或不支持）时回退到系统选择器
-let camStream = null;
-let mediaRecorder = null;
-let recordedChunks = [];
-let camMode = 'photo';
-
-function hasCameraAPI() {
-  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && window.isSecureContext;
+// 拍照 / 录像：一律交给系统原生输入，不再使用网页内相机（getUserMedia + MediaRecorder）。
+//
+// 为什么废弃网页相机：它依赖 getUserMedia 与 MediaRecorder，而飞牛手机客户端等 WebView
+// 表现极不稳定——录像额外申请麦克风常被拒导致整体失败、MediaRecorder 可能残缺导致录完
+// 拿不到文件，同一份代码在 Safari / Chrome / 各家客户端里行为也不一致。
+//
+// capture 一律保留（HTML 静态声明，见 upload.html）→ 一步直接调起原生相机 / 摄像机。
+// 手机浏览器不看协议：HTTP 局域网直连与 HTTPS（用户自配 DDNS / 反代远程访问）下
+// capture 都有效，无需按协议做任何分支；桌面浏览器本就忽略 capture，自然退化为
+// 选择本地文件，这是浏览器行为。
+//
+// 关键：capture 只在 HTML 里【静态】声明，JS 运行时【不碰】——部分 WebView（飞牛 App）
+// 只认「从未被 JS 写过」的静态属性：即使 setAttribute 的值与静态声明完全相同，
+// 只要被 JS 写过一次（setAttribute / removeAttribute 都算），该 WebView 就会忽略
+// capture（表现与没声明一样，点了没反应）。
+function openCamera(mode) {
+  const input = mode === 'video' ? $('recInput') : $('camInput');
+  input.click();
 }
-
-async function openCamera(mode) {
-  camMode = mode;
-  if (!hasCameraAPI()) {
-    // 兼容性无法统一：HTTPS 下可直接调相机；非安全上下文(HTTP)浏览器不支持，
-    // 这里回退到系统文件选择器，交给浏览器自身决定（部分浏览器仍可直接拍照）
-    $('camStatus').textContent = '';
-    (mode === 'video' ? $('recInput') : $('camInput')).click();
-    return;
-  }
-  try {
-    camStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' },
-      audio: mode === 'video'
-    });
-  } catch (e) {
-    $('camStatus').textContent = '⚠️ 无法访问摄像头：' + e.message + '（请确认用 https 打开并已授权）';
-    return;
-  }
-  $('camVideo').srcObject = camStream;
-  $('camPreview').style.display = 'none';
-  $('camPreview').innerHTML = '';
-  $('camVideo').style.display = 'block';
-  $('camConfirm').style.display = 'none';
-  $('camCapture').style.display = camMode === 'photo' ? '' : 'none';
-  $('camRecord').style.display = camMode === 'video' ? '' : 'none';
-  $('camRecord').textContent = '开始录像';
-  $('camStatus').textContent = '';
-  $('camModal').style.display = 'flex';
-}
-
-function closeCamera() {
-  if (camStream) {
-    camStream.getTracks().forEach(t => t.stop());
-    camStream = null;
-  }
-  mediaRecorder = null;
-  $('camModal').style.display = 'none';
-}
-
-$('camCancel').onclick = closeCamera;
-
-// 拍照：把当前视频帧截到 canvas，导出 jpeg
-$('camCapture').onclick = () => {
-  const v = $('camVideo');
-  if (!v.videoWidth) return;
-  const canvas = document.createElement('canvas');
-  canvas.width = v.videoWidth;
-  canvas.height = v.videoHeight;
-  canvas.getContext('2d').drawImage(v, 0, 0);
-  canvas.toBlob(blob => {
-    const file = new File([blob], 'aellus_photo_' + Date.now() + '.jpg', { type: 'image/jpeg' });
-    $('camVideo').style.display = 'none';
-    const img = document.createElement('img');
-    img.src = URL.createObjectURL(blob);
-    const box = $('camPreview');
-    box.innerHTML = '';
-    box.appendChild(img);
-    box.style.display = 'block';
-    $('camCapture').style.display = 'none';
-    $('camConfirm').style.display = '';
-    $('camConfirm').onclick = () => { upload([file], null); closeCamera(); };
-  }, 'image/jpeg', 0.9);
-};
-
-function pickMime() {
-  const cands = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
-  for (const c of cands) {
-    if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
-  }
-  return '';
-}
-
-// 录像：MediaRecorder 录制，停止后导出（安卓多为 webm，少数支持 mp4）
-$('camRecord').onclick = () => {
-  if (!mediaRecorder) {
-    const mime = pickMime();
-    try {
-      mediaRecorder = new MediaRecorder(camStream, mime ? { mimeType: mime } : undefined);
-    } catch (e) {
-      $('camStatus').textContent = '⚠️ 当前浏览器不支持录像：' + e.message;
-      return;
-    }
-    recordedChunks = [];
-    mediaRecorder.ondataavailable = e => { if (e.data && e.data.size) recordedChunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      const type = mediaRecorder.mimeType || 'video/webm';
-      const blob = new Blob(recordedChunks, { type });
-      const ext = type.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
-      const file = new File([blob], 'aellus_video_' + Date.now() + '.' + ext, { type });
-      $('camVideo').style.display = 'none';
-      const pv = document.createElement('video');
-      pv.src = URL.createObjectURL(blob);
-      pv.controls = true;
-      const box = $('camPreview');
-      box.innerHTML = '';
-      box.appendChild(pv);
-      box.style.display = 'block';
-      $('camRecord').style.display = 'none';
-      $('camConfirm').style.display = '';
-      $('camConfirm').onclick = () => { upload([file], null); closeCamera(); };
-    };
-    mediaRecorder.start();
-    $('camRecord').textContent = '停止录像';
-    $('camStatus').textContent = '● 录制中...';
-  } else {
-    mediaRecorder.stop();
-    mediaRecorder = null;
-    $('camStatus').textContent = '';
-  }
-};
 
 ['fileInput','folderInput','fileInputPhoto','camInput','recInput'].forEach(id => {
   $(id).addEventListener('change', () => getFiles($(id)));

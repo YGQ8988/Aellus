@@ -41,40 +41,64 @@ func isIcnsImageChunk(typ string) bool {
 	return false
 }
 
-// extractIcnsImage 解析 icns 容器，返回最大的、可解码的图像块原始字节。
+// extractIcnsImage 解析 icns 容器，返回「够用且尽量小」的可解码图像块原始字节。
+//
+// want 是缩略图的目标边长（>0）：优先选短边 ≥ want 中【最小】的那块——
+// 生成 240px 缩略图就用 256px 的块，而不是去解 1024px 甚至 4000 万像素的那块。
+// 容器里所有块都小于 want 时，退而取最大的一块（宁可小也不要放大）。
 // 解析失败 / 容器内没有可解码块时返回错误（调用方回退为原文件返回）。
-func extractIcnsImage(data []byte) ([]byte, error) {
+func extractIcnsImage(data []byte, want int) ([]byte, error) {
 	if len(data) < 8 || string(data[:4]) != "icns" {
 		return nil, fmt.Errorf("不是 icns 容器")
 	}
-	var best []byte
-	bestArea := 0
+	var best []byte // 够用（≥want）里最小的一块
+	bestSide := 0
+	var fallback []byte // 都不够 want 时的兜底：最大的一块
+	fallbackArea := 0
 	off := 8 // 跳过 magic + 总长度
-	for off+8 <= len(data) {
-		size := int(binary.BigEndian.Uint32(data[off+4 : off+8]))
-		if size < 8 {
+	// 块数量上限：最小块只有 8 字节，20MB 内理论上可塞 ~260 万个块，
+	// 每个图像块还要跑一次 DecodeConfig——畸形文件会让这里空转，故设上限。
+	const maxIcnsChunks = 4096
+	for chunks := 0; off+8 <= len(data) && chunks < maxIcnsChunks; chunks++ {
+		// 用 int64 做算术再比较：32 位构建下 uint32 转 int 可能溢出/回绕，
+		// 导致下面的长度与偏移判断失效（越界读取）。
+		size64 := int64(binary.BigEndian.Uint32(data[off+4 : off+8]))
+		if size64 < 8 {
 			return nil, fmt.Errorf("图像块长度非法")
 		}
-		if off+size > len(data) {
-			break // 文件被截断：忽略剩余块，用已找到的最大块
+		if int64(off)+size64 > int64(len(data)) {
+			break // 文件被截断：忽略剩余块，用已找到的块
 		}
+		size := int(size64)
 		typ := string(data[off : off+4])
 		body := data[off+8 : off+size]
 		if isIcnsImageChunk(typ) {
 			if cfg, _, err := image.DecodeConfig(bytes.NewReader(body)); err == nil &&
 				cfg.Width > 0 && cfg.Height > 0 {
-				if area := cfg.Width * cfg.Height; area > bestArea {
-					bestArea = area
+				side := cfg.Width
+				if cfg.Height < side {
+					side = cfg.Height
+				}
+				area := cfg.Width * cfg.Height
+				if want > 0 && side >= want && (best == nil || side < bestSide) {
+					bestSide = side
 					best = append(best[:0], body...) // 复用底层数组，避免大块反复分配
+				}
+				if area > fallbackArea {
+					fallbackArea = area
+					fallback = append(fallback[:0], body...)
 				}
 			}
 		}
 		off += size
 	}
-	if best == nil {
-		return nil, fmt.Errorf("没有可解码的图像块")
+	if best != nil {
+		return best, nil
 	}
-	return best, nil
+	if fallback != nil {
+		return fallback, nil
+	}
+	return nil, fmt.Errorf("没有可解码的图像块")
 }
 
 // trimTransparent 裁剪图片四周的透明边距，返回新图；全透明或无需裁剪时返回 nil。

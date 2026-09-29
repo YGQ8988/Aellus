@@ -168,10 +168,6 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 @media (hover: hover) and (pointer: fine) {
   .btn-destructive:hover { background: hsl(var(--destructive) / 0.9); }
 }
-.btn-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
-@media (hover: hover) and (pointer: fine) {
-  .btn-secondary:hover { background: hsl(var(--secondary) / 0.8); }
-}
 
 .tip { font-size: 12px; color: hsl(var(--muted-foreground)); text-align: center; margin-top: 18px; line-height: 1.6; }
 .empty { text-align: center; color: hsl(var(--muted-foreground)); padding: 60px 20px; font-size: 14px; }

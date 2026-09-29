@@ -41,6 +41,21 @@
               "size": 5247812
             }
           }
+        },
+        "1.0.4": {
+          "changelog": "1.飞牛卸载增加是否保留配置选项\\n2.新增分享按钮,点击弹出文件下载二维码\\n3.拍摄/录像改为调用系统原生相机\\n4.若干样式/安全优化",
+          "packages": {
+            "x86": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.4/Aellus-1.0.4-fnos-x64.fpk",
+              "sha256": "f72e104f172e7cfe6d407948fd64603fb4badc66541547f5dc0b078ce56eaf64",
+              "size": 5623801
+            },
+            "arm": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.4/Aellus-1.0.4-fnos-arm64.fpk",
+              "sha256": "430a7b742b8f8c36f2e050259eb7d82db7640fc643753feb14b328f5871f7f9d",
+              "size": 5254479
+            }
+          }
         }
       },
       "preview_urls": [

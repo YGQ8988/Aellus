@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,22 +13,40 @@ import (
 )
 
 // handleSettings GET /api/settings 返回当前文件保存路径及是否为默认路径。
+//
+// 注意：保存目录的【真实内部路径】只对管理者返回。本接口无鉴权，局域网任意设备
+// 都能调，把 /vol1/... 这类 NAS 内部路径交出去会辅助目录结构探测——与 /api/authpaths
+// 「不向局域网暴露授权目录结构」的设计保持一致。无权限时路径字段留空
+// （前端本就不对无权限者展示「文件保存路径」模块，行为不变）。
 func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 	cur := a.getSaveDir()
-	saveDirDisplay := cur
-	// 飞牛环境：把内部路径 /vol1/... 转成语义化展示路径（如「存储空间1/admin 的文件/photo」）。
-	if a.platform.EnforceAuthBoundary() {
-		if m := trimConvertPaths([]string{cur}); m[cur] != "" {
-			saveDirDisplay = m[cur]
+	manage := a.canManage(r)
+	saveDir := ""
+	saveDirDisplay := ""
+	isDefault := false
+	if manage {
+		saveDir = cur
+		saveDirDisplay = cur
+		// 飞牛环境：把内部路径 /vol1/... 转成语义化展示路径（如「存储空间1/admin 的文件/photo」）。
+		if a.platform.EnforceAuthBoundary() {
+			if m := trimConvertPaths([]string{cur}); m[cur] != "" {
+				saveDirDisplay = m[cur]
+			}
 		}
+		isDefault = filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir())
 	}
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{
-		"saveDir":        cur,
+		"saveDir":        saveDir,
 		"saveDirDisplay": saveDirDisplay,
-		"isDefault":      filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir()),
+		"isDefault":      isDefault,
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
-		"canManage":      a.canManage(r),                   // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
+		"canManage":      manage,                           // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
 		"deviceName":     a.deviceNameOf(deviceID(r)),      // 当前设备 ID 对应的上次设备名（供上传页自动填充）
+		// 请求是否经飞牛统一网关到达：飞牛的应用入口（应用中心微应用 / 手机 App 客户端）
+		// 都经网关转发，网关会注入 X-Trim-Userid；而局域网其它设备「输入 IP + 端口」
+		// 直连走裸端口、不经网关（裸端口入口还会剥离伪造的 X-Trim-*）。
+		// 前端据此在飞牛客户端内隐藏下载入口（那里的下载不可靠），直连下载不受影响。
+		"viaGateway": gatewayUser(r) != "",
 	})
 }
 
@@ -129,6 +148,13 @@ func sortStrings(s []string) {
 // 按优先级依次在：当前保存目录的父级、用户主目录、桌面、Documents 中查找同名子目录。
 // 桌面端（平台 PickFolderDialog）与 fpk 端共用：handleSetSaveDir 在两种构建下都会调用它。
 func (a *App) resolvePickedDir(name string) string {
+	// name 来自请求体（浏览器目录选择器的返回值），必须先按「单段合法名」校验：
+	// 少了这一步，"../../.." 会被 filepath.Join 清洗成上层任意目录，而桌面端
+	// 没有授权边界校验，保存目录就能被指到用户主目录等位置——之后局域网设备
+	// 通过浏览/下载即可读到那里的文件。
+	if !isValidName(name) {
+		return ""
+	}
 	candidates := []string{}
 	if home, err := os.UserHomeDir(); err == nil {
 		current := a.getSaveDir()
@@ -229,7 +255,10 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "无法创建目录：" + err.Error()})
+		// 不回显 err 原文：它含完整内部路径与系统 errno，可辅助目录结构探测。
+		// 详情只写到操作日志，客户端拿通用提示。
+		a.logOp(fmt.Sprintf("创建保存目录失败 dir=%s 错误=%v", dir, err))
+		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "无法创建该目录（请确认路径有效且有写入权限）"})
 		return
 	}
 	// MkdirAll 后再次确认真实落点仍在允许的根内（防「待建目录经软链指向上级」的 TOCTOU 变种）。
@@ -246,7 +275,8 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	// 可写性校验
 	test := filepath.Join(dir, ".aellus-write-test")
 	if err := os.WriteFile(test, []byte("ok"), 0644); err != nil {
-		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "目录不可写：" + err.Error()})
+		a.logOp(fmt.Sprintf("保存目录不可写 dir=%s 错误=%v", dir, err))
+		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "该目录不可写（请确认权限）"})
 		return
 	}
 	os.Remove(test)
