@@ -19,7 +19,9 @@ if [ -z "${VERSION}" ]; then
 fi
 VERSION="${VERSION:-1.0.1}"
 echo "构建版本：${VERSION}"
-LDFLAGS_BASE="-s -w"
+# 注入版本信息：设置页展示版本号与构建时间（BuildTime 取每次实际打包时刻）
+BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
+LDFLAGS_BASE="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}'"
 
 # arch_out：把 goarch 映射为产物命名用的架构标识：
 #   amd64 → x64（64 位 x86）、386 → x86（32 位 x86）、arm64 保持 arm64。

@@ -48,6 +48,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/delete", a.requireTrustedClient(a.handleDelete))
 	// 设置：读取无副作用（不校验），修改保存路径要校验
 	mux.Handle("/api/settings", noCache(http.HandlerFunc(a.handleSettings)))
+	mux.HandleFunc("/api/info", a.handleInfo)
 	mux.Handle("/api/authpaths", noCache(http.HandlerFunc(a.handleAuthPaths)))
 	mux.Handle("/api/listdir", noCache(http.HandlerFunc(a.handleListDir)))
 	mux.HandleFunc("/api/set-savedir", a.requireTrustedClient(a.handleSetSaveDir))
