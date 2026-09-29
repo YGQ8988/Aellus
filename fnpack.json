@@ -47,13 +47,13 @@
           "packages": {
             "x86": {
               "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.4/Aellus-1.0.4-fnos-x64.fpk",
-              "sha256": "f72e104f172e7cfe6d407948fd64603fb4badc66541547f5dc0b078ce56eaf64",
-              "size": 5623801
+              "sha256": "841e5cb0b2de1ddeb9a2edb5786bffaa5997d0cd3f2cfa1b0f6c708b9371bec0",
+              "size": 5624377
             },
             "arm": {
               "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.4/Aellus-1.0.4-fnos-arm64.fpk",
-              "sha256": "430a7b742b8f8c36f2e050259eb7d82db7640fc643753feb14b328f5871f7f9d",
-              "size": 5254479
+              "sha256": "728c5064c4e8aa83507203d42fca3970c322dd60e768ec8d4852dd25ab3c2944",
+              "size": 5254965
             }
           }
         }

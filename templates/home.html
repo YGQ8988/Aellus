@@ -17,7 +17,7 @@
   <div class="settings-overlay modal-overlay" id="settingsOverlay">
     <div class="settings-panel modal-card">
       <div class="settings-head">
-        <h2><span class="set-title-pc">设置</span></h2>
+        <h2><span class="set-title-pc">设置</span><span class="ver-badge" id="verBadge"></span></h2>
         <button class="settings-close modal-close" onclick="closeSettings()" aria-label="关闭">✕</button>
       </div>
       <div class="settings-body">
@@ -442,6 +442,15 @@
   }
   // 自定义下拉的全局事件：点 popup 外收起 / ESC 收起，popup 本身阻止冒泡避免误关 settings
   document.addEventListener('DOMContentLoaded', function(){
+    // 版本徽标：设置页标题旁展示版本号与构建时间（/api/info 的值由打包脚本在编译时注入，
+    // BuildTime 即每次实际打包时刻；接口失败静默，不影响页面）
+    fetch('api/info').then(function(r){ return r.json(); }).then(function(d){
+      var vb=document.getElementById('verBadge');
+      if(vb && d && d.version && d.version!=='dev'){
+        var t=(d.build_time && d.build_time!=='unknown') ? (' · '+d.build_time) : '';
+        vb.textContent='v'+d.version+t;
+      }
+    }).catch(function(){});
     var popup=document.getElementById('dirPopup');
     var trigger=document.getElementById('dirTrigger');
     if(popup){
