@@ -21,38 +21,17 @@ let lbIndex = 0;       // 灯箱当前索引
 // 的顶层 canDelete 下发——同一请求内所有条目一致（见 Go 端 canManage）。渲染列表前更新；
 // 前端判定仅用于按钮显隐，真正的强制在服务端。
 let canManage = false;
-// 是否隐藏「下载」入口：在飞牛里打开（应用中心微应用 / 手机 App 客户端）时下载不可靠——
-// 这些入口没有可用的下载管理器，blob / 附件下载常被直接丢弃或存到找不到的位置，
-// 点了没反应或找不到文件。故在其中隐藏下载，保留浏览、预览与「分享」
-// （分享生成下载二维码，用别的设备或本机浏览器下载，正好补上这个能力）。
+// 单文件下载一律走「直接导航」（见 downloadUrl），在飞牛门户 / 客户端内也能触发
+// 浏览器自己的下载管理器，不再需要按环境隐藏下载入口。
+// 历史：曾按「经飞牛网关 / iframe 嵌入」隐藏下载，因为当时的 fetch+blob 方案在
+// WebView 里没有下载管理器、点了没反应。改用直连后该限制失去意义，且 viaGateway
+// 判据本身漏掉了「门户 iframe 走裸端口 + 路径前缀」这种入口（无 X-Trim-Userid），
+// 会出现「按钮显示了却点不动」的错位。批量 ZIP 仍走 blob（POST 无法直连）。
 let hideDownload = false;
 
-// detectFnosClient 探测是否「在飞牛里打开」：判据是请求是否经飞牛统一网关
-// （/api/settings 的 viaGateway，对应网关注入的 X-Trim-Userid）。
-//   - 飞牛微应用 / App 客户端入口 → 经网关 → 隐藏下载；
-//   - 其它电脑「输入 IP + 端口」直连 → 裸端口、不经网关 → 下载正常，保持显示。
-// 不用 UA 或平台判断：同一台电脑可能既开客户端又开浏览器，入口才是真正的区分点。
-async function detectFnosClient() {
-  try {
-    const res = await fetch('api/settings');
-    const d = await res.json();
-    hideDownload = !!(d && d.viaGateway);
-  } catch (e) {
-    hideDownload = false; // 探测失败按「非客户端」处理，保留下载
-  }
-  applyHideDownload();
-}
-
-// applyHideDownload 应用到常驻按钮（批量下载 ×2 与灯箱下载）；
-// 列表里的单文件下载按钮由 renderFile 按 hideDownload 决定是否渲染。
-function applyHideDownload() {
-  ['btnDownloadDirs', 'btnSelected'].forEach(function (id) {
-    const b = document.getElementById(id);
-    if (b) b.style.display = hideDownload ? 'none' : '';
-  });
-  const lb = $('lbDownload');
-  if (lb) lb.style.display = hideDownload ? 'none' : '';
-}
+// applyHideDownload 保留为空实现：hideDownload 恒为 false，各处调用点无需改动，
+// 便于将来若某个环境确实不支持下载时，只改这一处即可恢复隐藏。
+function applyHideDownload() {}
 
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
@@ -503,17 +482,33 @@ async function downloadSelectedDirs(btn) {
   }
 }
 
-// 单文件下载：fetch + blob，下载完成在 finally 立即恢复按钮，精确感知不靠定时器猜
+// 单文件下载：先 HEAD 探活（确认文件可取、名字没错），再直接导航到下载地址。
+// 不用 fetch+blob 的原因见 downloadUrl 注释；HEAD 探活让我们能在失败时弹 toast，
+// 而不是把用户导航到一个服务端错误页。成功即返回，页面不离开（服务端是 attachment）。
 async function onSingleDownload(btn) {
   if (btn.classList.contains('loading')) return;
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner"></span>下载中';
   try {
-    const blob = await fetchBlob(btn.dataset.url);
-    if (blob) downloadBlob(blob, displayName(btn.dataset.name));
+    if (!(await probeDownload(btn.dataset.url))) return;
+    downloadUrl(btn.dataset.url);
   } finally {
     btn.classList.remove('loading');
     btn.textContent = '下载';
+  }
+}
+
+// downloadUrl 的前置探活：HEAD 请求只取响应头、不传文件体，成本极低。
+// 返回 true 表示可以安全导航；失败时统一弹 toast 并返回 false。
+async function probeDownload(url) {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    if (res.ok) return true;
+    toast('下载失败: ' + res.status, { variant: 'destructive' });
+    return false;
+  } catch (e) {
+    toast('下载失败: ' + e.message, { variant: 'destructive' });
+    return false;
   }
 }
 
@@ -806,7 +801,8 @@ function slideToImage(dir, newSrc) {
   setTimeout(() => { if (seq === lbSlideSeq) finishSlide(); }, LB_SLIDE_MS + 150);
 }
 
-// 灯箱内下载当前文件：fetch + blob，下载中禁用按钮显示 loading
+// 灯箱内下载当前文件：与列表单文件下载同一套逻辑（HEAD 探活 + 直接导航），
+// 下载中禁用按钮显示 loading。批量 ZIP 仍走 fetch+blob（POST 无法直接导航）。
 async function lbDownload() {
   const btn = $('lbDownload');
   if (btn.classList.contains('loading')) return;
@@ -818,8 +814,7 @@ async function lbDownload() {
   // 其余格式从 previewUrl 去掉 inline 标记即为下载地址
   const dlUrl = f.downloadUrl || f.previewUrl.replace('&inline=1', '');
   try {
-    const blob = await fetchBlob(dlUrl);
-    if (blob) downloadBlob(blob, displayName(f.name));
+    if (await probeDownload(dlUrl)) downloadUrl(dlUrl);
   } finally {
     btn.classList.remove('loading');
     btn.disabled = false;
@@ -889,13 +884,46 @@ async function fetchBlob(url, init) {
   }
 }
 
-// 公共：触发浏览器下载一个 blob（创建临时 <a> → click → 释放 URL）
-function downloadBlob(blob, filename) {
+// 触发「直接导航」下载：把浏览器 / 客户端自己的下载管理器拉起来。
+// 单文件下载不用 fetch + blob，原因有三：
+//  1. res.blob() 要把整个文件读进 JS 内存——几百 MB 的视频会把标签页直接撑爆；
+//     而 /api/download 支持 Range，直连是流式的，内存恒定。
+//  2. blob: URL 在部分 WebView（飞牛客户端、门户内嵌 iframe）里没有对应的下载
+//     处理器，a.click() 后毫无反应——而服务端早已把 Content-Disposition 配好，
+//     直接导航才是这些环境唯一走得通的路径，也正是「分享」二维码一直在用的方式。
+//  3. 同源直连还能顺带做 HEAD 探活（见调用方），失败时给 toast，而不是把用户
+//     导航到一个服务端错误页上去。
+// 文件名由服务端的 Content-Disposition 决定（已去掉时间戳前缀，与页面展示一致），
+// 故这里无需传文件名——a.download 对跨源 URL 会被浏览器忽略，传了也无效。
+function downloadUrl(url) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
+  a.href = url;
+  a.style.display = 'none';
+  document.body.appendChild(a); // 必须先入文档：游离元素上的 click 在部分内核不触发下载
   a.click();
-  URL.revokeObjectURL(a.href);
+  // 立即移除不影响已发起的导航（同源 attachment 下载不会离开当前页）。
+  setTimeout(() => a.remove(), 0);
+}
+
+// 公共：触发浏览器下载一个已在内存里的 blob。
+// 仅批量打包 ZIP 用（POST /api/download-batch，无法直接导航，故必须走 blob）。
+// 两处细节写错就会「点了没反应」，在部分 WebView 上尤其明显：
+//  1. revokeObjectURL 不能紧跟 click() 同步执行——下载是异步开始的，同步撤销会让
+//     浏览器在真正开始读取之前就失去数据源，下载被静默取消；
+//  2. 元素要先挂进 document 再 click——游离元素上的 click 在部分内核不触发下载。
+// 故：入文档 → click → 延迟释放（60s 足够任何下载管理器接手）。
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 60000);
 }
 
 // 公共：调用 /api/delete，成功返回 true，失败弹 toast 并返回 false
@@ -918,10 +946,9 @@ async function apiDelete(dir, name) {
   }
 }
 
-// 启动：先探测是否为飞牛客户端（决定下载入口是否隐藏），再加载目录列表——
-// 顺序不能反，否则列表会先渲染出下载按钮再被隐藏，出现闪烁。
+// 启动：加载目录列表。原先此处会先「探测是否飞牛客户端」再决定是否隐藏下载入口，
+// 该探测已随直连下载方案一并移除（hideDownload 恒为 false）。
 (async function () {
-  await detectFnosClient();
   loadDirs();
 })();
 

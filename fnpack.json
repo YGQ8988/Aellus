@@ -56,6 +56,21 @@
               "size": 5254965
             }
           }
+        },
+        "1.0.5": {
+          "changelog": "1.修复飞牛门户内点击下载无反应\n2.移除按环境隐藏下载入口的逻辑\n3.批量下载修复大文件卡顿\n4.单文件下载改为流式,不再整份读入内存",
+          "packages": {
+            "x86": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.5/Aellus-1.0.5-fnos-x64.fpk",
+              "sha256": "ae9b126349fc163b6f6ee953cbdb103417ee0c2f6bbe6ea83b01f57336cedc77",
+              "size": 5625078
+            },
+            "arm": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.5/Aellus-1.0.5-fnos-arm64.fpk",
+              "sha256": "f0e8688abc944c4baac689858b02e6b817a8f92d74b3ede0913694ed9f565aa4",
+              "size": 5256291
+            }
+          }
         }
       },
       "preview_urls": [
