@@ -57,16 +57,16 @@ https://github.com/YGQ8988/Aellus
 
 **macOS：**
 ```bash
-chmod +x Aellus-1.0.4-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
-# 或 chmod +x Aellus-1.0.4-darwin-x64  # Intel
-./Aellus-1.0.4-darwin-arm64
+chmod +x Aellus-1.0.5-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
+# 或 chmod +x Aellus-1.0.5-darwin-x64  # Intel
+./Aellus-1.0.5-darwin-arm64
 ```
 或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
 
 **Linux：**
 ```bash
-chmod +x Aellus-1.0.4-linux-x64
-./Aellus-1.0.4-linux-x64
+chmod +x Aellus-1.0.5-linux-x64
+./Aellus-1.0.5-linux-x64
 ```
 
 启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
