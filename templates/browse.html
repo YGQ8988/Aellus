@@ -85,15 +85,24 @@
   </button>
 
   <!-- 分享二维码弹窗（外观同首页「扫码访问」弹窗） -->
-  <div class="qr-modal modal-overlay" id="shareModal" onclick="if(event.target===this)closeShare()">
+  <div class="qr-modal modal-overlay" id="shareModal">
     <div class="qr-inner modal-card">
       <div class="qr-head">
         <h3>分享文件</h3>
         <button class="qr-close modal-close" onclick="closeShare()" aria-label="关闭">✕</button>
       </div>
-      <p class="share-name" id="shareFileName"></p>
       <div class="qr-code" id="shareQrCode"></div>
-      <p class="qr-url" id="shareQrUrl"></p>
+      <p class="share-name" id="shareFileName"></p>
+      <div class="share-url-bar">
+        <span class="share-url">点击图标复制文件链接</span>
+        <span class="share-copy-group">
+          <span class="share-hint-ico" aria-hidden="true">👉</span>
+          <button class="share-copy" id="shareCopy" type="button" title="复制链接" aria-label="复制链接" data-url="" onclick="copyShareUrl()">
+            <svg class="ico-copy" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <svg class="ico-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>
+        </span>
+      </div>
       <p class="qr-tip">手机扫描二维码，即可直接下载该文件</p>
     </div>
   </div>
