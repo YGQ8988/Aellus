@@ -1,17 +1,23 @@
 [
   {
-    "stepTitle": "卸载 Aellus·局域网传输",
+    "stepTitle": "卸载应用",
     "items": [
       {
-        "type": "switch",
+        "type": "radio",
         "field": "keep_config",
-        "label": "保留应用配置",
+        "label": "保留或删除应用配置",
         "initValue": "true",
-        "helpText": "卸载时是否清除 Aellus·局域网传输 的应用配置"
+        "rules": [
+          { "required": true, "message": "请选择是否保留应用配置" }
+        ],
+        "options": [
+          { "label": "仅卸载，保留应用配置(保存路径、设备名映射、日志)", "value": "true" },
+          { "label": "删除应用配置(重新安装后需重新设置)", "value": "false" }
+        ]
       },
       {
         "type": "tips",
-        "helpText": "开启（默认）：卸载后保留应用配置（保存路径、设备名映射、日志），重新安装后继续生效。<br>关闭：卸载时同时清除应用配置。<br>已上传到共享目录 / 授权目录的文件不受影响。"
+        "helpText": "<small>已上传到共享目录 / 授权目录的文件不受影响。</small>"
       }
     ]
   }
