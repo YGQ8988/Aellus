@@ -56,8 +56,6 @@
 .dirs-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 /* 目录卡片复用 .file-item 结构（checkbox + thumb-folder + name + actions） */
 /* :hover 由 .file-item:hover 统一处理；此处仅保留按下态高亮 */
-.dir-card:active { box-shadow: var(--shadow-card-active); transform: translateY(-1px); }
-
 .files-grid { display: grid; grid-template-columns: 1fr; gap: 10px; transition: opacity .15s ease; }
 /* 切换目录时的半透明过渡，避免旧列表瞬间清空出现白屏闪烁 */
 .files-grid.swapping { opacity: .45; }
@@ -67,13 +65,7 @@
   display: grid; grid-template-columns: 24px 1fr; column-gap: 12px; row-gap: 0; align-items: start;
   transition: border-color .15s, box-shadow .25s ease, transform .25s ease;
 }
-@media (hover: hover) and (pointer: fine) {
-  .file-item:hover {
-    border-color: hsl(var(--border));
-    box-shadow: var(--shadow-card-hover);
-    transform: translateY(-2px);
-  }
-}
+
 /* 缩略图：通用外观（圆角/底色/淡入/居中）见 components.css 的 .thumb 族，这里只定尺寸 */
 .file-item .thumb { width: 72px; height: 72px; }
 .file-item .thumb-video { width: 72px; height: 72px; }
@@ -257,6 +249,7 @@
   box-sizing: border-box;
   margin: 4px 0;
   padding: 10px;
+  padding-left: 15px;
   background: hsl(var(--primary));
   border-radius: var(--radius);
   color: hsl(var(--primary-foreground));

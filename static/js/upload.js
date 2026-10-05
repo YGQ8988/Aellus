@@ -5,15 +5,11 @@ const DEVICE_NAME_KEY = 'aellus_device_name';
 function restoreDeviceName() {
   try {
     var saved = localStorage.getItem(DEVICE_NAME_KEY);
-    if (saved) { $('device').value = saved; return; }
+    if (saved) { $('device').value = saved; }
   } catch (e) {}
-  // localStorage 没有：按设备 ID 从服务端取回上次的设备名（换浏览器/清数据也能恢复）
-  fetch('api/settings').then(function(r){ return r.json(); }).then(function(d){
-    if (d && d.deviceName) {
-      $('device').value = d.deviceName;
-      try { localStorage.setItem(DEVICE_NAME_KEY, d.deviceName); } catch (e) {}
-    }
-  }).catch(function(){});
+  // 不再从服务端 /api/settings 取回设备名：服务端按设备 ID 记录的名字无法在前端清除
+  //（清掉 localStorage 后刷新仍会被服务端回填），表现为“填了清不掉”。改为只依赖本机
+  // localStorage 记忆，清空输入框即删除记忆，下次打开不再自动恢复。
 }
 function rememberDeviceName(name) {
   try { localStorage.setItem(DEVICE_NAME_KEY, name); } catch (e) {}
@@ -385,3 +381,14 @@ function showResult(res, files) {
 
 // 打开页面时恢复上次的设备名称
 restoreDeviceName();
+
+// 设备名清空即视为“清除记忆”：删掉本机记录，刷新后不再自动填充
+(function bindDeviceClear() {
+  var el = $('device');
+  if (!el) return;
+  el.addEventListener('input', function () {
+    if (!el.value.trim()) {
+      try { localStorage.removeItem(DEVICE_NAME_KEY); } catch (e) {}
+    }
+  });
+})();

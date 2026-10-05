@@ -42,19 +42,6 @@ body.home .container {
 	transition: background .15s, box-shadow .25s ease, transform .25s ease;
 }
 
-@media (hover: hover) and (pointer: fine) {
-	.entry:hover {
-		border-color: hsl(var(--border));
-		box-shadow: var(--shadow-card-hover);
-		transform: translateY(-3px);
-	}
-}
-
-.entry:active {
-	box-shadow: var(--shadow-card-active);
-	transform: translateY(-1px);
-}
-
 .entry .icon {
 	width: 48px;
 	height: 48px;
@@ -434,7 +421,7 @@ body.home .container {
 
 /* 打赏区块免责声明（直接展示） */
 .reward-disclaimer {
-	margin: 0;
+	margin: 0 0 5px;
 	color: hsl(var(--muted-foreground));
 	font-size: 12px;
 	line-height: 1.6;
@@ -761,15 +748,6 @@ body.home .container {
 	border-radius: calc(var(--radius) - 2px);
 }
 
-.qr-url {
-	font-size: 13px;
-	color: hsl(var(--muted-foreground));
-	margin: 0;
-	word-break: break-all;
-	text-align: center;
-	font-family: var(--font-mono);
-}
-
 .qr-tip {
 	font-size: 12px;
 	color: hsl(var(--muted-foreground));
@@ -784,12 +762,11 @@ body.home .container {
 }
 
 .home-footer .disclaimer {
-	display: inline-block;
 	color: hsl(var(--muted-foreground));
-	font-size: 13px;
+	font-size: 12px;
 	line-height: 1.6;
-	margin: 0;
-	text-align: center;
+	margin: 0 0 5px;
+	text-align: left;
 }
 
 /* ============================================================
@@ -854,7 +831,7 @@ body.home .container {
 	}
 
 	.home-footer .disclaimer {
-		font-size: 13px;
-		line-height: 1.5;
+		font-size: 12px;
+		line-height: 1.6;
 	}
 }

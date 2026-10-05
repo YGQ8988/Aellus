@@ -69,6 +69,43 @@
 
 input[type=file] { display: none; }
 
+/* 上传页提示文案：样式对齐首页 .settings-reward-desc（仅上传页生效，不污染通用 .tip） */
+.tip {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  text-align: left;
+  line-height: 1.6;
+  margin: 0 0 5px;
+}
+
+/* 设备名称输入框：样式对齐「文件保存路径」填写框（.dir-input），保证是清晰可编辑的外观 */
+#device {
+  width: 100%;
+  padding: 8px 12px;
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 1px solid hsl(var(--input));
+  border-radius: calc(var(--radius) - 2px);
+  color: hsl(var(--foreground));
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 24px;
+  transition: border-color .15s, box-shadow .15s;
+}
+#device::placeholder {
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-sans);
+}
+#device:hover {
+  border-color: hsl(var(--ring) / .35);
+}
+#device:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / .08);
+}
+
 /* 网页内相机弹窗 → shadcn Dialog */
 
 @media (min-width: 768px) {

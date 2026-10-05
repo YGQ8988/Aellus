@@ -99,7 +99,6 @@
         <button class="qr-close modal-close" onclick="closeQR()" aria-label="关闭">✕</button>
       </div>
       <div class="qr-code" id="qrCode"></div>
-      <p class="qr-url" id="qrUrl"></p>
       <p class="qr-tip">手机扫描二维码，即可在浏览器打开本工具</p>
     </div>
   </div>
@@ -406,13 +405,12 @@
       if(popup){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; }
     });
   }
-  function renderQR(u, box, urlEl){
+  function renderQR(u, box){
     try{
       var qr=qrcode(0,'M');
       qr.addData(u);
       qr.make();
       box.innerHTML=qr.createSvgTag(8,4);
-      urlEl.textContent=u;
     }catch(e){
       box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">二维码生成失败</p>';
     }
@@ -420,12 +418,11 @@
   function openQR(){
     var modal=document.getElementById('qrModal');
     var box=document.getElementById('qrCode');
-    var urlEl=document.getElementById('qrUrl');
     var url=(document.getElementById('lanUrl').dataset.url)||document.getElementById('lanUrl').textContent;
     if(!url || url==='获取中…' || url==='不可用'){
-      fetch('api/addr').then(r=>r.json()).then(d=>{ renderQR(d.url, box, urlEl); }).catch(function(){ box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">地址获取失败</p>'; });
+      fetch('api/addr').then(r=>r.json()).then(d=>{ renderQR(d.url, box); }).catch(function(){ box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">地址获取失败</p>'; });
     } else {
-      renderQR(url, box, urlEl);
+      renderQR(url, box);
     }
     if(window.lockScroll){ lockScroll(); }   // 同设置弹窗：锁定背景滚动
     modal.classList.add('active');
