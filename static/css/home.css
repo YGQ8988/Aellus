@@ -39,7 +39,14 @@ body.home .container {
 	text-align: center;
 	text-decoration: none;
 	color: hsl(var(--foreground));
-	transition: background .15s, box-shadow .25s ease, transform .25s ease;
+	transition: background .15s, border-color .15s, box-shadow .25s ease, transform .25s ease;
+}
+
+/* hover 边框高亮，与输入框（.dir-input / .dir-trigger）效果一致 */
+@media (hover: hover) and (pointer: fine) {
+	.entry:hover {
+		border-color: hsl(var(--ring) / .35);
+	}
 }
 
 .entry .icon {
@@ -710,7 +717,7 @@ body.home .container {
 	flex-direction: column;
 	gap: 12px;
 	align-items: center;
-	padding: 22px 20px;
+	padding: 20px;
 }
 
 .qr-head {
@@ -766,7 +773,7 @@ body.home .container {
 	font-size: 12px;
 	line-height: 1.6;
 	margin: 0 0 5px;
-	text-align: left;
+	text-align: center;
 }
 
 /* ============================================================

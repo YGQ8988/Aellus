@@ -66,6 +66,13 @@
   transition: border-color .15s, box-shadow .25s ease, transform .25s ease;
 }
 
+/* hover 边框高亮，与输入框（.dir-input / .dir-trigger）效果一致 */
+@media (hover: hover) and (pointer: fine) {
+  .file-item:hover {
+    border-color: hsl(var(--ring) / .35);
+  }
+}
+
 /* 缩略图：通用外观（圆角/底色/淡入/居中）见 components.css 的 .thumb 族，这里只定尺寸 */
 .file-item .thumb { width: 72px; height: 72px; }
 .file-item .thumb-video { width: 72px; height: 72px; }
@@ -244,7 +251,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  width: 240px;
+  width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   margin: 4px 0;
@@ -305,7 +312,7 @@
 }
 .share-hint-ico {
   font-size: 20px;
-  padding-right: 5px;
+  padding-right: 10px;
   line-height: 1;
   user-select: none;
 }
