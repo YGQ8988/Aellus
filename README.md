@@ -96,16 +96,16 @@ OpenWrt 24.10 / 25.12 上以 procd 服务运行，装完自动开机自启并启
 
 ```bash
 # OpenWrt 25.12+（apk）—— 自签的包不在官方信任密钥里，必须带 --allow-untrusted
-apk add --allow-untrusted Aellus-<version>-openwrt-x86_64.apk             # x86_64 软路由
-apk add --allow-untrusted Aellus-<version>-openwrt-aarch64_cortex-a53.apk # arm64 路由器
-apk add --allow-untrusted Aellus-<version>-openwrt-mipsel_24kc.apk        # MT7621 等小端 MIPS
-apk add --allow-untrusted Aellus-<version>-openwrt-mips_24kc.apk          # 大端 MIPS
+apk add --allow-untrusted Aellus-<version>-r<release>-openwrt-x86_64.apk             # x86_64 软路由
+apk add --allow-untrusted Aellus-<version>-r<release>-openwrt-aarch64_cortex-a53.apk # arm64 路由器
+apk add --allow-untrusted Aellus-<version>-r<release>-openwrt-mipsel_24kc.apk        # MT7621 等小端 MIPS
+apk add --allow-untrusted Aellus-<version>-r<release>-openwrt-mips_24kc.apk          # 大端 MIPS
 
 # OpenWrt 24.10（opkg）
-opkg install Aellus-<version>-openwrt-x86_64.ipk             # x86_64 软路由
-opkg install Aellus-<version>-openwrt-aarch64_cortex-a53.ipk # arm64 路由器
-opkg install Aellus-<version>-openwrt-mipsel_24kc.ipk        # MT7621 等小端 MIPS
-opkg install Aellus-<version>-openwrt-mips_24kc.ipk          # 大端 MIPS
+opkg install Aellus-<version>-r<release>-openwrt-x86_64.ipk             # x86_64 软路由
+opkg install Aellus-<version>-r<release>-openwrt-aarch64_cortex-a53.ipk # arm64 路由器
+opkg install Aellus-<version>-r<release>-openwrt-mipsel_24kc.ipk        # MT7621 等小端 MIPS
+opkg install Aellus-<version>-r<release>-openwrt-mips_24kc.ipk          # 大端 MIPS
 
 /etc/init.d/aellus start | stop | restart   # 手动控制服务
 logread -e aellus                            # 查看日志
@@ -143,8 +143,8 @@ bash build-mac.sh     # dist/Aellus-<version>-mac-{arm64,x64}.zip      （内含
 bash build-all.sh     # dist/Aellus-<version>-darwin-{arm64,x64}、-linux-{x64,arm64,x86}（裸二进制）
                       # dist/Aellus-<version>-windows-{x64,arm64,x86}.zip（内含 Aellus.exe）
 bash build-fnos.sh    # dist/Aellus-<version>-fnos-{x64,arm64}.fpk    （直接可安装）
-bash build-openwrt.sh # dist/Aellus-<version>-openwrt-<arch>.ipk      （24.10，opkg 安装）
-                      # dist/Aellus-<version>-openwrt-<arch>.apk      （25.12+，apk 安装）
+bash build-openwrt.sh # dist/Aellus-<version>-r<release>-openwrt-<arch>.ipk      （24.10，opkg 安装）
+                      # dist/Aellus-<version>-r<release>-openwrt-<arch>.apk      （25.12+，apk 安装）
                       # 只要一种：AELLUS_PKGFMT=ipk|apk bash build-openwrt.sh
 ```
 
@@ -170,8 +170,8 @@ bash build-openwrt.sh # dist/Aellus-<version>-openwrt-<arch>.ipk      （24.10�
 > ipk 的归档格式固定为 **ustar**：opkg 自带的解包器不认 POSIX pax 扩展头，而 macOS 的 bsdtar 默认就是 pax 格式，那样打出来的包装不上，会刷一屏 `get_header_tar: Unknown typeflag: 0x78`。构建结束会用 `tools/ipk_check.py` / `tools/apk_check.py` 逐个校验，不通过就中止。手动复验：
 >
 > ```bash
-> python3 tools/ipk_check.py dist/Aellus-<version>-openwrt-*.ipk
-> python3 tools/apk_check.py dist/Aellus-<version>-openwrt-*.apk
+> python3 tools/ipk_check.py dist/Aellus-<version>-r<release>-openwrt-*.ipk
+> python3 tools/apk_check.py dist/Aellus-<version>-r<release>-openwrt-*.apk
 > ```
 >
 > `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。

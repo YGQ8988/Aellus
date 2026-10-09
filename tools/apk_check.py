@@ -8,7 +8,13 @@
   3. .PKGINFO 必填字段齐不齐，格式是不是 `key = value`；
   4. datahash 是否等于数据段（压缩后）的 sha256 —— 不对 apk 会拒绝这个包；
   5. 数据段里有没有 macOS 的 `._xxx` AppleDouble、绝对路径 / `..` 之类的坏成员；
-  6. 生命周期脚本名是否都是 apk 认识的事件名。
+  6. 生命周期脚本名是否都是 apk 认识的事件名；
+  7. 数据段里每个文件的父目录都有目录成员（dirent）——apk 安装文件前会先查
+     父目录是否已在包内登记（apk-tools database.c 的 apk_db_diri_query），
+     缺了就报 “no dirent in archive” 并把整个包标成 broken_files，一个文件都不落盘；
+  8. 数据段里每个普通文件都带内嵌校验和 pax 头（APK-TOOLS.checksum.SHA1）——
+     缺了 apk 会报 “file format is obsolete (e.g. missing embedded checksum)”，
+     该文件不落盘。
 
 用法：
     python3 tools/apk_check.py dist/Aellus-*.apk [更多文件...]
@@ -31,6 +37,8 @@ APK_EVENTS = {
     "trigger",
 }
 REQUIRED_INFO = ("pkgname", "pkgver", "arch", "datahash")
+# 数据段普通文件必须带的内嵌校验和 pax 头（与 abuild-tar 一致）
+CHECKSUM_PAX_KEY = "APK-TOOLS.checksum.SHA1"
 
 
 def split_raw_streams(raw: bytes):
@@ -127,6 +135,8 @@ def check(path: str) -> int:
         problems.append("数据段不是有效 tar（%s）" % e)
         dtar = None
     if dtar is not None:
+        dir_entries = set()
+        file_parents = set()
         for m in dtar.getmembers():
             n = m.name
             members.append(n)
@@ -134,6 +144,21 @@ def check(path: str) -> int:
                 problems.append("数据段路径不合法：%r" % n)
             if os.path.basename(n).startswith("._"):
                 problems.append("数据段混入了 AppleDouble 伴生文件：%r（打包时没关 COPYFILE_DISABLE？）" % n)
+            if m.isdir():
+                dir_entries.add(n.rstrip("/"))
+            elif m.isreg():
+                parts = n.split("/")
+                file_parents.update("/".join(parts[:i]) for i in range(1, len(parts)))
+                got = m.pax_headers.get(CHECKSUM_PAX_KEY, "")
+                if not got:
+                    problems.append("普通文件缺内嵌校验和 pax 头 %s（apk 会报 file format "
+                                    "is obsolete，该文件不落盘）：%r" % (CHECKSUM_PAX_KEY, n))
+                elif len(got) != 40 or any(c not in "0123456789abcdef" for c in got.lower()):
+                    problems.append("内嵌校验和不是 40 位十六进制 SHA1：%r → %r" % (n, got))
+        missing = sorted(file_parents - dir_entries)
+        if missing:
+            problems.append("数据段缺目录成员（apk 会报 no dirent in archive）：%s"
+                            % ", ".join(missing[:8]) + ("…" if len(missing) > 8 else ""))
 
     if problems:
         print("✗ %s" % path)
