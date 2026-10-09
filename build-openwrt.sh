@@ -224,15 +224,27 @@ TAR_FMT="--format=ustar"
 ( cd . && tar ${TAR_FMT} -cf /dev/null . >/dev/null 2>&1 ) || {
   echo "[错误] 当前 tar 不支持 ${TAR_FMT}，产生的 ipk 将无法被 opkg 安装"; exit 1; }
 
-# 归档统一用 uid/gid 0、且不写入 gzip 时间戳，保证可复现
+# 归档统一用 uid/gid 0、且不写入 gzip 时间戳，保证可复现。
+# owner 参数必须跨平台：macOS 的 bsdtar 只认 --uid/--gid/--uname/--gname
+# （不认 GNU 的 --owner/--group，传了会直接报错退出、管道里只剩空流）；
+# GNU tar 只认 --owner/--group（不认 --uid/--gid）。按 tar 类型选参数，
+# 否则会静默产出 20 字节的空 ipk（gzip 压缩空流），直到 ipk_check 才暴露。
+if tar --version 2>/dev/null | grep -qi bsdtar; then
+  OWNER_ARGS="--numeric-owner --uid 0 --gid 0 --uname root --gname root"
+else
+  OWNER_ARGS="--numeric-owner --owner=0 --group=0"
+fi
 tar_archive() {
   # $1=目录 $2=输出文件；若 $3 起是成员列表则只打包这些成员
   local dir="$1" out="$2"; shift 2
   if [ "$#" -gt 0 ]; then
-    ( cd "$dir" && tar ${TAR_FMT} --numeric-owner --owner=0 --group=0 -cf - "$@" ) | gzip -n -9 > "$out"
+    ( cd "$dir" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - "$@" ) | gzip -n -9 > "$out"
   else
-    ( cd "$dir" && tar ${TAR_FMT} --numeric-owner --owner=0 --group=0 -cf - . ) | gzip -n -9 > "$out"
+    ( cd "$dir" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - . ) | gzip -n -9 > "$out"
   fi
+  # 防御：tar 一旦失败（如参数不被当前 tar 支持），管道里只会剩空流，
+  # 静默产出几十字节的垃圾包。这里立刻拦下，而不是等最终 ipk_check 才发现。
+  [ -s "$out" ] || { echo "[错误] tar/gzip 输出为空：${out}"; exit 1; }
 }
 while IFS='|' read -r arch goarch govars; do
   [ -z "$arch" ] && continue
@@ -244,7 +256,7 @@ while IFS='|' read -r arch goarch govars; do
   tar_archive "${STAGE}/control" "${STAGE}/control.tar.gz"
   tar_archive "${STAGE}/root"    "${STAGE}/data.tar.gz"
   echo "2.0" > "${STAGE}/debian-binary"
-  ( cd "$STAGE" && tar ${TAR_FMT} --numeric-owner --owner=0 --group=0 -cf - ./debian-binary ./control.tar.gz ./data.tar.gz ) | gzip -n -9 > "$OUT"
+  ( cd "$STAGE" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - ./debian-binary ./control.tar.gz ./data.tar.gz ) | gzip -n -9 > "$OUT"
   echo "   ${OUT}"
   # 本架构用完即清理（还要打 apk 的话留给 apk 那一步）：整个 .build 累积起来上百个
   # 文件，留到最后一次性删的话，在开了「批量删除确认」的终端里会被拦下，
