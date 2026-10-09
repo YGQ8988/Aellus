@@ -39,20 +39,14 @@ body.home .container {
 	text-align: center;
 	text-decoration: none;
 	color: hsl(var(--foreground));
-	transition: background .15s, box-shadow .25s ease, transform .25s ease;
+	transition: background .15s, border-color .15s, box-shadow .25s ease, transform .25s ease;
 }
 
+/* hover 边框高亮，与输入框（.dir-input / .dir-trigger）效果一致 */
 @media (hover: hover) and (pointer: fine) {
 	.entry:hover {
-		border-color: hsl(var(--border));
-		box-shadow: var(--shadow-card-hover);
-		transform: translateY(-3px);
+		border-color: hsl(var(--ring) / .35);
 	}
-}
-
-.entry:active {
-	box-shadow: var(--shadow-card-active);
-	transform: translateY(-1px);
 }
 
 .entry .icon {
@@ -257,6 +251,22 @@ body.home .container {
 	-webkit-overflow-scrolling: touch;
 }
 
+/* 隐藏所有滚动条 UI（保留鼠标滚轮 / 触摸 / 键盘滚动），避免各平台
+   原生滚动条样式差异（如 Windows 直角灰条）带来的兼容性问题。 */
+.settings-panel,
+.qr-inner,
+.dir-popup,
+.dir-input {
+	scrollbar-width: none;          /* Firefox */
+	-ms-overflow-style: none;       /* 旧 Edge / IE */
+}
+.settings-panel::-webkit-scrollbar,
+.qr-inner::-webkit-scrollbar,
+.dir-popup::-webkit-scrollbar,
+.dir-input::-webkit-scrollbar {
+	display: none;                  /* WebKit (Chrome / Safari / Edge) */
+}
+
 .settings-head {
 	position: sticky;
 	top: 0;
@@ -418,7 +428,7 @@ body.home .container {
 
 /* 打赏区块免责声明（直接展示） */
 .reward-disclaimer {
-	margin: 0;
+	margin: 0 0 5px;
 	color: hsl(var(--muted-foreground));
 	font-size: 12px;
 	line-height: 1.6;
@@ -584,7 +594,7 @@ body.home .container {
 }
 
 .dir-input {
-	flex: 0 1 auto;                 /* 不占满剩余空间；宽度由 JS 按路径实际长度设置 */
+	flex: 1 1 auto;                 /* 占满剩余空间；宽度随容器自适应，不写死像素 */
 	width: auto;
 	max-width: 100%;
 	min-width: 0;                   /* 允许收缩（超长时不会撑破弹窗） */
@@ -607,17 +617,7 @@ body.home .container {
 	transition: border-color .15s, box-shadow .15s;
 }
 
-/* 横向滚动条：细条半透明，与弹窗风格一致 */
-.dir-input::-webkit-scrollbar {
-	height: 6px;
-}
-.dir-input::-webkit-scrollbar-thumb {
-	background: hsl(var(--muted-foreground) / .35);
-	border-radius: 3px;
-}
-.dir-input::-webkit-scrollbar-track {
-	background: transparent;
-}
+
 
 @media (hover: hover) and (pointer: fine) {
 	.dir-input:hover {
@@ -717,7 +717,7 @@ body.home .container {
 	flex-direction: column;
 	gap: 12px;
 	align-items: center;
-	padding: 22px 20px;
+	padding: 20px;
 }
 
 .qr-head {
@@ -755,15 +755,6 @@ body.home .container {
 	border-radius: calc(var(--radius) - 2px);
 }
 
-.qr-url {
-	font-size: 13px;
-	color: hsl(var(--muted-foreground));
-	margin: 0;
-	word-break: break-all;
-	text-align: center;
-	font-family: var(--font-mono);
-}
-
 .qr-tip {
 	font-size: 12px;
 	color: hsl(var(--muted-foreground));
@@ -778,11 +769,10 @@ body.home .container {
 }
 
 .home-footer .disclaimer {
-	display: inline-block;
 	color: hsl(var(--muted-foreground));
-	font-size: 13px;
+	font-size: 12px;
 	line-height: 1.6;
-	margin: 0;
+	margin: 0 0 5px;
 	text-align: center;
 }
 
@@ -848,7 +838,7 @@ body.home .container {
 	}
 
 	.home-footer .disclaimer {
-		font-size: 13px;
-		line-height: 1.5;
+		font-size: 12px;
+		line-height: 1.6;
 	}
 }

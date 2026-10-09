@@ -56,8 +56,6 @@
 .dirs-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
 /* 目录卡片复用 .file-item 结构（checkbox + thumb-folder + name + actions） */
 /* :hover 由 .file-item:hover 统一处理；此处仅保留按下态高亮 */
-.dir-card:active { box-shadow: var(--shadow-card-active); transform: translateY(-1px); }
-
 .files-grid { display: grid; grid-template-columns: 1fr; gap: 10px; transition: opacity .15s ease; }
 /* 切换目录时的半透明过渡，避免旧列表瞬间清空出现白屏闪烁 */
 .files-grid.swapping { opacity: .45; }
@@ -67,13 +65,14 @@
   display: grid; grid-template-columns: 24px 1fr; column-gap: 12px; row-gap: 0; align-items: start;
   transition: border-color .15s, box-shadow .25s ease, transform .25s ease;
 }
+
+/* hover 边框高亮，与输入框（.dir-input / .dir-trigger）效果一致 */
 @media (hover: hover) and (pointer: fine) {
   .file-item:hover {
-    border-color: hsl(var(--border));
-    box-shadow: var(--shadow-card-hover);
-    transform: translateY(-2px);
+    border-color: hsl(var(--ring) / .35);
   }
 }
+
 /* 缩略图：通用外观（圆角/底色/淡入/居中）见 components.css 的 .thumb 族，这里只定尺寸 */
 .file-item .thumb { width: 72px; height: 72px; }
 .file-item .thumb-video { width: 72px; height: 72px; }
@@ -242,8 +241,80 @@
 .qr-head { width: 100%; display: flex; align-items: center; justify-content: space-between; }
 .qr-head h3 { margin: 0; font-size: 16px; font-weight: 600; color: hsl(var(--foreground)); }
 .qr-close { line-height: 1; padding: 4px 6px; }
-.share-name { font-size: 13px; font-weight: 600; color: hsl(var(--foreground)); margin: 0; text-align: center; word-break: break-all; }
+.share-name { font-size: 13px; font-weight: 600; color: hsl(var(--foreground)); width: 240px; max-width: 100%; margin: 0 auto; text-align: center; word-break: break-all; }
 .qr-code { width: 240px; max-width: 100%; }
 .qr-code svg { width: 240px; max-width: 100%; height: auto; display: block; margin: 0 auto; background: #fff; border-radius: calc(var(--radius) - 2px); }
 .qr-url { font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0; word-break: break-all; text-align: center; font-family: var(--font-mono); }
+/* 分享弹窗地址条：与首页 LAN 地址栏（.lan-addr-bar）样式完全统一 */
+.share-url-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0;
+  padding: 10px;
+  padding-left: 15px;
+  background: hsl(var(--primary));
+  border-radius: var(--radius);
+  color: hsl(var(--primary-foreground));
+  letter-spacing: .3px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  user-select: none;
+  transition: opacity .2s;
+}
+.share-url {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  color: hsl(var(--primary-foreground));
+  font-weight: 600;
+}
+.share-copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  box-sizing: border-box;
+  border: none;
+  border-radius: calc(var(--radius) - 6px);
+  background: hsl(var(--primary-foreground) / 0.15);
+  color: hsl(var(--primary-foreground));
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.share-copy:active { background: hsl(var(--primary-foreground) / 0.28); }
+.share-copy:focus { outline: none; }
+.share-copy:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .share-copy:hover { background: hsl(var(--primary-foreground) / 0.28); }
+}
+.share-copy svg { display: block; width: 16px; height: 16px; }
+.share-copy .ico-check { display: none; }
+.share-copy.copied { color: var(--green); }
+.share-copy.copied .ico-copy { display: none; }
+.share-copy.copied .ico-check { display: block; animation: lanPop .35s cubic-bezier(.34, 1.56, .64, 1); }
+.share-copy-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.share-hint-ico {
+  font-size: 20px;
+  padding-right: 10px;
+  line-height: 1;
+  user-select: none;
+}
+@keyframes lanPop { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
 .qr-tip { font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0; text-align: center; }

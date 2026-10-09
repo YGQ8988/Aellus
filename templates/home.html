@@ -99,7 +99,6 @@
         <button class="qr-close modal-close" onclick="closeQR()" aria-label="关闭">✕</button>
       </div>
       <div class="qr-code" id="qrCode"></div>
-      <p class="qr-url" id="qrUrl"></p>
       <p class="qr-tip">手机扫描二维码，即可在浏览器打开本工具</p>
     </div>
   </div>
@@ -209,26 +208,20 @@
     if(popup && !popup.hidden){
       popup.hidden=true;
     }
-    if(trigger){ trigger.setAttribute('aria-expanded','false'); }
+    if(trigger){
+      trigger.setAttribute('aria-expanded','false');
+      // 收起时若 trigger 仍持有焦点（如点击打开后滚动触发收起），主动失焦，
+      // 避免 WebView 中焦点框 / 高亮残留。
+      if(document.activeElement===trigger){ trigger.blur(); }
+    }
   }
-  // 路径框宽度自适应：按文本真实宽度设置，短路径框宽=文本宽（不占满），
-  // 长路径=弹窗可用宽度（内部横向滚动）。textarea 的 fit-content 取的是固有
-  // 宽度（默认 cols），不可靠，所以用 canvas 实测文本像素宽。
+  // 路径框宽度由 CSS 控制（flex:1 占满可用空间），不写死像素。
+  // 此函数仅负责长路径时把横向滚动定位到尾部，方便看到结尾的文件/目录名。
   function fitDirInputWidth(){
     var inp=document.getElementById('dirInput');
     var wrap=document.getElementById('dirInputWrap');
     if(!inp || !wrap || wrap.hidden) return;
-    var txt=inp.value || inp.getAttribute('placeholder') || '';
-    var c=document.createElement('canvas');
-    var ctx=c.getContext('2d');
-    var fs=getComputedStyle(inp);
-    ctx.font=(fs.fontSize||'14px')+' '+(fs.fontFamily||'monospace');
-    var textW=ctx.measureText(txt).width;
-    var pad=(parseFloat(fs.paddingLeft)||0)+(parseFloat(fs.paddingRight)||0);
-    var btn=document.getElementById('dirBrowseBtn');
-    var avail=wrap.clientWidth - (btn?btn.offsetWidth:0) - 8; // 8 = gap
-    var w=Math.min(textW+pad+6, Math.max(avail, 60));          // +6 预留滚动条/留白
-    inp.style.width=Math.round(w)+'px';
+    inp.scrollLeft = inp.scrollWidth;
   }
   // 把 hidden input 上的当前路径同步到 trigger 上的可见文案。
   // displayPath 为语义化展示路径（飞牛端 /vol1/... 的转换结果），input 仍用内部路径。
@@ -412,13 +405,12 @@
       if(popup){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; }
     });
   }
-  function renderQR(u, box, urlEl){
+  function renderQR(u, box){
     try{
       var qr=qrcode(0,'M');
       qr.addData(u);
       qr.make();
       box.innerHTML=qr.createSvgTag(8,4);
-      urlEl.textContent=u;
     }catch(e){
       box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">二维码生成失败</p>';
     }
@@ -426,12 +418,11 @@
   function openQR(){
     var modal=document.getElementById('qrModal');
     var box=document.getElementById('qrCode');
-    var urlEl=document.getElementById('qrUrl');
     var url=(document.getElementById('lanUrl').dataset.url)||document.getElementById('lanUrl').textContent;
     if(!url || url==='获取中…' || url==='不可用'){
-      fetch('api/addr').then(r=>r.json()).then(d=>{ renderQR(d.url, box, urlEl); }).catch(function(){ box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">地址获取失败</p>'; });
+      fetch('api/addr').then(r=>r.json()).then(d=>{ renderQR(d.url, box); }).catch(function(){ box.innerHTML='<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">地址获取失败</p>'; });
     } else {
-      renderQR(url, box, urlEl);
+      renderQR(url, box);
     }
     if(window.lockScroll){ lockScroll(); }   // 同设置弹窗：锁定背景滚动
     modal.classList.add('active');
@@ -455,6 +446,15 @@
     var trigger=document.getElementById('dirTrigger');
     if(popup){
       popup.addEventListener('click', function(ev){ ev.stopPropagation(); });
+    }
+    // 展开状态下滚动设置面板：自动收起下拉，避免弹层（absolute 悬浮层）
+    // 跟着内容一起滚、浮在其它设置项上方。scroll 不冒泡，popup 自身
+    // 内部滚动不会触发这里，只有面板本体滚动才收起。
+    var settingsPanel=document.querySelector('.settings-panel');
+    if(settingsPanel){
+      settingsPanel.addEventListener('scroll', function(){
+        if(popup && !popup.hidden){ closeDirPopup(); }
+      }, {passive:true});
     }
     document.addEventListener('click', function(ev){
       if(!popup || popup.hidden) return;

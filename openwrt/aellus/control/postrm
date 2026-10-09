@@ -1,0 +1,22 @@
+#!/bin/sh
+# Aellus —— ipk 卸载后脚本。
+#
+# 清理 uci-defaults 添加的防火墙规则；保留 /etc/config/aellus 与保存目录
+# （用户数据与配置不删，重装后继续可用）。
+# 注意：buildroot 没有默认 postrm，故这里需要自定义。
+
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "${IPKG_INSTROOT}/lib/functions.sh"
+
+# 离线根目录（打包固件）场景不操作系统防火墙
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+
+if uci -q get firewall.aellus >/dev/null; then
+	uci -q delete firewall.aellus
+	uci -q commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+fi
+
+rm -f /tmp/luci-indexcache /tmp/luci-modulecache
+
+exit 0

@@ -155,10 +155,7 @@ func (a *App) buildMux(port int) *http.ServeMux {
 		if ip := remoteIP(r); ip != nil {
 			clientIP = ip.String()
 		}
-		platform := "桌面端（macOS / Windows / Linux）"
-		if a.platform.EnforceAuthBoundary() {
-			platform = "飞牛 fnOS"
-		}
+		platform := platformLabel(a.platform, IsOpenWrt())
 		a.writeJSON(w, http.StatusOK, map[string]string{
 			"ip":       curIP,
 			"port":     strconv.Itoa(port),
@@ -194,6 +191,117 @@ func (a *App) serveGateway(socketPath string, port int) {
 	a.gatewayActive.Store(true)
 	log.Printf("[gateway] 已接入飞牛统一网关（Socket=%s Prefix=%s）", socketPath, a.mountPrefix)
 	log.Fatal(newHTTPServer(a.withLog(withSecurityHeaders(a.withPrefix(a.buildMux(port)), frameAncestorsSelf))).Serve(ln))
+}
+
+// === OpenWrt 平台识别 ===
+//
+// OpenWrt 版与桌面 Linux 版是同一个 GOOS=linux 二进制，编译期无法区分（没有独立的
+// build-tag），只能在运行时识别。好处是：用户把桌面版二进制直接拷到路由器上跑，
+// 也能被正确识别成 OpenWrt（此时按 OpenWrt 的规则走：保存目录以 UCI 为准）。
+var (
+	openWrtOnce sync.Once
+	openWrt     bool // 探测结果缓存，避免每个请求都读文件
+
+	// 探测路径单独抽成变量，便于单测用临时文件替换（见 openwrt_test.go）。
+	// 使用这些路径时统一走包变量，不要写死字符串。
+	osReleasePaths = []string{"/etc/os-release", "/usr/lib/os-release"}
+	openWrtMarker  = "/etc/openwrt_release"
+	procdPaths     = []string{"/sbin/procd", "/usr/sbin/procd"}
+)
+
+// IsOpenWrt 判断当前是否运行在 OpenWrt 系统上（首次调用时探测一次并缓存）。
+//
+// 判据均为 OpenWrt 的官方约定，按可靠性排序：
+//  1. /etc/openwrt_release 存在 —— OpenWrt 系独有的发行版标识文件（base-files 提供），
+//     桌面发行版（Debian / Ubuntu / fnOS）不会有这个名字的文件；
+//  2. /etc/os-release（或 /usr/lib/os-release）里的 ID=openwrt，
+//     或 ID_LIKE 含 openwrt / lede —— 标准 LSB 字段，衍生固件靠它表明血脉；
+//  3. /sbin/procd 存在 —— OpenWrt 独有的 init 守护进程，本包的 init 脚本就跑在它下面。
+//
+// ⚠️ 不要只比对 DISTRIB_ID / ID 是否等于 "OpenWrt"：那是**官方原版**固件的值，
+// 而 ImmortalWrt（DISTRIB_ID='ImmortalWrt'、ID="immortalwrt"）、LEDE（ID="lede"）、
+// iStoreOS 等衍生固件都不等于它，会被漏判成桌面端（实测反馈）；
+// 部分第三方定制镜像还会把 /etc/openwrt_release 整个裁掉，故第 2、3 条必须同时具备。
+//
+// 不用 uname 判断：内核名是 Linux，与 Debian / fnOS 等发行版无法区分。
+func IsOpenWrt() bool {
+	openWrtOnce.Do(func() { openWrt = detectOpenWrt() })
+	return openWrt
+}
+
+// detectOpenWrt 执行一次真实的发行版探测（只被 IsOpenWrt 调用一次）。
+// 三条判据互为兜底，任意一条命中即认定属于 OpenWrt 家族。
+func detectOpenWrt() bool {
+	// 1) OpenWrt 系独有文件：存在即可，不校验内容里的 DISTRIB_ID 具体是什么值。
+	if _, err := os.Stat(openWrtMarker); err == nil {
+		return true
+	}
+	// 2) os-release 的 ID / ID_LIKE（覆盖被裁掉 openwrt_release 的定制镜像）
+	for _, f := range osReleasePaths {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		if isOpenWrtRelease(string(b)) {
+			return true
+		}
+	}
+	// 3) OpenWrt 独有的 init 守护进程
+	for _, f := range procdPaths {
+		if _, err := os.Stat(f); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// isOpenWrtRelease 判定一份发行版标识文件的内容是否属于 OpenWrt 家族。
+// 只认这几种官方写法，且都按「行」匹配，避免注释或 URL 里出现字样就误判：
+//   - ID=openwrt（官方原版）
+//   - ID_LIKE="openwrt" / "lede openwrt"（ImmortalWrt、LEDE 等衍生版，值是空格分隔的列表）
+//   - DISTRIB_ID='OpenWrt'（个别固件把这段写进了 os-release）
+func isOpenWrtRelease(s string) bool {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "DISTRIB_ID="):
+			if strings.Contains(line, "OpenWrt") {
+				return true
+			}
+		case strings.HasPrefix(line, "ID="):
+			if strings.EqualFold(unquote(line[len("ID="):]), "openwrt") {
+				return true
+			}
+		case strings.HasPrefix(line, "ID_LIKE="):
+			// 值是空格分隔的血缘列表：openwrt / lede openwrt / openwrt lede ...
+			for _, tok := range strings.Fields(unquote(line[len("ID_LIKE="):])) {
+				if strings.EqualFold(tok, "openwrt") || strings.EqualFold(tok, "lede") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// unquote 去掉 os-release / openwrt_release 里值两边的单引号或双引号，
+// 并裁掉空白（这些文件的键值对也有 "ID = openwrt" 这种带空格的写法）。
+func unquote(v string) string {
+	return strings.Trim(strings.TrimSpace(v), "\"'")
+}
+
+// platformLabel 返回 /api/addr 里展示给前端的平台名。
+// 优先级：飞牛 fnOS（fpk 构建，EnforceAuthBoundary）> OpenWrt（运行时识别）> 桌面端。
+// isOpenWrt 由调用方传入（而不是内部再调 IsOpenWrt），便于单测覆盖三种分支。
+func platformLabel(p Platform, isOpenWrt bool) string {
+	switch {
+	case p.EnforceAuthBoundary():
+		return "飞牛 fnOS"
+	case isOpenWrt:
+		return "OpenWrt"
+	default:
+		return "桌面端（macOS / Windows / Linux）"
+	}
 }
 
 // ctxKey 请求上下文键类型（避免与其它包/中间件的键冲突）。

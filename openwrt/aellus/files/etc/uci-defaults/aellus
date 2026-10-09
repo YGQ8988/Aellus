@@ -1,0 +1,29 @@
+#!/bin/sh
+# Aellus —— UCI defaults（官方机制：见 https://openwrt.org/docs/guide-developer/uci-defaults）
+#
+# 由 opkg 安装时的 default_postinst 执行一次，执行成功（退出码 0）后本文件被自动删除；
+# 若本包被打包进固件，则在设备首次启动时执行。两种情况都只跑一次。
+#
+# 职责：在 LAN 区放行 Aellus 的监听端口。默认防火墙策略通常已是 ACCEPT，
+# 这里显式加一条，保证把 input 策略改成 REJECT 的机器仍能访问。
+# 规则用名为 aellus 的 section 作标记，避免重复添加（卸载时 postrm 会清掉）。
+
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+
+port="$(uci -q get aellus.main.port)"
+[ -n "$port" ] || port="5115"
+
+if ! uci -q get firewall.aellus >/dev/null; then
+	uci -q batch <<-EOF
+		set firewall.aellus='rule'
+		set firewall.aellus.name='Allow-Aellus'
+		set firewall.aellus.src='lan'
+		set firewall.aellus.proto='tcp udp'
+		set firewall.aellus.dest_port="${port}"
+		set firewall.aellus.family='ipv4'
+		set firewall.aellus.target='ACCEPT'
+	EOF
+	uci -q commit firewall
+fi
+
+exit 0

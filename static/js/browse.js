@@ -518,7 +518,6 @@ async function probeDownload(url) {
 async function onShare(btn) {
   const modal = $('shareModal');
   const box = $('shareQrCode');
-  const urlEl = $('shareQrUrl');
   const nameEl = $('shareFileName');
   if (nameEl) nameEl.textContent = displayName(btn.dataset.name || '');
   const baseEl = document.querySelector('base');
@@ -536,11 +535,12 @@ async function onShare(btn) {
   } catch (e) {}
   const url = origin + baseHref + btn.dataset.url;
   try {
-    const qr = qrcode(0, 'M');
+    const qr = qrcode(0, 'L');
     qr.addData(url);
     qr.make();
     box.innerHTML = qr.createSvgTag(8, 4);
-    urlEl.textContent = url;
+    const copyBtn = $('shareCopy');
+    if (copyBtn) copyBtn.dataset.url = url;
   } catch (e) {
     box.innerHTML = '<p style="color:hsl(var(--muted-foreground));font-size:13px;margin:8px 0">二维码生成失败</p>';
   }
@@ -553,6 +553,34 @@ function closeShare() {
   $('shareModal').classList.remove('active');
   if (window.unlockScroll) unlockScroll();
   document.removeEventListener('keydown', shareKeyHandler);
+}
+
+// 分享弹窗：复制文件下载链接（交互对齐首页 LAN 地址栏复制：点一下复制，图标切换为对勾并变绿）
+function copyShareUrl() {
+  const btn = $('shareCopy');
+  const url = btn ? (btn.dataset.url || '') : '';
+  function ok() {
+    if (!btn) return;
+    btn.classList.add('copied');
+    setTimeout(() => { btn.classList.remove('copied'); }, 1200);
+  }
+  function fallback() {
+    const ta = document.createElement('textarea');
+    ta.value = url; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    let done = false;
+    try { done = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    if (done) ok();
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(ok).catch(fallback);
+  } else {
+    fallback();
+  }
 }
 
 // 分享弹窗 ESC 关闭（与灯箱同一模式：打开时注册、关闭时移除，避免常驻监听互相干扰）
