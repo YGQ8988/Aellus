@@ -70,7 +70,8 @@ def collect_files(root: str):
     """收集 root 下的普通文件与符号链接，返回 [(相对路径, 绝对路径)]（已排序）。
 
     只收文件与符号链接，不收目录 —— 与官方的
-    `find . -type f,l -printf "/%P\\n" | sort` 一致；目录由文件路径隐含创建。
+    `find . -type f,l -printf "/%P\\n" | sort` 一致；目录成员在 build_data_tar
+    里按文件路径的父级合成写入（apk 要求显式 dirent，见该函数注释）。
     """
     out = []
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -100,12 +101,38 @@ def make_tarinfo(tar, abs_path: str, arcname: str, with_checksums: bool, mtime: 
     return ti
 
 
+def parent_dirs(rel: str):
+    """rel 的全部祖先目录（不含根 '.'），如 'etc/init.d/aellus' → {'etc','etc/init.d'}。"""
+    parts = rel.split("/")
+    return {"/".join(parts[:i]) for i in range(1, len(parts))}
+
+
 def build_data_tar(root: str, files, list_rel: str, list_body: str,
                    with_checksums: bool, mtime: int) -> bytes:
-    """数据段：正常 tar（带结尾空块），外加合成的 .list 文件。"""
+    """数据段：正常 tar（带结尾空块），外加合成的 .list 文件。
+
+    目录成员不能省：apk 安装每个文件前都会先查它的父目录有没有在包里
+    登记过（apk-tools database.c 的 apk_db_diri_query），查不到就报
+    “no dirent in archive”并把包标记 broken_files——文件一个都不会落盘。
+    官方 abuild / buildroot 打的包都带目录成员，这里同样全部显式写入
+    （先所有目录、后文件；目录是其子路径的前缀，字典序天然满足先父后子）。
+    """
     fmt = tarfile.PAX_FORMAT if with_checksums else tarfile.USTAR_FORMAT
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w", format=fmt) as tar:
+        dirs = set()
+        for rel, _ in files:
+            if rel != list_rel:
+                dirs |= parent_dirs(rel)
+        dirs |= parent_dirs(list_rel)
+        for d in sorted(dirs):
+            ti = tarfile.TarInfo(d)
+            ti.type = tarfile.DIRTYPE
+            ti.mode = 0o755
+            ti.mtime = mtime
+            ti.uid = ti.gid = 0
+            ti.uname = ti.gname = "root"
+            tar.addfile(ti)
         for rel, abs_path in files:
             if rel == list_rel:
                 continue  # .list 内容自己合成，不用磁盘上的（可能不存在）
@@ -115,9 +142,15 @@ def build_data_tar(root: str, files, list_rel: str, list_body: str,
                     tar.addfile(ti, f)
             else:
                 tar.addfile(ti)
-        # 文件清单：放在最后，内容与官方一致（绝对路径 + 排序 + 不含自身）
+        # 文件清单：放在最后，内容与官方一致（绝对路径 + 排序 + 不含自身）。
+        # pax 校验和不能漏：apk 要求每个落盘的普通文件都带内嵌校验和
+        # （APK-TOOLS.checksum.SHA1），缺了会报
+        # “failed to extract ...: file format is obsolete (e.g. missing embedded checksum)”。
+        # 其余文件走 make_tarinfo 已带，唯独 .list 是这里手工合成的，要单独补上。
         body = list_body.encode("utf-8")
         ti = tarfile.TarInfo(list_rel)
+        if with_checksums:
+            ti.pax_headers = {CHECKSUM_PAX_KEY: hashlib.sha1(body).hexdigest()}
         ti.size = len(body)
         ti.mtime = mtime
         ti.mode = 0o644

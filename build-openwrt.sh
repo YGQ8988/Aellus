@@ -2,8 +2,8 @@
 # Aellus OpenWrt 构建脚本（在项目根目录运行）
 #
 # 产出：
-#   - dist/Aellus-<version>-openwrt-<arch>.ipk   OpenWrt 24.10（opkg）
-#   - dist/Aellus-<version>-openwrt-<arch>.apk   OpenWrt 25.12+（apk）
+#   - dist/Aellus-<version>-r<release>-openwrt-<arch>.ipk   OpenWrt 24.10（opkg）
+#   - dist/Aellus-<version>-r<release>-openwrt-<arch>.apk   OpenWrt 25.12+（apk）
 #
 # 说明：
 #   - 架构目前支持 x86_64 / arm64（aarch64_cortex-a53、aarch64_generic）/
@@ -94,6 +94,9 @@ else
 fi
 
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
+# 产物文件名带上小版本号（-r<N>）：否则 r9 / r10 的文件名完全一样，传到路由器后
+# 分不清新旧，很容易装上旧包还以为是新包没修好。
+FULL="${VERSION}-r${RELEASE}"
 echo "构建版本：${VERSION}（-r${RELEASE}，上一次是 ${MK_VERSION:-未记录}-r${MK_RELEASE:-0}）"
 
 # —— 产哪种包 ——
@@ -221,27 +224,39 @@ TAR_FMT="--format=ustar"
 ( cd . && tar ${TAR_FMT} -cf /dev/null . >/dev/null 2>&1 ) || {
   echo "[错误] 当前 tar 不支持 ${TAR_FMT}，产生的 ipk 将无法被 opkg 安装"; exit 1; }
 
-# 归档统一用 uid/gid 0、且不写入 gzip 时间戳，保证可复现
+# 归档统一用 uid/gid 0、且不写入 gzip 时间戳，保证可复现。
+# owner 参数必须跨平台：macOS 的 bsdtar 只认 --uid/--gid/--uname/--gname
+# （不认 GNU 的 --owner/--group，传了会直接报错退出、管道里只剩空流）；
+# GNU tar 只认 --owner/--group（不认 --uid/--gid）。按 tar 类型选参数，
+# 否则会静默产出 20 字节的空 ipk（gzip 压缩空流），直到 ipk_check 才暴露。
+if tar --version 2>/dev/null | grep -qi bsdtar; then
+  OWNER_ARGS="--numeric-owner --uid 0 --gid 0 --uname root --gname root"
+else
+  OWNER_ARGS="--numeric-owner --owner=0 --group=0"
+fi
 tar_archive() {
   # $1=目录 $2=输出文件；若 $3 起是成员列表则只打包这些成员
   local dir="$1" out="$2"; shift 2
   if [ "$#" -gt 0 ]; then
-    ( cd "$dir" && tar ${TAR_FMT} --numeric-owner --owner=0 --group=0 -cf - "$@" ) | gzip -n -9 > "$out"
+    ( cd "$dir" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - "$@" ) | gzip -n -9 > "$out"
   else
-    ( cd "$dir" && tar ${TAR_FMT} --numeric-owner --owner=0 --group=0 -cf - . ) | gzip -n -9 > "$out"
+    ( cd "$dir" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - . ) | gzip -n -9 > "$out"
   fi
+  # 防御：tar 一旦失败（如参数不被当前 tar 支持），管道里只会剩空流，
+  # 静默产出几十字节的垃圾包。这里立刻拦下，而不是等最终 ipk_check 才发现。
+  [ -s "$out" ] || { echo "[错误] tar/gzip 输出为空：${out}"; exit 1; }
 }
 while IFS='|' read -r arch goarch govars; do
   [ -z "$arch" ] && continue
   case "$arch" in \#*) continue ;; esac
   STAGE="${BUILD_TMP}/${arch}"
-  OUT="dist/Aellus-${VERSION}-openwrt-${arch}.ipk"
+  OUT="dist/Aellus-${FULL}-openwrt-${arch}.ipk"
   # 不用 rm -f：后面的重定向会直接截断重写；少一次删除就少一处可能被
   # 「批量删除确认」策略拦停的地方（那样的拦截会把构建流程整个打断）。
   tar_archive "${STAGE}/control" "${STAGE}/control.tar.gz"
   tar_archive "${STAGE}/root"    "${STAGE}/data.tar.gz"
   echo "2.0" > "${STAGE}/debian-binary"
-  ( cd "$STAGE" && tar ${TAR_FMT} --numeric-owner --owner=0 --group=0 -cf - ./debian-binary ./control.tar.gz ./data.tar.gz ) | gzip -n -9 > "$OUT"
+  ( cd "$STAGE" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - ./debian-binary ./control.tar.gz ./data.tar.gz ) | gzip -n -9 > "$OUT"
   echo "   ${OUT}"
   # 本架构用完即清理（还要打 apk 的话留给 apk 那一步）：整个 .build 累积起来上百个
   # 文件，留到最后一次性删的话，在开了「批量删除确认」的终端里会被拦下，
@@ -260,7 +275,7 @@ while IFS='|' read -r arch goarch govars; do
   [ -z "$arch" ] && continue
   case "$arch" in \#*) continue ;; esac
   STAGE="${BUILD_TMP}/${arch}"
-  OUT="dist/Aellus-${VERSION}-openwrt-${arch}.apk"
+  OUT="dist/Aellus-${FULL}-openwrt-${arch}.apk"
   python3 tools/mkapk.py \
     --root "${STAGE}/root" \
     --out "$OUT" \
@@ -289,7 +304,7 @@ fi
 echo ">> [4/5] 校验产物可被包管理器解包"
 if [ "$DO_IPK" = "1" ]; then
   if command -v python3 >/dev/null 2>&1; then
-    python3 tools/ipk_check.py dist/Aellus-${VERSION}-openwrt-*.ipk || {
+    python3 tools/ipk_check.py dist/Aellus-${FULL}-openwrt-*.ipk || {
       echo "[错误] ipk 校验未通过，已中止（产物不可用）"; exit 1; }
   else
     echo "   [警告] 未找到 python3，跳过 ipk 校验。建议手动确认："
@@ -297,7 +312,7 @@ if [ "$DO_IPK" = "1" ]; then
   fi
 fi
 if [ "$DO_APK" = "1" ]; then
-  python3 tools/apk_check.py dist/Aellus-${VERSION}-openwrt-*.apk || {
+  python3 tools/apk_check.py dist/Aellus-${FULL}-openwrt-*.apk || {
     echo "[错误] apk 校验未通过，已中止（产物不可用）"; exit 1; }
 fi
 
@@ -324,18 +339,18 @@ echo "完成：${VERSION}-r${RELEASE}"
 # sha256 工具：Linux 是 sha256sum，macOS 是 shasum
 SHA_CMD="sha256sum"
 command -v sha256sum >/dev/null 2>&1 || SHA_CMD="shasum -a 256"
-for f in dist/Aellus-${VERSION}-openwrt-*.ipk dist/Aellus-${VERSION}-openwrt-*.apk; do
+for f in dist/Aellus-${FULL}-openwrt-*.ipk dist/Aellus-${FULL}-openwrt-*.apk; do
   [ -f "$f" ] || continue
   printf "  %-52s %8s  %s\n" "$f" "$(du -h "$f" | awk '{print $1}')" "$(${SHA_CMD} "$f" 2>/dev/null | awk '{print $1}' | cut -c1-16)…"
 done
 echo ""
 echo "安装：把包传到路由器后执行（按系统版本二选一）"
 if [ "$DO_APK" = "1" ]; then
-  echo "  OpenWrt 25.12+：apk add --allow-untrusted Aellus-${VERSION}-openwrt-<arch>.apk"
+  echo "  OpenWrt 25.12+：apk add --allow-untrusted Aellus-${FULL}-openwrt-<arch>.apk"
   echo "      # 自签的包不在官方信任密钥里，必须带 --allow-untrusted"
 fi
 if [ "$DO_IPK" = "1" ]; then
-  echo "  OpenWrt 24.10 ：opkg install Aellus-${VERSION}-openwrt-<arch>.ipk"
+  echo "  OpenWrt 24.10 ：opkg install Aellus-${FULL}-openwrt-<arch>.ipk"
 fi
 echo "  # 装完自动开机自启并启动；配置在 LuCI：服务 → Aellus局域网传输"
 echo "  # 从 24.10 sysupgrade 到 25.12 后，opkg 装的包不会被自动迁移，需重新用 apk 安装"

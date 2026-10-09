@@ -24,7 +24,7 @@ include $(TOPDIR)/rules.mk
 # 手动指定：bash build-openwrt.sh <version> <release> 或 AELLUS_RELEASE=<n> bash build-openwrt.sh。
 PKG_NAME:=aellus
 PKG_VERSION:=1.0.5
-PKG_RELEASE:=7
+PKG_RELEASE:=13
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE

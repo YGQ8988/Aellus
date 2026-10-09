@@ -80,6 +80,19 @@
        没有它装完不会自启、端口也不放行
  - [x] 新增 `tools/apk_check.py`：发布前静态校验 apk（gzip 分段、控制段无结尾空块、
        成员点前缀与事件名合法、.PKGINFO 字段、`datahash` 匹配、无 AppleDouble / 越界路径）
+ - [x] 修复 apk 装不上（真机 25.12/iStoreOS 报 `no dirent in archive`，每个文件各一条，
+       包被标 broken_files、文件一个不落盘）：apk 安装文件前会先查其父目录有没有在
+       包内登记过（apk-tools database.c 的 `apk_db_diri_query`），手工打包只写了文件、
+       没写目录成员，父目录必然查不到。mkapk.py 改为把每个文件的全部父目录以
+       `DIR 0755` 成员显式写入数据段（先目录后文件），apk_check.py 增加对应校验项
+ - [x] 构建产物文件名带上小版本号：`Aellus-<version>-r<release>-openwrt-<arch>.{ipk,apk}`。
+       之前 r9 / r10 的文件名一模一样，传到路由器后分不清新旧，很容易装上旧包
+       还以为修复没生效（README 安装示例同步改动）
+ - [x] 修复 apk 二连装（真机报 `failed to extract lib/apk/packages/aellus.list:
+       file format is obsolete (e.g. missing embedded checksum)`）：apk 要求每个落盘的
+       普通文件都带内嵌校验和 pax 头（APK-TOOLS.checksum.SHA1），其余文件 mkapk.py
+       已写，唯独合成的 .list 漏了。补上后 apk_check.py 增加对应校验项（缺头 / 非 40 位
+       十六进制都拦）
 
 ## V1.0.5(2026-10-05)
  - [x] 修复飞牛门户内点击下载无反应
