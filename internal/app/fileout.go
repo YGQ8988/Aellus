@@ -46,6 +46,27 @@ func setFileOutputHeaders(w http.ResponseWriter, name string, mode fileOutputMod
 		`attachment; filename="`+safe+`"; filename*=UTF-8''`+url.PathEscape(name))
 }
 
+// extMIME 查扩展名对应的 MIME：优先用系统表，缺失时回退到下表的显式声明。
+//
+// 为什么需要回退表：Go 的 mime 表（以及多数 Linux 的 /etc/mime.types）并不包含
+// .heic / .heif 这类新格式，查出来是空串 → inlineContentType 直接判为不可内联 →
+// 即使扩展名已在白名单里，最终仍按 application/octet-stream 输出，而响应带
+// X-Content-Type-Options: nosniff，浏览器不会按内容猜类型，缩略图就是一片空白。
+// （读取页曾把 heic 列进可预览清单却始终显示不出来，根因在此。）
+func extMIME(ext string) string {
+	if c := mime.TypeByExtension(ext); c != "" {
+		return c
+	}
+	return explicitMIME[strings.ToLower(ext)]
+}
+
+// explicitMIME 只放「白名单已放行、但系统 mime 表查不到」的扩展名。
+// 注意不要放 .svg：它可携带脚本，代价见 isInlineImageExt 的注释。
+var explicitMIME = map[string]string{
+	".heic": "image/heic",
+	".heif": "image/heif",
+}
+
 // inlineContentType 返回允许内联使用的 Content-Type；不允许内联时返回空串。
 func inlineContentType(ext string, mode fileOutputMode) string {
 	switch mode {
@@ -62,7 +83,7 @@ func inlineContentType(ext string, mode fileOutputMode) string {
 	default:
 		return ""
 	}
-	ctype := mime.TypeByExtension(ext)
+	ctype := extMIME(ext)
 	if ctype == "" {
 		return ""
 	}

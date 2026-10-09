@@ -153,6 +153,71 @@
     return formatDay(ts) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
+  // ---------------- 可预览格式清单（上传页 / 读取页共用的唯一真源） ----------------
+  // 两页曾各自判一套：上传页看浏览器给的 MIME（image/* 、video/*），读取页看写死的
+  // 扩展名清单，两边不一致 → 同一格式在上传页能出预览、读取页却只显示扩展名占位。
+  // 现在两侧都从这里取，加格式只改这一处。
+  //
+  // 两条例外，各自单独走一条路径：
+  //   - icns：容器格式，浏览器渲染不出来。上传页本地解容器取内嵌图像，
+  //     读取页走服务端 /api/thumb 转 PNG。不属于「<img> 直接能渲染」的范畴，不入表。
+  //   - svg：服务端对可携带脚本的类型一律不内联（防存储型 XSS，见 Go 端
+  //     fileout.go），读取页因此取回字节后自行以 image/svg+xml 建 blob 再交给 <img>
+  //     —— 与上传页「本地 blob + <img>」是同一条安全路径：SVG 经 <img> 渲染时
+  //     浏览器走「安全静态模式」，不执行脚本、不加载外部引用。
+  const PREVIEW_IMG_EXTS = ['png', 'jpg', 'jpeg', 'jfif', 'gif', 'webp', 'bmp', 'ico', 'heic', 'heif', 'avif', 'tif', 'tiff', 'svg'];
+  // 视频清单与后端 isInlineSafe 的视频部分对齐（mp4/webm/mov/avi/mkv/m4v）：
+  // 读取页用 <video src=原始下载链接>，后端不放行的话只会拿到附件流。
+  const PREVIEW_VID_EXTS = ['mp4', 'm4v', 'mov', 'webm', 'avi', 'mkv'];
+
+  // 扩展名 -> MIME。用途有两个：
+  //   1) 部分系统/浏览器给不出 File.type（如 Windows 上的 .heic、某些客户端里的 .mkv），
+  //      这时 MIME 为空，建出来的 blob / data URL 没有类型，浏览器不会渲染；
+  //   2) 读取页取 svg 时服务端返回的是 application/octet-stream，必须显式给出类型。
+  const EXT_MIME = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', jfif: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', ico: 'image/x-icon',
+    heic: 'image/heic', heif: 'image/heif', avif: 'image/avif',
+    tif: 'image/tiff', tiff: 'image/tiff', svg: 'image/svg+xml',
+    mp4: 'video/mp4', m4v: 'video/x-m4v', mov: 'video/quicktime',
+    webm: 'video/webm', avi: 'video/x-msvideo', mkv: 'video/x-matroska'
+  };
+
+  // 取扩展名（小写，不含点）。".bashrc" 这类隐藏文件视为无扩展名（返回 ''）。
+  function extOf(name) {
+    const s = String(name == null ? '' : name);
+    const i = s.lastIndexOf('.');
+    return i > 0 ? s.slice(i + 1).toLowerCase() : '';
+  }
+
+  // 是否按「图片」预览：优先信浏览器给的 MIME，给不出时按扩展名兜底。
+  function isPreviewImage(f) {
+    if (!f) return false;
+    if (String(f.type || '').indexOf('image/') === 0) return true;
+    return PREVIEW_IMG_EXTS.indexOf(extOf(f.name)) >= 0;
+  }
+  // 是否按「视频」预览，判定同上。
+  function isPreviewVideo(f) {
+    if (!f) return false;
+    if (String(f.type || '').indexOf('video/') === 0) return true;
+    return PREVIEW_VID_EXTS.indexOf(extOf(f.name)) >= 0;
+  }
+
+  // ---------------- 展示名：去掉上传时拼接的时间戳前缀 ----------------
+  // 本工具「普通文件」上传时会给磁盘名加时间戳前缀（20060102_150405.000000_，
+  // 见 Go 端 resolveUploadTarget）避免重名覆盖。三个页面（上传页结果卡、读取页卡片、
+  // 删除确认弹窗）统一在这里去掉该前缀，只显示实际上传时的文件名；非本工具上传
+  //（无此前缀）的名字原样返回。磁盘真实名不变——下载 / 删除 / 缩略图仍用原名，
+  // 只有「给人看」的地方走这个函数。
+  //
+  // 前缀只可能出现在名字开头，故正则锚定 ^；文件夹上传的 displayName 带目录层级
+  //（"dir/sub/file.jpg"），开头是目录名，不会被误伤。
+  const TS_PREFIX_RE = /^\d{8}_\d{6}\.\d{6}_/;
+  function displayName(name) {
+    const s = String(name == null ? '' : name);
+    return TS_PREFIX_RE.test(s) ? s.replace(TS_PREFIX_RE, '') : s;
+  }
+
   // ---------------- 设备 ID（仅用于设备名回填 / 访问日志） ----------------
   // 首次访问生成 UUID 存 localStorage，之后所有接口请求头自动携带 Deviceid。
   // 它只是功能标识，不参与任何权限判定：删除 / 改保存目录由服务端依据
@@ -226,7 +291,9 @@
 
   // 暴露到全局：同时挂到 window.ui 命名空间与顶层全局，
   // 兼容以裸名（toast() / confirmDialog()）调用的业务代码。
-  window.ui = { toast, confirmDialog, escapeHtml, lockScroll, unlockScroll, getDeviceID, $, formatSize, formatDay, formatTime };
+  window.ui = { toast, confirmDialog, escapeHtml, lockScroll, unlockScroll, getDeviceID, $, formatSize, formatDay, formatTime,
+                PREVIEW_IMG_EXTS, PREVIEW_VID_EXTS, EXT_MIME, extOf, isPreviewImage, isPreviewVideo,
+                TS_PREFIX_RE, displayName };
   window.toast = toast;
   window.confirmDialog = confirmDialog;
   window.escapeHtml = escapeHtml;
@@ -237,4 +304,12 @@
   window.formatSize = formatSize;
   window.formatDay = formatDay;
   window.formatTime = formatTime;
+  window.PREVIEW_IMG_EXTS = PREVIEW_IMG_EXTS;
+  window.PREVIEW_VID_EXTS = PREVIEW_VID_EXTS;
+  window.EXT_MIME = EXT_MIME;
+  window.extOf = extOf;
+  window.isPreviewImage = isPreviewImage;
+  window.isPreviewVideo = isPreviewVideo;
+  window.TS_PREFIX_RE = TS_PREFIX_RE;
+  window.displayName = displayName;
 })();

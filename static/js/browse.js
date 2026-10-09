@@ -1,7 +1,7 @@
 // 读取页逻辑：选目录 → 列文件 → 下载 / 预览
 //（$ / formatSize / formatDay / formatTime 等通用工具来自 ui.js 共享层）
-const IMG_EXTS = ['png','jpg','jpeg','gif','webp','bmp','heic','avif','icns'];
-const VID_EXTS = ['mp4','mov','m4v','webm'];
+// 可预览格式清单来自 ui.js 共享层（上传页用同一份，避免两页对同一格式判断不一致）。
+// icns 不在这两份清单里：它是容器，读取页走服务端 /api/thumb 转 PNG（见下方 renderFile）。
 
 // 图标 SVG（跨平台渲染一致）
 const SVG_FOLDER  = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
@@ -198,20 +198,27 @@ async function openDir(path, page) {
       if (pg > last) { openDir(path, last); return; }
     }
     // 构建可预览文件列表（图片 + 视频），供灯箱左右切换（文件夹不进预览）
-    previewFiles = data.files.filter(f => {
-      if (f.isDir) return false;
+    previewFiles = [];
+    data.files.forEach((f, i) => {
+      if (f.isDir) return;
       const ext = f.name.split('.').pop().toLowerCase();
-      return IMG_EXTS.includes(ext) || VID_EXTS.includes(ext);
-    }).map(f => {
+      if (!isPreviewExt(ext)) return;
       const u = 'api/download?dir=' + encodeURIComponent(path) + '&file=' + encodeURIComponent(f.name);
-      const ext = f.name.split('.').pop().toLowerCase();
       // icns 是容器格式，浏览器不原生显示 → 预览走服务端转 PNG（thumb 接口大图），
       // 下载仍用原文件（downloadUrl），灯箱下载按钮据此取原文件。
+      // svg 的 previewUrl 是占位：真实地址要等取回字节建好 blob 后填（见 hydrateSvgPreviews）。
       const isIcns = ext === 'icns';
-      return { name: f.name, previewUrl: isIcns ? u.replace('api/download', 'api/thumb') + '&w=800' : u + '&inline=1', downloadUrl: u, ext: ext };
+      previewFiles.push({
+        name: f.name,
+        previewUrl: isIcns ? u.replace('api/download', 'api/thumb') + '&w=800' : u + '&inline=1',
+        downloadUrl: u, ext: ext, idx: i, size: f.size || 0
+      });
     });
     canManage = !!data.canDelete;
+    // 上一页为 svg 建的 blob URL 必须回收，否则翻页/换目录会一路累积到内存里
+    revokeSvgBlobs();
     $('filesList').innerHTML = data.files.map(renderFile).join('');
+    hydrateSvgPreviews();   // 不 await：缩略图填充不该挡住列表渲染与分页器
     // 显示批量操作栏，重置选中状态
     $('batchBar').style.display = 'flex';
     $('selectAll').checked = false;
@@ -269,7 +276,14 @@ function buildBreadcrumb() {
   $('breadcrumb').innerHTML = parts.join('');
 }
 
-function renderFile(f) {
+// 是否可预览（图片或视频）。icns 需单独放行：它不在共享清单里，
+// 但读取页有服务端转 PNG 这条路径，所以同样算可预览。
+function isPreviewExt(ext) {
+  return PREVIEW_IMG_EXTS.includes(ext) || PREVIEW_VID_EXTS.includes(ext) || ext === 'icns';
+}
+function isVideoExt(ext) { return PREVIEW_VID_EXTS.includes(ext); }
+
+function renderFile(f, idx) {
   // 文件夹：与文件卡片结构一致（复选框、缩略图、文件名、标签、删除）。
   // 注意：文件夹卡不再提供「打开」按钮（点击缩略图/文件名区即可进入）。
   if (f.isDir) {
@@ -290,20 +304,30 @@ function renderFile(f) {
       </div>`;
   }
   const url = 'api/download?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name);
-  const previewUrl = url + '&inline=1';
   const meta = formatSize(f.size) + ' · ' + formatTime(f.mtime);
   const ext = f.name.split('.').pop().toLowerCase();
-  const isImg = IMG_EXTS.includes(ext);
-  const isVid = VID_EXTS.includes(ext);
+  const isImg = isPreviewExt(ext) && !isVideoExt(ext);
+  const isVid = isVideoExt(ext);
   const previewable = isImg || isVid;
   let thumb;
   if (previewable) {
     if (isImg) {
-      // 缩略图走 /api/thumb（服务端缩放），只拉几百字节的小图，避免整张原图卡顿
-      const thumbUrl = 'api/thumb?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name) + '&w=240';
-      thumb = `<img class="thumb" src="${thumbUrl}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" data-name="${escapeAttr(f.name)}" style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)">`;
+      const nameAttr = `data-name="${escapeAttr(f.name)}"`;
+      if (ext === 'svg') {
+        // svg 不能直接用 /api/thumb：服务端对可携带脚本的类型一律不内联（防存储型 XSS），
+        // 返回的是 application/octet-stream，<img> 拿到也渲染不出来。
+        // 改成取回字节后以 image/svg+xml 建 blob 再交给 <img>（见 hydrateSvgPreviews）：
+        // SVG 经 <img> 渲染时浏览器走「安全静态模式」，不执行脚本、不加载外部引用，
+        // 与上传页「本地 blob + <img>」是同一条安全路径。
+        // 这里先不设 src（等 blob 就绪），先占好位置避免列表抖动。
+        thumb = `<img class="thumb" alt="" decoding="async" ${nameAttr} data-idx="${idx}" data-svg="1" style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)">`;
+      } else {
+        // 缩略图走 /api/thumb（服务端缩放），只拉几百字节的小图，避免整张原图卡顿
+        const thumbUrl = 'api/thumb?dir=' + encodeURIComponent(currentDir) + '&file=' + encodeURIComponent(f.name) + '&w=240';
+        thumb = `<img class="thumb" src="${thumbUrl}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="onThumbError(this)" ${nameAttr} style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)">`;
+      }
     } else {
-      thumb = `<video class="thumb-video" src="${url}" preload="metadata" data-name="${escapeAttr(f.name)}" style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)"></video>`;
+      thumb = `<video class="thumb-video" src="${url}" preload="metadata" onerror="onThumbError(this)" data-name="${escapeAttr(f.name)}" style="cursor:pointer" onclick="event.stopPropagation(); openLightboxFromEl(this)"></video>`;
     }
   } else {
     // 其他文件：与上传页已上传列表一致——居中大号扩展名文字；
@@ -340,6 +364,77 @@ function renderFile(f) {
   `;
 }
 
+// ---- svg 预览（读取页） ----
+//
+// 上传页渲染 svg 很容易：文件就在本地，拿 File 建个 blob / data URL 给 <img> 即可。
+// 读取页不同——文件在服务端，而服务端对 svg 一律按 application/octet-stream +
+// attachment 输出（见 Go 端 fileout.go：svg 可携带脚本，内联即存储型 XSS）。
+// 直接把下载链接塞给 <img> 是渲染不出来的（还带 nosniff，浏览器也不会按内容猜）。
+//
+// 所以这里取回字节、以 image/svg+xml 重新建 blob 再交给 <img>。安全性与上传页一致：
+// SVG 经 <img> 渲染时浏览器走「安全静态模式」——不执行脚本、不加载外部引用。
+// 这条路径不需要改动服务端那条「可携带脚本的类型绝不内联」的规则。
+const SVG_PREVIEW_MAX_BYTES = 8 * 1024 * 1024; // 超过则不预览：svg 是文本，可能有极大的
+let svgBlobURLs = [];
+let svgGen = 0;   // 列表代次：翻页 / 换目录后上一批异步结果作废
+
+function revokeSvgBlobs() {
+  svgGen++;
+  svgBlobURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+  svgBlobURLs = [];
+}
+
+// 扩展名占位块（DOM 版）：与 renderFile 里非可预览文件的展示保持一致
+function extThumbEl(name) {
+  const ph = document.createElement('div');
+  ph.className = 'thumb-other';
+  const ext = extOf(name).toUpperCase().slice(0, 4);
+  if (ext) { ph.classList.add('thumb-ext'); ph.textContent = ext; }
+  else { ph.innerHTML = SVG_FILE; }
+  return ph;
+}
+
+// 缩略图加载失败：浏览器解不了这个格式（如 Chrome 下的 TIFF、不支持的 HEIC）。
+// 回退成扩展名占位块，同时把它从可预览列表里摘掉——否则点开灯箱只会看到一张空白图。
+function onThumbError(el) {
+  const name = el.dataset ? el.dataset.name : '';
+  if (name) previewFiles = previewFiles.filter(p => p.name !== name);
+  el.replaceWith(extThumbEl(name));
+}
+
+// 给列表里所有 svg 缩略图填上真实图像（renderFile 先把 <img> 占位，src 后补）
+async function hydrateSvgPreviews() {
+  const gen = svgGen;
+  const imgs = Array.prototype.slice.call(document.querySelectorAll('#filesList img.thumb[data-svg]'));
+  if (!imgs.length) return;
+  const failed = [];
+  await Promise.all(imgs.map(async img => {
+    const entry = previewFiles.filter(p => String(p.idx) === String(img.dataset.idx))[0];
+    if (!entry) return;
+    const drop = () => { failed.push(entry); if (gen === svgGen) onThumbError(img); };
+    if (entry.size && entry.size > SVG_PREVIEW_MAX_BYTES) { drop(); return; }
+    try {
+      const res = await fetch(entry.downloadUrl);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      // 必须用 slice 显式改写类型：服务端给的是 application/octet-stream，
+      // blob 沿用该类型的话 <img> 不会渲染。slice 只改类型、不复制字节。
+      const u = URL.createObjectURL(blob.slice(0, blob.size, 'image/svg+xml'));
+      if (gen !== svgGen) { URL.revokeObjectURL(u); return; }  // 已经翻页 / 换目录了
+      svgBlobURLs.push(u);
+      entry.previewUrl = u;
+      img.onload = () => img.classList.add('loaded');
+      img.onerror = () => onThumbError(img);
+      img.src = u;
+    } catch (e) {
+      drop();
+    }
+  }));
+  if (failed.length && gen === svgGen) {
+    previewFiles = previewFiles.filter(p => failed.indexOf(p) < 0);
+  }
+}
+
 // ---- 批量下载 ----
 function toggleSelectAll(checked, listId) {
   document.querySelectorAll('#' + listId + ' .file-check').forEach(c => { c.checked = checked; });
@@ -355,13 +450,9 @@ function clearAllChecks(listId, selectId) {
   updateSelectedCount();
 }
 
-// 文件浏览器显示名：本工具普通文件上传时会给磁盘名加时间戳前缀（20060102_150405.000000_，
-// 见 Go 端 resolveUploadTarget）避免重名覆盖。页面显示时去掉该前缀，只显示实际上传时的
-// 文件名；非本工具上传（无此前缀）的文件名原样显示。磁盘真实名不变，下载/删除仍用原名。
-const TS_PREFIX_RE = /^\d{8}_\d{6}\.\d{6}_/;
-function displayName(name) {
-  return TS_PREFIX_RE.test(name) ? name.replace(TS_PREFIX_RE, '') : name;
-}
+// 展示名 displayName() 已上移到 ui.js 共享层（上传页结果卡与删除弹窗要用同一份规则），
+// 这里不再重复定义：卡片、分享弹窗、删除确认一律走 displayName()，与读取页展示一致。
+// 注意 data-name 上挂的仍是磁盘原名——下载 / 删除 / 缩略图请求必须用它。
 
 function updateSelectedCount() {
   // 文件页：只统计文件列表内的勾选；批量删除仅统计勾选中可删的项
@@ -596,7 +687,8 @@ function shareKeyHandler(e) {
 async function onDelete(btn) {
   const name = btn.dataset.name;
   if (btn.classList.contains('loading')) return;
-  const ok = await confirmDialog({ title: '删除文件', desc: '确定删除「' + name + '」？此操作不可恢复。', confirmText: '删除', cancelText: '取消', destructive: true });
+  // 弹窗里显示展示名（去掉时间戳前缀），与卡片上的名字一致；删除请求仍用磁盘原名 name
+  const ok = await confirmDialog({ title: '删除文件', desc: '确定删除「' + displayName(name) + '」？此操作不可恢复。', confirmText: '删除', cancelText: '取消', destructive: true });
   if (!ok) return;
   btn.classList.add('loading');
   const old = btn.textContent;
@@ -715,7 +807,7 @@ function preloadNeighbors() {
   if (previewFiles.length < 2) return;
   [lbIndex - 1, lbIndex + 1].forEach(i => {
     const p = previewFiles[(i + previewFiles.length) % previewFiles.length];
-    if (p && !VID_EXTS.includes(p.ext)) {
+    if (p && !isVideoExt(p.ext)) {
       const im = new Image();
       im.src = p.previewUrl;
     }
@@ -726,7 +818,7 @@ function preloadNeighbors() {
 // 前后都是图片且带方向时走「平移切换」（旧图滑出 + 新图滑入），其余场景保持淡入。
 function showLbImage(dir) {
   const f = previewFiles[lbIndex];
-  const isVid = VID_EXTS.includes(f.ext);
+  const isVid = isVideoExt(f.ext);
   const lbImg = $('lbImg');
   const lbVideo = $('lbVideo');
   const wasImgShown = lbImg.style.display !== 'none' && !!lbImg.getAttribute('src');
@@ -858,7 +950,8 @@ async function lbDelete() {
   if (lbIndex < 0 || lbIndex >= previewFiles.length) return;
   const f = previewFiles[lbIndex];
   if (!f) return;
-  const ok = await confirmDialog({ title: '删除文件', desc: '确定删除「' + f.name + '」？此操作不可恢复。', confirmText: '删除', cancelText: '取消', destructive: true });
+  // 同卡片删除：弹窗展示名，请求用磁盘原名
+  const ok = await confirmDialog({ title: '删除文件', desc: '确定删除「' + displayName(f.name) + '」？此操作不可恢复。', confirmText: '删除', cancelText: '取消', destructive: true });
   if (!ok) return;
   // 删除前记录继续预览的目标（优先下一张，其次上一张）：重拉后按名字定位
   const nextName = (previewFiles[lbIndex + 1] || previewFiles[lbIndex - 1] || {}).name || null;

@@ -76,6 +76,35 @@ func TestFileOutputNeverInlinesScriptable(t *testing.T) {
 	}
 }
 
+// TestInlineImageExtsHaveUsableMIME 固化一条不变量：凡被 isInlineImageExt 放行的
+// 图片扩展名，都必须能真正拿到 image/* 的 Content-Type。
+//
+// 为什么值得单测：Go 的 mime 表（以及多数 Linux 的 /etc/mime.types）里没有 .heic /
+// .heif，查出来是空串 → 白名单放行了却仍按 application/octet-stream 输出，而响应带
+// X-Content-Type-Options: nosniff，浏览器不会按内容猜类型，于是缩略图一片空白——
+// 前端明明把该格式列进了可预览清单，用户只看到空白框，且从日志上完全看不出来。
+func TestInlineImageExtsHaveUsableMIME(t *testing.T) {
+	for _, ext := range []string{
+		".jpg", ".jpeg", ".jfif", ".png", ".gif", ".webp", ".bmp", ".ico",
+		".heic", ".heif", ".avif", ".tif", ".tiff",
+	} {
+		if !isInlineImageExt(ext) {
+			t.Fatalf("%s 不在 isInlineImageExt 白名单里，本用例的清单需要同步", ext)
+		}
+		ct := inlineContentType(ext, outputInlineImage)
+		if !strings.HasPrefix(ct, "image/") {
+			t.Errorf("%s 放行却拿不到 image/* 的 Content-Type（实际 %q）→ 缩略图会被 nosniff 拦成空白", ext, ct)
+		}
+	}
+	// 反向：可携带脚本的类型仍必须被挡住（svg 的渲染由前端取字节建 blob，
+	// 见 static/js/browse.js 的 hydrateSvgPreviews，服务端不参与内联）。
+	for _, ext := range []string{".svg", ".svgz", ".html", ".xml"} {
+		if ct := inlineContentType(ext, outputInlineImage); ct != "" {
+			t.Errorf("%s 竟被允许内联为 %q（存储型 XSS 回归）", ext, ct)
+		}
+	}
+}
+
 // TestThumbServingUploadedHTMLIsAttachment 是 P1 的端到端回归：
 // 上传一个 .html，再经缩略图接口取回，必须是附件下载而不是 text/html。
 func TestThumbServingUploadedHTMLIsAttachment(t *testing.T) {

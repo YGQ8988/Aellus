@@ -23,6 +23,136 @@ function formatSpeed(bps) {
 }
 // 注：formatSize / formatTime 已统一到 ui.js 共享层（与读取页同一实现）
 
+// === icns 预览：上传前在本地解析容器 ===
+//
+// icns 是 Apple 的图标容器，浏览器**无法直接显示**（即便 Chrome 把它标成 image/icns，
+// 塞进 <img> 也是空白）。读取页的做法是走服务端 /api/thumb（后端 internal/app/icns.go
+// 解析容器转 PNG），但上传页此刻文件还没上传、够不到服务端，只能在前端自己解析。
+//
+// 容器结构：8 字节头（"icns" + 大端总长）+ 若干块，每块 = 4 字节类型 + 4 字节长度
+// （大端，含这 8 字节头）+ 数据。现代 icns 内嵌 PNG/JPEG，
+// 老格式（ic04 / ic05 等 JP2、ARGB 原始像素）浏览器解不了，直接跳过。
+
+// 内嵌图像的块类型，与后端 isIcnsImageChunk() 保持同一份清单。
+const ICNS_IMAGE_TYPES = [
+  'icp4', 'icp5', 'icp6', 'icp7', 'icp8', 'icp9', 'icpA',
+  'ic07', 'ic08', 'ic09', 'ic10', 'ic11', 'ic12', 'ic13', 'ic14'
+];
+const ICNS_MAX_SIZE = 20 * 1024 * 1024; // 与后端 icnsMaxSize 一致：畸形文件不至于吃满内存
+const ICNS_MAX_CHUNKS = 4096;           // 同理，防止伪造的块数量让循环空转
+// 缩略图只有 48px（Retina 下 96px 物理像素），取短边 ≥128 的最小一块即可，
+// 不必去解 1024px 那块（白费解码时间，且 iOS Safari 上大图解码容易失败）。
+const ICNS_WANT_SIDE = 128;
+
+// 按扩展名判断而非 MIME：各浏览器给 .icns 的 type 并不一致
+// （Chrome 是 image/icns，Safari 可能是空串或 application/octet-stream），扩展名才可靠。
+function isIcnsFile(file) {
+  return /\.icns$/i.test((file && file.name) || '');
+}
+
+function readArrayBuffer(file) {
+  // 用 FileReader 而不是 file.arrayBuffer()：后者 iOS 13 及更早不支持，
+  // 而这个页面主要在手机浏览器上用。
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsArrayBuffer(file);
+  });
+}
+
+// pngSide 返回该块的短边像素数；不是 PNG（或长度不足）返回 0。
+// PNG 布局：8B 签名 + 4B 长度 + "IHDR" + 4B 宽 + 4B 高。
+function pngSide(bytes) {
+  if (bytes.length < 24) return 0;
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // 偏移：0=签名，8=IHDR 块长度(13)，12="IHDR"，16=宽，20=高
+  if (dv.getUint32(0) !== 0x89504e47 || dv.getUint32(12) !== 0x49484452) return 0;
+  return Math.min(dv.getUint32(16), dv.getUint32(20));
+}
+
+function isJpegBytes(bytes) {
+  return bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+}
+
+// icnsThumbURL 解析 icns 文件并返回可直接给 <img src> 的 blob URL。
+// 解析失败、或容器里没有能解码的图像块时返回 null —— 调用方应回退成扩展名占位图标。
+async function icnsThumbURL(file) {
+  if (!file || file.size > ICNS_MAX_SIZE || file.size < 16) return null;
+
+  let buf;
+  try {
+    buf = new Uint8Array(await readArrayBuffer(file));
+  } catch (e) {
+    return null; // 读取失败（权限/文件被移走）：不阻断上传，只放弃预览
+  }
+  if (buf.length < 16) return null;
+  if (String.fromCharCode(buf[0], buf[1], buf[2], buf[3]) !== 'icns') return null;
+
+  let best = null;      // 够用（短边 ≥ 目标）里最小的一块
+  let bestSide = Infinity;
+  let fallback = null;  // 都不够目标时的兜底：最大的一块
+  let fallbackSide = 0;
+
+  let off = 8; // 跳过 magic + 总长度
+  for (let n = 0; off + 8 <= buf.length && n < ICNS_MAX_CHUNKS; n++) {
+    // 长度字段是大端 uint32；用 DataView 读，避免手写位移在极端值下出错
+    const size = new DataView(buf.buffer, buf.byteOffset + off + 4, 4).getUint32(0);
+    if (size < 8 || off + size > buf.length) break; // 长度非法或文件被截断：停止，用已找到的
+    const typ = String.fromCharCode(buf[off], buf[off + 1], buf[off + 2], buf[off + 3]);
+    if (ICNS_IMAGE_TYPES.indexOf(typ) >= 0) {
+      const body = buf.subarray(off + 8, off + size);
+      const side = pngSide(body);
+      if (side > 0) {
+        if (side >= ICNS_WANT_SIDE && side < bestSide) { best = body; bestSide = side; }
+        if (side > fallbackSide) { fallback = body; fallbackSide = side; }
+      } else if (isJpegBytes(body) && !fallback) {
+        fallback = body; // JPEG 读不出尺寸，仅在没有 PNG 块时兜底
+      }
+    }
+    off += size;
+  }
+
+  const pick = best || fallback;
+  if (!pick) return null;
+  // slice() 复制一份：Blob 若直接持有整个文件的 buffer，会白占一份内存
+  return URL.createObjectURL(new Blob([pick.slice()], {
+    type: pngSide(pick) > 0 ? 'image/png' : 'image/jpeg'
+  }));
+}
+
+// 生成本地预览用的 object URL。
+// 显式补 MIME 的原因：部分系统 / 浏览器给不出 File.type（如 Windows 上的 .heic、
+// 某些客户端里的 .mkv），空类型的 blob 浏览器不会渲染。这与读取页共用一份
+// EXT_MIME（见 ui.js），两边对同一格式的判定才一致。
+function previewURL(f) {
+  const want = f.type || EXT_MIME[extOf(f.name)] || '';
+  const src = (want && want !== f.type) ? new Blob([f], { type: want }) : f;
+  return URL.createObjectURL(src);
+}
+
+// 给预览元素挂上「加载失败 → 回退扩展名占位块」：浏览器解不了的格式
+// （如 Chrome 下的 TIFF、不支持的 HEIC / MKV）不留一个空白框。
+function withThumbFallback(el, url, name) {
+  el.onerror = () => { el.replaceWith(makeExtThumb(name)); URL.revokeObjectURL(url); };
+  return el;
+}
+
+// makeExtThumb 生成「扩展名占位块」（非图片/视频，或 icns 解析失败时的兜底）。
+function makeExtThumb(name) {
+  const ph = document.createElement('div');
+  ph.className = 'thumb-other';
+  // 取文件后缀名（大写）作为图标；无后缀名时才回退到通用文件 SVG 图标
+  const ext = (name.indexOf('.') >= 0) ? name.split('.').pop().toUpperCase() : '';
+  if (ext) {
+    ph.classList.add('thumb-ext');
+    ph.textContent = ext.slice(0, 4);
+  } else {
+    ph.innerHTML = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
+  }
+  return ph;
+}
+
 function getFiles(input) {
   if (!input.files.length) return;
   $('device').value = $('device').value.trim();
@@ -182,32 +312,40 @@ function upload(files, inputEl) {
     main.className = 'file-main';
 
     // 左侧缩略图 / 文件图标
-    if (f.type.startsWith('image/')) {
+    // icns 单独走一条分支：它虽被判为 image/*，浏览器却渲染不出来，需先解析容器取内嵌图像
+    if (isIcnsFile(f)) {
       const img = document.createElement('img');
       img.className = 'thumb';
       img.alt = '预览';
-      const reader = new FileReader();
-      reader.onload = () => { img.src = reader.result; img.classList.add('loaded'); };
-      reader.readAsDataURL(f);
       main.appendChild(img);
-    } else if (f.type.startsWith('video/')) {
+      icnsThumbURL(f).then(url => {
+        // 解析不出来（老格式 JP2/ARGB 容器）：退回扩展名占位块，不要留一个空白的 img
+        if (!url) { img.replaceWith(makeExtThumb(f.name)); return; }
+        img.onload = () => { img.classList.add('loaded'); URL.revokeObjectURL(url); };
+        img.onerror = () => { img.replaceWith(makeExtThumb(f.name)); URL.revokeObjectURL(url); };
+        img.src = url;
+      });
+    } else if (isPreviewImage(f)) {
+      const img = document.createElement('img');
+      img.className = 'thumb';
+      img.alt = '预览';
+      // 用 object URL 而不是 FileReader 的 data URL：后者会把整张图转 base64，
+      // 体积再涨 1/3，大图在手机上很吃内存。
+      const url = previewURL(f);
+      img.onload = () => { img.classList.add('loaded'); URL.revokeObjectURL(url); };
+      withThumbFallback(img, url, f.name);
+      img.src = url;
+      main.appendChild(img);
+    } else if (isPreviewVideo(f)) {
       const v = document.createElement('video');
       v.className = 'thumb-video';
       v.muted = true; v.preload = 'metadata';
-      v.src = URL.createObjectURL(f);
+      // 视频不 revoke：src 还要继续用（播放），交由页面卸载时统一回收
+      v.src = previewURL(f);
+      withThumbFallback(v, v.src, f.name);
       main.appendChild(v);
     } else {
-      const ph = document.createElement('div');
-      ph.className = 'thumb-other';
-      // 取文件后缀名（大写）作为图标；无后缀名时才回退到通用文件 SVG 图标
-      const ext = (f.name.indexOf('.') >= 0) ? f.name.split('.').pop().toUpperCase() : '';
-      if (ext) {
-        ph.classList.add('thumb-ext');
-        ph.textContent = ext.slice(0, 4);
-      } else {
-        ph.innerHTML = '<svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>';
-      }
-      main.appendChild(ph);
+      main.appendChild(makeExtThumb(f.name));
     }
 
     const metaCol = document.createElement('div');
@@ -341,20 +479,41 @@ function showResult(res, files) {
     const card = document.createElement('div');
     card.className = 'up-card';
 
+    // 显示名走 ui.js 的 displayName()：普通文件落盘时会被服务端加上时间戳前缀
+    //（20060102_150405.000000_，见 Go 端 resolveUploadTarget 防重名覆盖），这里去掉，
+    // 与读取页卡片显示的名字完全一致。f.name（磁盘原名）不再直接展示。
+    const shownName = displayName(f.name);
     const nameEl = document.createElement('div');
     nameEl.className = 'up-name';
-    nameEl.title = f.name;
-    nameEl.textContent = f.name;
+    nameEl.title = shownName;
+    nameEl.textContent = shownName;
 
     const thumb = document.createElement('div');
     thumb.className = 'up-thumb';
-    if (files[i] && files[i].type.startsWith('image/')) {
+    if (files[i] && isIcnsFile(files[i])) {
       const img = document.createElement('img');
       img.alt = '预览';
-      const reader = new FileReader();
-      reader.onload = () => { img.src = reader.result; };
-      reader.readAsDataURL(files[i]);
       thumb.appendChild(img);
+      icnsThumbURL(files[i]).then(url => {
+        if (!url) { img.replaceWith(makeExtThumb(f.name)); return; }
+        img.onload = () => URL.revokeObjectURL(url);
+        img.onerror = () => { img.replaceWith(makeExtThumb(f.name)); URL.revokeObjectURL(url); };
+        img.src = url;
+      });
+    } else if (files[i] && isPreviewImage(files[i])) {
+      const img = document.createElement('img');
+      img.alt = '预览';
+      const url = previewURL(files[i]);
+      withThumbFallback(img, url, f.name);
+      img.src = url;
+      thumb.appendChild(img);
+    } else if (files[i] && isPreviewVideo(files[i])) {
+      const v = document.createElement('video');
+      v.className = 'thumb-video';
+      v.muted = true; v.preload = 'metadata';
+      v.src = previewURL(files[i]);
+      withThumbFallback(v, v.src, f.name);
+      thumb.appendChild(v);
     } else {
       const ph = document.createElement('div');
       ph.className = 'up-thumb-ph';

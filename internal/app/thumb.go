@@ -30,7 +30,7 @@ func isDecodeableImage(ext string) bool {
 // HTML/SVG/XML 等可携带脚本的类型不在此列，防止存储型 XSS。纯函数。
 func isInlineSafe(ext string) bool {
 	switch ext {
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".ico", ".avif", ".heic",
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".ico", ".avif", ".heic", ".heif",
 		".mp4", ".webm", ".mov", ".avi", ".mkv", ".m4v",
 		".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a",
 		".pdf":
