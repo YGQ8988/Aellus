@@ -1,12 +1,18 @@
 #!/bin/bash
-# Aellus OpenWrt 24.10 ipk 构建脚本（在项目根目录运行）
+# Aellus OpenWrt 构建脚本（在项目根目录运行）
 #
-# 产出：dist/Aellus-<version>-openwrt-<arch>.ipk，用 opkg install 装到路由器。
+# 产出：
+#   - dist/Aellus-<version>-openwrt-<arch>.ipk   OpenWrt 24.10（opkg）
+#   - dist/Aellus-<version>-openwrt-<arch>.apk   OpenWrt 25.12+（apk）
 #
 # 说明：
 #   - 架构目前支持 x86_64 / arm64（aarch64_cortex-a53、aarch64_generic）/
 #     MIPS（mips_24kc 大端、mipsel_24kc 小端）。要加架构，往下面 TARGETS 里加一行即可。
-#   - 24.10 系列的包管理器是 OPKG（APK 是 main / 25.x 才切的包格式），故只产 ipk。
+#   - 产哪种包由 AELLUS_PKGFMT 决定：ipk（只要 24.10）/ apk（只要 25.12+）/
+#     both（默认，两种都产）。例：AELLUS_PKGFMT=apk bash build-openwrt.sh
+#   - 为什么要两套：25.12 把包管理器从 opkg 换成了 apk（Alpine Package Keeper），
+#     只认 .apk、不再认 .ipk；而 24.10 只认 .ipk。两者包格式完全不同（见下文），
+#     但包内容、维护脚本的意图一致（分别放在 control/ 与 apk/ 两个目录）。
 #   - 构建脚本与其它构建脚本共用 .build/ 中间目录（各自结束时会清理），
 #     因此 build-all.sh / build-mac.sh / build-fnos.sh / 本脚本必须串行执行。
 #   - 小版本号自动递增：ipk 的 Version 是 <主版本>-r<N>，每构建一次 N + 1（如这次 1.0.5-r1，
@@ -15,6 +21,12 @@
 #   - ipk 格式按 OpenWrt 官方约定：debian-binary + control.tar.gz + data.tar.gz 打包成一个 tar.gz。
 #     postinst / prerm 用的是 buildroot 的默认实现（default_postinst / default_prerm），
 #     安装时自动 enable + start，卸载时 disable + stop。
+#   - apk 格式按 apk-tools v2：控制段（.PKGINFO + 生命周期脚本，tar 段、无结尾空块）
+#     与数据段各一个 gzip 流，首尾相接即成包。官方是用宿主的 `apk mkpkg` 打的，
+#     本项目不拉 SDK，改由 tools/mkapk.py 手工打包（格式细节写在那个文件的头部注释里）。
+#     两处与官方对齐的关键点：包内自带 /lib/apk/packages/aellus.list（default_postinst
+#     靠它找 uci-defaults 与 init.d 脚本），以及脚本里 export pkgname 后再调
+#     default_postinst（apk 的脚本文件名解不出包名）。
 #   - 包内已包含 LuCI 页面（服务 → Aellus局域网传输），装完即可在网页里配置。
 #   - 归档格式固定为 ustar（不是 macOS bsdtar 默认的 POSIX pax，也不是 gnu）：
 #     opkg 的解包器不认 pax 扩展头（typeflag 0x78），pax 格式的包装不上，会刷一屏
@@ -82,7 +94,24 @@ else
 fi
 
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
-echo "构建版本：${VERSION}（ipk Version: ${VERSION}-r${RELEASE}，上一次是 ${MK_VERSION:-未记录}-r${MK_RELEASE:-0}）"
+echo "构建版本：${VERSION}（-r${RELEASE}，上一次是 ${MK_VERSION:-未记录}-r${MK_RELEASE:-0}）"
+
+# —— 产哪种包 ——
+# ipk = 24.10（opkg）；apk = 25.12+（apk）；both = 两种都产（默认）
+AELLUS_PKGFMT="${AELLUS_PKGFMT:-both}"
+case "$AELLUS_PKGFMT" in
+  ipk)  DO_IPK=1; DO_APK=0 ;;
+  apk)  DO_IPK=0; DO_APK=1 ;;
+  both) DO_IPK=1; DO_APK=1 ;;
+  *) echo "[错误] AELLUS_PKGFMT 只能是 ipk / apk / both（当前：${AELLUS_PKGFMT}）"; exit 1 ;;
+esac
+echo "包格式：${AELLUS_PKGFMT}"
+if [ "$DO_APK" = "1" ]; then
+  command -v python3 >/dev/null 2>&1 || { echo "[错误] 打 apk 需要 python3（tools/mkapk.py）"; exit 1; }
+  for s in post-install post-upgrade pre-upgrade pre-deinstall post-deinstall; do
+    [ -f "$PKG_DIR/apk/$s" ] || { echo "[错误] 缺少 apk 生命周期脚本 $PKG_DIR/apk/$s"; exit 1; }
+  done
+fi
 
 # 目标表：ipk 架构名 | GOARCH | 额外 Go 环境变量
 # 加架构时在这里加一行即可，例如：
@@ -174,8 +203,11 @@ done <<EOF
 ${TARGETS}
 EOF
 
-# —— 3) 打包成 ipk ——
-echo ">> [3/5] 打包 ipk"
+# —— 3) 打包：ipk 给 24.10，apk 给 25.12+ ——
+echo ">> [3/5] 打包 ${AELLUS_PKGFMT}"
+
+# ============ 3a) ipk（24.10 / opkg） ============
+if [ "$DO_IPK" = "1" ]; then
 # —— 打包格式：必须是 ustar ——
 # opkg 自带的解包器（libbb get_header_tar）不认 POSIX pax 扩展头（typeflag 0x78），
 # 而 macOS 的 bsdtar 默认就是 pax 格式，打出来的包装不上，会刷一大串：
@@ -211,22 +243,62 @@ while IFS='|' read -r arch goarch govars; do
   echo "2.0" > "${STAGE}/debian-binary"
   ( cd "$STAGE" && tar ${TAR_FMT} --numeric-owner --owner=0 --group=0 -cf - ./debian-binary ./control.tar.gz ./data.tar.gz ) | gzip -n -9 > "$OUT"
   echo "   ${OUT}"
-  # 本架构用完即清理：整个 .build 累积起来上百个文件，留到最后一次性删的话，
-  # 在开了「批量删除确认」的终端里会被拦下，还会连带把构建判成失败。
+  # 本架构用完即清理（还要打 apk 的话留给 apk 那一步）：整个 .build 累积起来上百个
+  # 文件，留到最后一次性删的话，在开了「批量删除确认」的终端里会被拦下，
+  # 还会连带把构建判成失败。
+  [ "$DO_APK" = "1" ] || rm -rf "$STAGE" || true
+done <<EOF
+${TARGETS}
+EOF
+fi
+
+# ============ 3b) apk（25.12+ / apk-tools） ============
+# 包由 tools/mkapk.py 生成（apk v2：控制段 + 数据段两个 gzip 流）。
+# 字段与官方 `apk mkpkg` 的 --info 一一对应；生命周期脚本按事件名逐个传入。
+if [ "$DO_APK" = "1" ]; then
+while IFS='|' read -r arch goarch govars; do
+  [ -z "$arch" ] && continue
+  case "$arch" in \#*) continue ;; esac
+  STAGE="${BUILD_TMP}/${arch}"
+  OUT="dist/Aellus-${VERSION}-openwrt-${arch}.apk"
+  python3 tools/mkapk.py \
+    --root "${STAGE}/root" \
+    --out "$OUT" \
+    --info "name=aellus" \
+    --info "version=${VERSION}-r${RELEASE}" \
+    --info "arch=${arch}" \
+    --info "description=LAN file transfer between phone and PC" \
+    --info "url=https://github.com/YGQ8988/Aellus" \
+    --info "license=MIT" \
+    --info "origin=aellus" \
+    --info "maintainer=Aellus <https://github.com/YGQ8988/Aellus>" \
+    --script "post-install=${PKG_DIR}/apk/post-install" \
+    --script "post-upgrade=${PKG_DIR}/apk/post-upgrade" \
+    --script "pre-upgrade=${PKG_DIR}/apk/pre-upgrade" \
+    --script "pre-deinstall=${PKG_DIR}/apk/pre-deinstall" \
+    --script "post-deinstall=${PKG_DIR}/apk/post-deinstall" \
+    || { echo "[错误] apk 打包失败：${arch}"; exit 1; }
   rm -rf "$STAGE" || true
 done <<EOF
 ${TARGETS}
 EOF
+fi
 
-# —— 4) 体检：确认归档里没有 opkg 解不了的成员 ——
+# —— 4) 体检 ——
 # 换了打包工具/换了构建机，这一步能在发布前把问题拦下来，而不是让用户装上才发现。
-echo ">> [4/5] 校验 ipk 可被 opkg 解包"
-if command -v python3 >/dev/null 2>&1; then
-  python3 tools/ipk_check.py dist/Aellus-${VERSION}-openwrt-*.ipk || {
-    echo "[错误] ipk 校验未通过，已中止（产物不可用）"; exit 1; }
-else
-  echo "   [警告] 未找到 python3，跳过 ipk 校验。建议手动确认："
-  echo "           tar -tzvf <file>.ipk | grep -c PaxHeader   # 必须为 0"
+echo ">> [4/5] 校验产物可被包管理器解包"
+if [ "$DO_IPK" = "1" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    python3 tools/ipk_check.py dist/Aellus-${VERSION}-openwrt-*.ipk || {
+      echo "[错误] ipk 校验未通过，已中止（产物不可用）"; exit 1; }
+  else
+    echo "   [警告] 未找到 python3，跳过 ipk 校验。建议手动确认："
+    echo "           tar -tzvf <file>.ipk | grep -c PaxHeader   # 必须为 0"
+  fi
+fi
+if [ "$DO_APK" = "1" ]; then
+  python3 tools/apk_check.py dist/Aellus-${VERSION}-openwrt-*.apk || {
+    echo "[错误] apk 校验未通过，已中止（产物不可用）"; exit 1; }
 fi
 
 # —— 5) 回写小版本号 ——
@@ -252,11 +324,18 @@ echo "完成：${VERSION}-r${RELEASE}"
 # sha256 工具：Linux 是 sha256sum，macOS 是 shasum
 SHA_CMD="sha256sum"
 command -v sha256sum >/dev/null 2>&1 || SHA_CMD="shasum -a 256"
-for f in dist/Aellus-${VERSION}-openwrt-*.ipk; do
+for f in dist/Aellus-${VERSION}-openwrt-*.ipk dist/Aellus-${VERSION}-openwrt-*.apk; do
   [ -f "$f" ] || continue
   printf "  %-52s %8s  %s\n" "$f" "$(du -h "$f" | awk '{print $1}')" "$(${SHA_CMD} "$f" 2>/dev/null | awk '{print $1}' | cut -c1-16)…"
 done
 echo ""
-echo "安装：把 ipk 传到路由器后执行"
-echo "  opkg install Aellus-${VERSION}-openwrt-<arch>.ipk"
+echo "安装：把包传到路由器后执行（按系统版本二选一）"
+if [ "$DO_APK" = "1" ]; then
+  echo "  OpenWrt 25.12+：apk add --allow-untrusted Aellus-${VERSION}-openwrt-<arch>.apk"
+  echo "      # 自签的包不在官方信任密钥里，必须带 --allow-untrusted"
+fi
+if [ "$DO_IPK" = "1" ]; then
+  echo "  OpenWrt 24.10 ：opkg install Aellus-${VERSION}-openwrt-<arch>.ipk"
+fi
 echo "  # 装完自动开机自启并启动；配置在 LuCI：服务 → Aellus局域网传输"
+echo "  # 从 24.10 sysupgrade 到 25.12 后，opkg 装的包不会被自动迁移，需重新用 apk 安装"

@@ -1,0 +1,26 @@
+#!/bin/sh
+# Aellus —— apk 卸载后脚本（OpenWrt 25.12+ 的 post-deinstall 事件）
+#
+# 清理 uci-defaults 加的防火墙规则；保留 /etc/config/aellus 与保存目录
+#（用户数据与配置不删，重装后继续可用）。buildroot 没有默认 post-deinstall，
+# 与 ipk 的 control/postrm 是同一份逻辑。
+
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "${IPKG_INSTROOT}/lib/functions.sh"
+
+# 离线根目录（打包固件）场景不操作系统防火墙
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+
+# 只有真正卸载时才清规则：走到这一步文件已经被 apk 删掉了。
+# 若 /etc/init.d/aellus 还在，说明只是升级 / 卸载被中断，别把端口规则删了。
+[ -x /etc/init.d/aellus ] && exit 0
+
+if uci -q get firewall.aellus >/dev/null; then
+	uci -q delete firewall.aellus
+	uci -q commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+fi
+
+rm -f /tmp/luci-indexcache /tmp/luci-modulecache
+
+exit 0

@@ -90,11 +90,19 @@ Aellus 已启动 (Go 单文件版)
 
 ### OpenWrt（路由器）
 
-OpenWrt 24.10 上以 procd 服务运行，装完自动开机自启并启动，配置页在 LuCI **服务 → Aellus局域网传输**：启用服务 / 服务端口号 / 文件储存目录，保存并应用后按配置启动或停止。页面顶部还显示**服务状态**（运行中绿色、未运行红色）与**访问地址**（点击在新标签页打开）。
+OpenWrt 24.10 / 25.12 上以 procd 服务运行，装完自动开机自启并启动，配置页在 LuCI **服务 → Aellus局域网传输**：启用服务 / 服务端口号 / 文件储存目录，保存并应用后按配置启动或停止。页面顶部还显示**服务状态**（运行中绿色、未运行红色）与**访问地址**（点击在新标签页打开）。
+
+**先按系统版本选包**：25.12 把包管理器从 opkg 换成了 **apk**（Alpine Package Keeper），只认 `.apk`；24.10 只认 `.ipk`。两者的包内容完全一致，`build-openwrt.sh` 默认两种都产。
 
 ```bash
-# 传到路由器后安装（按 CPU 选对应架构的包）
-opkg install Aellus-<version>-openwrt-x86_64.ipk            # x86_64 软路由
+# OpenWrt 25.12+（apk）—— 自签的包不在官方信任密钥里，必须带 --allow-untrusted
+apk add --allow-untrusted Aellus-<version>-openwrt-x86_64.apk             # x86_64 软路由
+apk add --allow-untrusted Aellus-<version>-openwrt-aarch64_cortex-a53.apk # arm64 路由器
+apk add --allow-untrusted Aellus-<version>-openwrt-mipsel_24kc.apk        # MT7621 等小端 MIPS
+apk add --allow-untrusted Aellus-<version>-openwrt-mips_24kc.apk          # 大端 MIPS
+
+# OpenWrt 24.10（opkg）
+opkg install Aellus-<version>-openwrt-x86_64.ipk             # x86_64 软路由
 opkg install Aellus-<version>-openwrt-aarch64_cortex-a53.ipk # arm64 路由器
 opkg install Aellus-<version>-openwrt-mipsel_24kc.ipk        # MT7621 等小端 MIPS
 opkg install Aellus-<version>-openwrt-mips_24kc.ipk          # 大端 MIPS
@@ -104,9 +112,11 @@ logread -e aellus                            # 查看日志
 uci set aellus.main.port=5115 && uci commit aellus && /etc/init.d/aellus restart
 ```
 
+> 从 24.10 **sysupgrade 到 25.12 后，opkg 装的包不会被自动迁移成 apk**，需要用上面的 `apk add` 重新安装一次（配置 `uci` 与已上传的文件都在，不会丢）。24.10 系列已于 2026 年 9 月停止安全更新，建议升到 25.12。
+
 > ⚠️ **保存目录请指向外挂硬盘 / U 盘**（如 `/mnt/sda1/aellus`）。不要指向 `/root`、`/overlay` 等闪存路径：路由器闪存只有百来 MB 且写入寿命有限。留空时自动探测 `/mnt`、`/media` 下第一个容量 ≥64MB 的可写挂载点。
 >
-> 24.10 系列的包管理器是 **OPKG**（APK 是 main / 25.x 才切的包格式），故只提供 `.ipk`。
+> 25.12 用 **apk**、24.10 用 **opkg**，两种包都提供（见上）。
 >
 >
 > **装完 LuCI「服务」菜单里看不到「Aellus局域网传输」？** 这是 rpcd 的 ACL 机制导致的，不是安装失败：访问组是在**登录那一刻**才从 `/usr/share/rpcd/acl.d` 计算的，安装前就已存在的 LuCI 会话拿不到 `luci-app-aellus` 组，LuCI 会把菜单项判为隐藏。**刷新页面无效**，请：
@@ -126,14 +136,16 @@ uci set aellus.main.port=5115 && uci commit aellus && /etc/init.d/aellus restart
 | macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x64 独立打成 zip，已签名 |
 | 全平台 | `build-all.sh` | 任意平台 | macOS / Linux 裸二进制 + Windows `Aellus.exe`（打成 zip） |
 | 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
-| OpenWrt `.ipk` | `build-openwrt.sh` | 任意平台（交叉编译） | x86_64 / arm64 / MIPS（大端 + 小端），含 LuCI 配置页 |
+| OpenWrt `.ipk` / `.apk` | `build-openwrt.sh` | 任意平台（交叉编译） | x86_64 / arm64 / MIPS（大端 + 小端），含 LuCI 配置页 |
 
 ```bash
 bash build-mac.sh     # dist/Aellus-<version>-mac-{arm64,x64}.zip      （内含 Aellus.app）
 bash build-all.sh     # dist/Aellus-<version>-darwin-{arm64,x64}、-linux-{x64,arm64,x86}（裸二进制）
                       # dist/Aellus-<version>-windows-{x64,arm64,x86}.zip（内含 Aellus.exe）
 bash build-fnos.sh    # dist/Aellus-<version>-fnos-{x64,arm64}.fpk    （直接可安装）
-bash build-openwrt.sh # dist/Aellus-<version>-openwrt-<arch>.ipk      （opkg 安装）
+bash build-openwrt.sh # dist/Aellus-<version>-openwrt-<arch>.ipk      （24.10，opkg 安装）
+                      # dist/Aellus-<version>-openwrt-<arch>.apk      （25.12+，apk 安装）
+                      # 只要一种：AELLUS_PKGFMT=ipk|apk bash build-openwrt.sh
 ```
 
 > 命名风格统一：**文件名带版本与架构**；macOS `.app` 与 Windows `Aellus.exe` 打成 zip（解压即用），飞牛 `.fpk` 与 macOS / Linux 裸二进制不套压缩包（直接使用）。
@@ -142,12 +154,24 @@ bash build-openwrt.sh # dist/Aellus-<version>-openwrt-<arch>.ipk      （opkg �
 >
 > 四个脚本的产物都输出到 `dist/`，并共用 `.build/` 中间目录，**不能并行执行**（结束时会各自清理），需串行运行。
 >
-> `build-openwrt.sh` 按 OpenWrt 官方包格式直接产出 ipk（`debian-binary` + `control.tar.gz` + `data.tar.gz`），不需要 SDK；**每构建一次小版本号自动 +1**（ipk 的 Version 是 `<主版本>-r<N>`，N 记在 `openwrt/aellus/Makefile` 的 `PKG_RELEASE`，主版本变化时自动重置为 1；手动指定：`bash build-openwrt.sh <version> <release>` 或 `AELLUS_RELEASE=<n> bash build-openwrt.sh`）；macOS 上已设置 `COPYFILE_DISABLE=1`，避免 bsdtar 往包里塞 `._*` AppleDouble 文件。要新增架构，在脚本里的 `TARGETS` 表加一行即可。包内 `postinst` / `prerm` 用的是 buildroot 官方默认实现（`default_postinst` / `default_prerm`），安装时自动 enable + start、卸载时 disable + stop。
+> `build-openwrt.sh` 按 OpenWrt 官方包格式直接打包，**不需要 SDK**；默认同时产出 `.ipk`（24.10）与 `.apk`（25.12+），用 `AELLUS_PKGFMT=ipk|apk` 只要一种。**每构建一次小版本号自动 +1**（Version 是 `<主版本>-r<N>`，N 记在 `openwrt/aellus/Makefile` 的 `PKG_RELEASE`，主版本变化时自动重置为 1；手动指定：`bash build-openwrt.sh <version> <release>` 或 `AELLUS_RELEASE=<n> bash build-openwrt.sh`）；macOS 上已设置 `COPYFILE_DISABLE=1`，避免 bsdtar 往包里塞 `._*` AppleDouble 文件。要新增架构，在脚本里的 `TARGETS` 表加一行即可（25.12 的架构名与 24.10 一致）。
 >
-> 归档格式固定为 **ustar**：opkg 自带的解包器不认 POSIX pax 扩展头，而 macOS 的 bsdtar 默认就是 pax 格式，那样打出来的包装不上，会刷一屏 `get_header_tar: Unknown typeflag: 0x78`。构建结束会用 `tools/ipk_check.py` 逐个校验，不通过就中止。手动复验：
+> 两种包的差异只在打包格式与维护脚本的挂载方式，包内容与 Lua/LuCI 部分完全一致：
+>
+> | | 24.10（`.ipk`） | 25.12+（`.apk`） |
+> |---|---|---|
+> | 包结构 | `debian-binary` + `control.tar.gz` + `data.tar.gz` | 控制段 + 数据段两个 gzip 流（apk-tools v2） |
+> | 打包工具 | shell `tar --format=ustar` | `tools/mkapk.py`（官方是宿主 `apk mkpkg`，本项目不拉 SDK，自己实现） |
+> | 维护脚本 | `control/postinst`、`prerm`、`postrm` | `apk/post-install`、`post-upgrade`、`pre-upgrade`、`pre-deinstall`、`post-deinstall` |
+> | 装包命令 | `opkg install x.ipk` | `apk add --allow-untrusted x.apk` |
+>
+> 注：apk 的生命周期脚本不再传 `install`/`upgrade` 动作名（`$1` 是版本号），靠文件名区分事件；`default_postinst` 也改成靠 `pkgname` 环境变量认包名。另外 25.12 的 `default_postinst` 靠 `/lib/apk/packages/aellus.list` 找本包的 uci-defaults 与 init.d 脚本，官方由 buildroot 生成，手工打包则由 `mkapk.py` 合成写进包里。
+>
+> ipk 的归档格式固定为 **ustar**：opkg 自带的解包器不认 POSIX pax 扩展头，而 macOS 的 bsdtar 默认就是 pax 格式，那样打出来的包装不上，会刷一屏 `get_header_tar: Unknown typeflag: 0x78`。构建结束会用 `tools/ipk_check.py` / `tools/apk_check.py` 逐个校验，不通过就中止。手动复验：
 >
 > ```bash
 > python3 tools/ipk_check.py dist/Aellus-<version>-openwrt-*.ipk
+> python3 tools/apk_check.py dist/Aellus-<version>-openwrt-*.apk
 > ```
 >
 > `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
@@ -243,14 +267,16 @@ aellus/
 ├── static/                       # 前端静态资源（已编译进二进制）
 │   ├── css/                      # 样式：common / components / home / upload / browse
 │   ├── js/                       # 脚本：base.js（页面 <base> 基准路径）/ ui.js（通用 UI + 设备 ID + 客户端标识头）/ upload.js / browse.js / qrcode.js
-│   └── img/                      # 图标与图片：logo-icon.png / icon.png / favicon.svg / 打赏二维码
+│   └── img/                      # 图标与图片：logo-icon.png / icon.png / favicon.svg / 打赏二维码 / QQ 群二维码
 ├── build-mac.sh                  # macOS .app 构建脚本
 ├── build-all.sh                  # 全平台构建脚本（macOS/Linux 裸二进制 + Windows exe 打成 zip）
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本（分架构，直接产出 .fpk）
-├── build-openwrt.sh              # OpenWrt .ipk 构建脚本（交叉编译，按官方包格式产出 ipk）
+├── build-openwrt.sh              # OpenWrt 构建脚本（交叉编译，按官方包格式产出 ipk / apk）
 ├── tools/                        # 构建辅助工具
 │   ├── fnpack                    # 飞牛应用打包工具
-│   └── ipk_check.py              # 校验 ipk 能否被 opkg 解包（有无 pax 头 / AppleDouble）
+│   ├── ipk_check.py              # 校验 ipk 能否被 opkg 解包（有无 pax 头 / AppleDouble）
+│   ├── mkapk.py                  # 打包 apk（25.12+，apk-tools v2：控制段 + 数据段两个 gzip 流）
+│   └── apk_check.py              # 校验 apk 结构（分段 / .PKGINFO / datahash / 坏成员）
 ├── changeLog.md                  # 版本更新记录
 ├── fnpack.json                   # FnDepot 第三方应用源描述文件
 ├── aellus.icns                   # macOS 应用图标
@@ -264,8 +290,10 @@ aellus/
 ├── openwrt/                      # OpenWrt 打包资源（官方包格式）
 │   └── aellus/
 │       ├── Makefile              # 包定义（package.mk 格式，可用于 SDK / 源码树构建）
-│       ├── control/              # 维护脚本：postinst / prerm（官方默认实现）、postrm
-│       └── files/                # 按安装路径摆放：etc/init.d、etc/config、etc/uci-defaults
+│       ├── control/              # 24.10 维护脚本：postinst / prerm（官方默认实现）、postrm
+│       ├── apk/                  # 25.12+ 生命周期脚本：post-install / post-upgrade /
+│                                 # pre-upgrade / pre-deinstall / post-deinstall
+│       ├── files/                # 按安装路径摆放：etc/init.d、etc/uci-defaults（不含 etc/config）
 │                                 # 以及 LuCI 页面 www/luci-static/...、menu.d、rpcd/acl.d
 └── README.md
 ```
@@ -424,17 +452,14 @@ const (
 
 如果有更好的功能想法或改进建议，欢迎提 [Issues](https://github.com/YGQ8988/Aellus/issues)。
 
+也欢迎加入 **QQ 沟通群**交流使用问题、功能建议：**Aellus局域网传输（群号 `1126916188`）**，
+手机 QQ 扫下方二维码即可进群：
+
+<p align="center">
+  <img src="static/img/qq-group.jpg" width="260" alt="Aellus局域网传输 QQ 群二维码（群号 1126916188）">
+</p>
+
 ---
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=ygq8988%2Faellus&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&legend=top-left" />
- </picture>
-</a>
 
 ## ☕ 赞赏
 
@@ -452,3 +477,17 @@ const (
     </td>
   </tr>
 </table>
+
+---
+
+## ⭐ 趋势
+
+<a href="https://www.star-history.com/?repos=ygq8988%2Faellus&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ygq8988/aellus&type=date&legend=top-left" />
+ </picture>
+</a>
+
+---

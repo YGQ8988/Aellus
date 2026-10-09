@@ -1,0 +1,73 @@
+#!/bin/sh
+# Aellus —— apk 安装后脚本（OpenWrt 25.12+ 的 post-install 事件）
+#
+# apk 与 opkg 有三处不同，改这套脚本时必须记住：
+#   1) 生命周期拆成多个文件：post-install / post-upgrade / pre-upgrade /
+#      pre-deinstall / post-deinstall。apk 不再用「一个 postinst 通吃」，
+#      也不再传 `install` / `upgrade` 这种动作名（$1 是版本号），
+#      「是不是升级」靠文件名区分。
+#   2) default_postinst 认包名的来源变了：apk 路径下脚本文件名叫 `.post-install`，
+#      `${1%.*}` 解不出包名，官方改成 `export pkgname=...` 再 `default_postinst`
+#      （不带参数），见 include/package-pack.mk 与 /lib/functions.sh。
+#   3) default_postinst 靠 /lib/apk/packages/<pkg>.list 找本包的
+#      /etc/uci-defaults/*（执行后删除）与 /etc/init.d/*（enable + start）。
+#      这个清单由官方 buildroot 在打包时生成；我们手工打包，所以由
+#      tools/mkapk.py 合成并写进包里 —— 缺了它端口就不会被放行、服务也不会自启。
+#
+# 本文件对应的官方包装（buildroot 自动生成的前半段）是：
+#   #!/bin/sh
+#   [ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+#   [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+#   . ${IPKG_INSTROOT}/lib/functions.sh
+#   export root="${IPKG_INSTROOT}"
+#   export pkgname="aellus"
+#   add_group_and_user
+#   default_postinst
+# 我们直接把整段写在一起，并把「恢复 UCI 配置」放在 default_postinst **之前**
+#（官方是拼在它之后，那样服务会先起来、先把默认配置生成出来，再恢复就晚了）。
+
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "${IPKG_INSTROOT}/lib/functions.sh"
+export root="${IPKG_INSTROOT}"
+export pkgname="aellus"
+add_group_and_user
+
+# —— 先恢复用户原有的 UCI 配置 ——
+# apk 升级不会删包清单之外的文件，所以这一路正常情况下用不上（/etc/config/aellus
+# 从 r5 起就不再由包提供）。仍然保留：若 /etc/config/aellus 因为任何原因不见了，
+# 而 prerm/pre-upgrade 恰好留了备份，这里就能把它放回去，用户的端口 / 保存目录不丢。
+# 放回去必须在 default_postinst 之前 —— 服务一启动就会用默认模板生成配置文件。
+if [ -z "${IPKG_INSTROOT}" ]; then
+	if [ -s /tmp/aellus-config.bak ] && [ ! -s /etc/config/aellus ]; then
+		mv /tmp/aellus-config.bak /etc/config/aellus 2>/dev/null
+		logger -t aellus "安装：已保留原有的 /etc/config/aellus"
+	fi
+	rm -f /tmp/aellus-config.bak 2>/dev/null
+fi
+
+default_postinst
+
+# —— LuCI 菜单刷新 ——
+# default_postinst 只清 /tmp/luci-indexcache；LuCI 真正读的是
+# /tmp/luci-indexcache.<hash>.json（dispatcher.uc 的 build_pagetree），
+# 这里顺手清干净，连 ucode 编译缓存一起清，避免个别固件残留导致菜单不刷新。
+if [ -z "${IPKG_INSTROOT}" ]; then
+	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*.json 2>/dev/null
+	rm -rf /tmp/luci-modulecache 2>/dev/null
+fi
+
+cat <<'EOF'
+
+Aellus 安装完成。
+
+若 LuCI 的「服务」菜单里暂时没有出现「Aellus局域网传输」：
+rpcd 的 ACL 访问组是在「登录那一刻」计算的（rpcd/session.c 的
+rpc_login_setup_acls 在 rpc_handle_login 中 glob /usr/share/rpcd/acl.d），
+安装之前就已存在的 LuCI 会话拿不到 luci-app-aellus 这个组，LuCI 会据此把
+菜单项判为隐藏（dispatcher.uc: apply_tree_acls → satisfied=false）。
+刷新页面没用，请注销后重新登录 LuCI，再按 Ctrl+Shift+R 强刷一次。
+
+EOF
+
+exit 0
