@@ -1,0 +1,13 @@
+{
+	"admin/services/aellus": {
+		"title": "Aellus局域网传输",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "aellus/settings"
+		},
+		"depends": {
+			"acl": [ "luci-app-aellus" ]
+		}
+	}
+}

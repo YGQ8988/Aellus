@@ -1,0 +1,38 @@
+# Aellus —— UCI 配置「默认模板」
+#
+# 它**不是**直接装到 /etc/config/aellus 的：随包安装在 /usr/share/aellus/aellus.config.default，
+# 由 /etc/init.d/aellus 在首次启动（/etc/config/aellus 不存在）时复制过去。
+#
+# 为什么不直接 ship 到 /etc/config/aellus（这正是官方包最常见的写法）：
+#   1. 只要是 package 里的 conffile，opkg 升级时就会拿它跟磁盘上的文件比内容
+#      （opkg_install.c: backup_modified_conffiles → resolve_conffiles）；
+#   2. 而 UCI 的写操作（LuCI 点「保存并应用」，或本服务首次启动回写探测到的保存目录）
+#      一定会把文件重排格式、注释也会被 uci commit 丢掉 —— 内容必然与包里的不一致；
+#   3. 于是每次升级都刷一句 resolve_conffiles: Existing conffile ... has been placed at
+#      /etc/config/aellus-opkg，再留一个谁也没要求生成的 -opkg 文件。
+# 让配置文件「由程序首次运行时生成」，它就不再是包文件：opkg 不认识它，也就不会比对、不会报错，
+# 用户改过的值也不会在升级时被默认值覆盖。缺失的选项由 init 脚本里的 config_get 默认值兜底。
+#
+# 真正生效的配置文件在：/etc/config/aellus（升级会原样保留，卸载也不删）。
+
+config aellus 'main'
+	# 是否启用服务：1 = 启动，0 = 停止。
+	# LuCI「服务 → Aellus」页面上的勾选框写的就是它；保存并应用后由 procd
+	# 自动按新配置重启 / 停止服务，无需手动执行 /etc/init.d/aellus restart。
+	option enabled '1'
+
+	# HTTP 监听端口（监听 0.0.0.0，局域网内手机 / PC 均可访问）
+	option port '5115'
+
+	# 上传文件保存目录。留空则自动探测：优先取 /mnt 或 /media 下第一个容量
+	# ≥64MB 的可写挂载点（外挂硬盘 / U 盘），都没有时退回 /etc/aellus/drops。
+	#
+	# ⚠️ 不要指向闪存上的路径（/root、/overlay、/etc 等）：路由器 NAND 闪存
+	#    只有百来 MB 且写入寿命有限，往里传几百兆照片会明显消耗闪存寿命。
+	# option save_dir '/mnt/sda1/aellus'
+
+	# 控制台输出语言：en / zh（默认 en，避免终端缺中文字形显示成黑方块）
+	option lang 'en'
+
+	# Go 运行时内存上限，默认 96MiB。内存较小的设备（128MB 机型）可下调到 64MiB。
+	option gomemlimit '96MiB'

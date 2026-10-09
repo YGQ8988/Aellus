@@ -1,0 +1,225 @@
+#!/bin/sh /etc/rc.common
+# Aellus —— 局域网文件互传（手机 / PC 浏览器 ↔ 路由器）的 OpenWrt 服务脚本。
+#
+# 按官方文档编写：
+#   procd init script   https://openwrt.org/docs/guide-developer/procd-init-script-example
+#   UCI 配置            /etc/config/aellus（LuCI「服务 → Aellus局域网传输」页面写入）
+#
+# 常用命令：
+#   /etc/init.d/aellus start | stop | restart | reload | enable | disable
+#   logread -e aellus              # 查看日志（stdout / stderr 已接入 syslog）
+#
+# 配置文件：/etc/config/aellus，**不由本包提供**（见 /usr/share/aellus/aellus.config.default
+# 开头的注释）。首次启动时若不存在，就从默认模板复制一份；以后一直交给用户养着：
+# opkg 不再认识这个文件，升级既不比对也不覆盖。
+#
+# 配置项（UCI: aellus.main.*）：
+#   enabled     1 = 启动服务，0 = 停止服务（LuCI 页面勾选框）
+#   port        HTTP 监听端口
+#   save_dir    上传文件保存目录；留空自动探测外挂存储
+#   lang        控制台输出语言 en / zh
+#   gomemlimit  Go 运行时内存上限（小内存机型可下调）
+
+START=97
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/bin/aellus
+CONF=/etc/config/aellus
+# 默认模板：安装后在 /usr/share/aellus/aellus.config.default，
+# 只在 CONF 不存在时用来生成初始配置。
+CONF_TEMPLATE=/usr/share/aellus/aellus.config.default
+
+# 兜底保存目录：仅在没有任何外挂存储时使用。它落在 overlay（闪存）上，容量小且
+# 消耗写入寿命，只作应急，正常应把 save_dir 指到 /mnt 下的硬盘或 U 盘。
+DROP_ROOT=/etc/aellus/drops
+
+log() {
+	logger -t aellus "$*"
+}
+
+# ensure_conf 保证配置文件存在：没有就用默认模板生成一份。
+#
+# 这个文件本来也可以让包直接装上，但它一旦属于包、又被标成 conffile，
+# 每次这里写点东西（或用户在 LuCI 保存一次）就会与包里的版本不一致，
+# 升级时 opkg 就要刷一句 resolve_conffiles 并丢一个 /etc/config/aellus-opkg 给你。
+# 改成「首次运行时生成」后，opkg 压根不知道这个文件存在，问题从根上消失。
+ensure_conf() {
+	[ -s "$CONF" ] && return 0
+
+	if [ -f "$CONF_TEMPLATE" ]; then
+		cp "$CONF_TEMPLATE" "$CONF" 2>/dev/null
+	else
+		# 模板缺失（手工跑二进制的场景）：至少给出能被 UCI 读的最小配置，
+		# 其余选项在下面 config_get 处各有默认值兜底。
+		cat > "$CONF" <<-EOF
+			config aellus 'main'
+				option enabled '1'
+				option port '5115'
+		EOF
+	fi
+}
+
+# pick_save_dir 决定保存目录，优先级：
+#   1) UCI 里显式配置的 aellus.main.save_dir
+#   2) /mnt、/media 下第一个容量 ≥64MB 的可写挂载点（外挂硬盘 / U 盘，不伤闪存）
+#   3) /etc/aellus/drops（兜底）
+# 调用前须已 config_load aellus。
+pick_save_dir() {
+	local cfg_dir="" d kb
+
+	config_get cfg_dir main save_dir
+	if [ -n "$cfg_dir" ]; then
+		echo "$cfg_dir"
+		return
+	fi
+
+	for d in /mnt/* /media/*; do
+		[ -d "$d" ] || continue
+		[ -w "$d" ] || continue
+		# df -P 第 2 列是 1K 块总数；容量不足 64MB 的挂载点（多为 tmpfs）跳过
+		kb="$(df -P "$d" 2>/dev/null | awk 'NR==2 {print $2+0}')"
+		[ -n "$kb" ] || continue
+		[ "$kb" -ge 65536 ] || continue
+		echo "$d/aellus"
+		return
+	done
+
+	echo "$DROP_ROOT"
+}
+
+# warn_on_flash 提醒用户不要把上传目录放在闪存上（路由器的 NAND 写入寿命有限，
+# 反复传几百 MB 照片会明显消耗闪存）。
+warn_on_flash() {
+	case "$1" in
+		/etc/*|/root/*|/overlay/*|/rom/*)
+			log "警告：保存目录 $1 位于闪存(overlay)，建议改到 /mnt 下的外挂存储"
+			;;
+	esac
+}
+
+# sync_firewall_port 让防火墙里那条 Allow-Aellus 规则的端口与当前配置保持一致：
+# 用户在 LuCI 改了端口、而 LAN 区 input 策略又是 REJECT 时，规则不同步就访问不了。
+# 只在自己那条规则已存在时才同步——不存在说明安装时没加或用户主动删了，不代为创建。
+sync_firewall_port() {
+	local fw_port
+
+	uci -q get firewall.aellus >/dev/null || return 0
+	fw_port="$(uci -q get firewall.aellus.dest_port)"
+	[ "$fw_port" != "$1" ] || return 0
+
+	uci -q set firewall.aellus.dest_port="$1"
+	uci -q commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+	log "已同步防火墙放行端口：${fw_port:-未设置} → $1"
+}
+
+start_service() {
+	local enabled port save_dir lang gomemlimit
+
+	ensure_conf
+
+	config_load aellus
+	config_get_bool enabled main enabled 1
+	if [ "$enabled" -ne 1 ]; then
+		# 不打开实例 = 服务保持停止。LuCI 里取消「启用服务」并保存应用后，
+		# procd 触发的 reload 走的就是这条路径，效果即「不勾选 = 停止服务」。
+		log "服务未启用（aellus.main.enabled=0），跳过启动"
+		return 0
+	fi
+
+	config_get port main port '5115'
+	config_get lang main lang 'en'
+	config_get gomemlimit main gomemlimit '96MiB'
+	save_dir="$(pick_save_dir)"
+
+	# 端口合法性：主程序在 AELLUS_STRICT_PORT=1 下会直接用该端口监听，
+	# 非法值提前拦下并给出可读日志，避免 procd 反复 respawn。
+	case "$port" in
+		''|*[!0-9]*)
+			log "端口配置非法：'${port}'，请检查 ${CONF}"
+			return 1
+			;;
+	esac
+	if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+		log "端口超出范围：${port}（有效范围 1-65535）"
+		return 1
+	fi
+
+	if ! mkdir -p "$save_dir"; then
+		log "创建保存目录失败：${save_dir}"
+		return 1
+	fi
+	warn_on_flash "$save_dir"
+
+	sync_firewall_port "$port"
+
+	# 端口占用预检：AELLUS_STRICT_PORT=1 时端口被占用主程序会直接退出，
+	# procd 会按 respawn 策略反复拉起；提前探测可避免无意义的重启循环。
+	if netstat -lnt 2>/dev/null | grep -q ":${port}[[:space:]]"; then
+		log "端口 ${port} 已被占用，请在 LuCI（服务 → Aellus局域网传输）改端口后重启服务"
+		return 1
+	fi
+
+	# 首次运行把自动探测到的目录写回 UCI：用户在 LuCI 里能直接看到并修改，
+	# 不必再去猜实际落在哪。已显式配置过则不覆盖。
+	# （这里能动配置是因为 /etc/config/aellus 不属于包文件，opkg 不会去比对它；
+	#   这份配置归用户所有，卸载时也不会被删。）
+	if [ -z "$(config_get main save_dir)" ]; then
+		uci -q set aellus.main.save_dir="$save_dir"
+		uci -q commit aellus
+	fi
+
+	procd_open_instance aellus
+
+	# 运行环境（主程序不解析命令行参数，全部由环境变量注入）：
+	#   AELLUS_PORT / AELLUS_SAVE_DIR  端口与保存目录
+	#   AELLUS_STRICT_PORT=1           占用即退出，不静默换端口，否则与 UCI 配置脱节
+	#   AELLUS_LANG                    控制台输出语言
+	#   AELLUS_LOGS_DIR                日志写到 tmpfs，避免访问日志持续写闪存
+	#   XDG_CONFIG_HOME                配置（设备名映射等）落在 /etc/aellus，不写用户目录
+	#   GOMEMLIMIT / GOGC              路由器内存普遍 128~512MB，压低 GC 频率换取
+	#                                  更小常驻内存，避免大目录打包时被 OOM kill
+	procd_set_param env \
+		"AELLUS_PORT=${port}" \
+		"AELLUS_SAVE_DIR=${save_dir}" \
+		"AELLUS_STRICT_PORT=1" \
+		"AELLUS_LANG=${lang}" \
+		"AELLUS_LOGS_DIR=/var/log/aellus" \
+		"XDG_CONFIG_HOME=/etc/aellus" \
+		"GOMEMLIMIT=${gomemlimit}" \
+		"GOGC=40"
+
+	procd_set_param command "$PROG"
+	# 崩溃自动拉起：3 个值依次为 fail_threshold(秒) / restart_timeout(秒) / max_fail(次)
+	procd_set_param respawn 3600 5 5
+	# stdout / stderr 接入 syslog：用 logread -e aellus 查看
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param user root
+
+	procd_close_instance
+
+	log "已启动：http://<路由器IP>:${port} ，保存目录 ${save_dir}"
+}
+
+stop_service() {
+	# 主程序捕获 SIGTERM 后自行退出，procd 默认就发 SIGTERM 并等待，无需额外动作。
+	return 0
+}
+
+service_triggers() {
+	# 官方写法：配置变更时自动触发本脚本 reload。
+	# LuCI 的「保存并应用」→ ubus uci apply → /sbin/reload_config 发出
+	# config.change 事件，procd 据此执行 /etc/init.d/aellus reload。
+	#
+	# 注意参数是 UCI 配置【名】（aellus），不是文件路径：procd 匹配的是事件里的
+	# package 字段（见 procd.sh 的 _procd_add_config_trigger），传路径不会命中。
+	procd_add_reload_trigger aellus
+}
+
+reload_service() {
+	# 重启 = 停旧实例 + 按新配置起新实例。
+	# enabled=0 时 start_service 直接返回，实例不再拉起 —— 即「取消勾选 = 停止服务」。
+	restart
+}

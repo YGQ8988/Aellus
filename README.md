@@ -88,28 +88,67 @@ Aellus 已启动 (Go 单文件版)
 - 📤 **上传文件** → 填设备名 → 选文件 / 拍照 / 录像（拍照与录像调起系统原生相机）→ 上传
 - 📂 **读取文件** → 选择目录 → 浏览文件 → 下载或预览
 
+### OpenWrt（路由器）
+
+OpenWrt 24.10 上以 procd 服务运行，装完自动开机自启并启动，配置页在 LuCI **服务 → Aellus局域网传输**：启用服务 / 服务端口号 / 文件储存目录，保存并应用后按配置启动或停止。页面顶部还显示**服务状态**（运行中绿色、未运行红色）与**访问地址**（点击在新标签页打开）。
+
+```bash
+# 传到路由器后安装（按 CPU 选对应架构的包）
+opkg install Aellus-<version>-openwrt-x86_64.ipk            # x86_64 软路由
+opkg install Aellus-<version>-openwrt-aarch64_cortex-a53.ipk # arm64 路由器
+opkg install Aellus-<version>-openwrt-mipsel_24kc.ipk        # MT7621 等小端 MIPS
+opkg install Aellus-<version>-openwrt-mips_24kc.ipk          # 大端 MIPS
+
+/etc/init.d/aellus start | stop | restart   # 手动控制服务
+logread -e aellus                            # 查看日志
+uci set aellus.main.port=5115 && uci commit aellus && /etc/init.d/aellus restart
+```
+
+> ⚠️ **保存目录请指向外挂硬盘 / U 盘**（如 `/mnt/sda1/aellus`）。不要指向 `/root`、`/overlay` 等闪存路径：路由器闪存只有百来 MB 且写入寿命有限。留空时自动探测 `/mnt`、`/media` 下第一个容量 ≥64MB 的可写挂载点。
+>
+> 24.10 系列的包管理器是 **OPKG**（APK 是 main / 25.x 才切的包格式），故只提供 `.ipk`。
+>
+>
+> **装完 LuCI「服务」菜单里看不到「Aellus局域网传输」？** 这是 rpcd 的 ACL 机制导致的，不是安装失败：访问组是在**登录那一刻**才从 `/usr/share/rpcd/acl.d` 计算的，安装前就已存在的 LuCI 会话拿不到 `luci-app-aellus` 组，LuCI 会把菜单项判为隐藏。**刷新页面无效**，请：
+>
+> ```bash
+> rm -f /tmp/luci-indexcache* && rm -rf /tmp/luci-modulecache   # 清 LuCI 菜单缓存
+> ```
+>
+> 然后 **注销 LuCI（右上角 Log out）再重新登录**，按 `Ctrl+Shift+R` 强刷即可。
+
 ### 3. 自行构建
 
-三个构建脚本各自独立，在对应环境运行：
+四个构建脚本各自独立，在对应环境运行：
 
 | 产物 | 脚本 | 运行环境 | 说明 |
 |------|------|---------|------|
 | macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x64 独立打成 zip，已签名 |
 | 全平台 | `build-all.sh` | 任意平台 | macOS / Linux 裸二进制 + Windows `Aellus.exe`（打成 zip） |
 | 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
+| OpenWrt `.ipk` | `build-openwrt.sh` | 任意平台（交叉编译） | x86_64 / arm64 / MIPS（大端 + 小端），含 LuCI 配置页 |
 
 ```bash
 bash build-mac.sh     # dist/Aellus-<version>-mac-{arm64,x64}.zip      （内含 Aellus.app）
 bash build-all.sh     # dist/Aellus-<version>-darwin-{arm64,x64}、-linux-{x64,arm64,x86}（裸二进制）
                       # dist/Aellus-<version>-windows-{x64,arm64,x86}.zip（内含 Aellus.exe）
 bash build-fnos.sh    # dist/Aellus-<version>-fnos-{x64,arm64}.fpk    （直接可安装）
+bash build-openwrt.sh # dist/Aellus-<version>-openwrt-<arch>.ipk      （opkg 安装）
 ```
 
 > 命名风格统一：**文件名带版本与架构**；macOS `.app` 与 Windows `Aellus.exe` 打成 zip（解压即用），飞牛 `.fpk` 与 macOS / Linux 裸二进制不套压缩包（直接使用）。
 > 架构标识统一为 `x64`（64 位 x86）/ `x86`（32 位 x86）/ `arm64`。
 > 飞牛 `.fpk` **特意不套 zip**：fpk 内部是 gzip 流，macOS 自带归档工具的「必要时继续展开」会把它连同 zip 一起解开，用户解压后拿不到 fpk 文件（只得到解开的文件夹）。
 >
-> 三个脚本的产物都输出到 `dist/`，并共用 `.build/` 中间目录，**不能并行执行**（结束时会各自清理），需串行运行。
+> 四个脚本的产物都输出到 `dist/`，并共用 `.build/` 中间目录，**不能并行执行**（结束时会各自清理），需串行运行。
+>
+> `build-openwrt.sh` 按 OpenWrt 官方包格式直接产出 ipk（`debian-binary` + `control.tar.gz` + `data.tar.gz`），不需要 SDK；**每构建一次小版本号自动 +1**（ipk 的 Version 是 `<主版本>-r<N>`，N 记在 `openwrt/aellus/Makefile` 的 `PKG_RELEASE`，主版本变化时自动重置为 1；手动指定：`bash build-openwrt.sh <version> <release>` 或 `AELLUS_RELEASE=<n> bash build-openwrt.sh`）；macOS 上已设置 `COPYFILE_DISABLE=1`，避免 bsdtar 往包里塞 `._*` AppleDouble 文件。要新增架构，在脚本里的 `TARGETS` 表加一行即可。包内 `postinst` / `prerm` 用的是 buildroot 官方默认实现（`default_postinst` / `default_prerm`），安装时自动 enable + start、卸载时 disable + stop。
+>
+> 归档格式固定为 **ustar**：opkg 自带的解包器不认 POSIX pax 扩展头，而 macOS 的 bsdtar 默认就是 pax 格式，那样打出来的包装不上，会刷一屏 `get_header_tar: Unknown typeflag: 0x78`。构建结束会用 `tools/ipk_check.py` 逐个校验，不通过就中止。手动复验：
+>
+> ```bash
+> python3 tools/ipk_check.py dist/Aellus-<version>-openwrt-*.ipk
+> ```
 >
 > `build-all.sh` 打包 Windows 时会用 `go-winres` 从 `winres/aellus.ico` 生成图标/清单/版本资源（`.syso`），并自动链接进 exe——资源管理器里能看到软件图标，右键“属性→详细信息”有产品名/版本/描述。首次构建前需安装：`go install github.com/tc-hib/go-winres@latest`；未安装时回退使用仓库内已提交的 `.syso`。`.syso` 必须保留在项目根目录（go build 按 `rsrc_windows_<arch>.syso` 命名约定只在包目录自动链接，挪进子目录会导致 exe 图标丢失）。
 >
@@ -208,6 +247,10 @@ aellus/
 ├── build-mac.sh                  # macOS .app 构建脚本
 ├── build-all.sh                  # 全平台构建脚本（macOS/Linux 裸二进制 + Windows exe 打成 zip）
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本（分架构，直接产出 .fpk）
+├── build-openwrt.sh              # OpenWrt .ipk 构建脚本（交叉编译，按官方包格式产出 ipk）
+├── tools/                        # 构建辅助工具
+│   ├── fnpack                    # 飞牛应用打包工具
+│   └── ipk_check.py              # 校验 ipk 能否被 opkg 解包（有无 pax 头 / AppleDouble）
 ├── changeLog.md                  # 版本更新记录
 ├── fnpack.json                   # FnDepot 第三方应用源描述文件
 ├── aellus.icns                   # macOS 应用图标
@@ -218,6 +261,12 @@ aellus/
 ├── rsrc_windows_{amd64,arm64,386}.syso  # Windows 图标/清单/版本资源（go build 在根目录自动链接）
 ├── screenshots/                  # 界面预览截图（README「界面预览」章节引用：飞牛 / Android / iOS）
 ├── fnos/                         # 飞牛 fnOS 打包资源（manifest / config / cmd / wizard）
+├── openwrt/                      # OpenWrt 打包资源（官方包格式）
+│   └── aellus/
+│       ├── Makefile              # 包定义（package.mk 格式，可用于 SDK / 源码树构建）
+│       ├── control/              # 维护脚本：postinst / prerm（官方默认实现）、postrm
+│       └── files/                # 按安装路径摆放：etc/init.d、etc/config、etc/uci-defaults
+│                                 # 以及 LuCI 页面 www/luci-static/...、menu.d、rpcd/acl.d
 └── README.md
 ```
 

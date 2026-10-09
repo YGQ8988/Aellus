@@ -1,0 +1,30 @@
+#!/bin/sh
+# Aellus —— ipk 卸载前脚本。
+#
+# 主体仍是 OpenWrt buildroot 的默认实现（default_prerm，见 include/package-pack.mk），
+# 它对本包安装的每个 /etc/init.d/ 脚本执行 disable + stop，即关闭开机自启并停止服务。
+# 不删配置与上传的文件，重装后仍在。
+#
+# 额外做一件事：升级场景下先把 UCI 配置备份到 /tmp。原因写在下面。
+
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "${IPKG_INSTROOT}/lib/functions.sh"
+default_prerm $0 $@
+
+# —— 升级前保住 UCI 配置 ——
+# 从本版起，包里不再自带 /etc/config/aellus（改由服务首次启动时用
+# /usr/share/aellus/aellus.config.default 生成），理由见那个文件的注释：
+# 不再让 opkg 认识它，升级就不会再刷 resolve_conffiles 提示。
+#
+# 但 opkg 升级时会先把**旧包的文件清单里的全部文件**删掉，再解新包的文件
+# （opkg_install.c: remove_data_files_and_list，注释原文
+#  "removing files from old package, to avoid ghost files"）。
+# 也就是说：这一次的升级过程里，用户的 /etc/config/aellus 会被当「幽灵文件」清掉。
+# 这里先备份，交给 postinst 在新包装完之后放回去。
+#
+# 另外，prerm 返回非 0 会让 opkg 直接中止安装，所以末尾必须确保退出码是 0。
+if [ -z "${IPKG_INSTROOT}" ] && [ "${1:-}" = "upgrade" ] && [ -s /etc/config/aellus ]; then
+	cp /etc/config/aellus /tmp/aellus-config.bak 2>/dev/null
+fi
+
+exit 0

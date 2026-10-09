@@ -1,0 +1,14 @@
+{
+	"luci-app-aellus": {
+		"description": "Grant UCI access and service status for LuCI app Aellus",
+		"read": {
+			"uci": [ "aellus" ],
+			"ubus": {
+				"service": [ "list" ]
+			}
+		},
+		"write": {
+			"uci": [ "aellus" ]
+		}
+	}
+}
