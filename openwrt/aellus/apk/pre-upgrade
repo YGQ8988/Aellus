@@ -1,0 +1,29 @@
+#!/bin/sh
+# Aellus —— apk 升级前脚本（OpenWrt 25.12+ 的 pre-upgrade 事件）
+#
+# 对应官方 buildroot 生成的：
+#   #!/bin/sh
+#   export PKG_UPGRADE=1
+#   <自定义 preinst>
+# 做两件事：备份 UCI 配置、default_prerm（停服务）。
+# PKG_UPGRADE=1 让 default_prerm 只 stop、不 disable —— 升级完还要接着开机自启。
+#
+# 备份的理由：apk 升级不会删包清单之外的文件，/etc/config/aellus 从 r5 起就不由包提供，
+# 理论上不会被删。但它是用户的端口 / 保存目录，多留一份保险不亏，
+# post-upgrade 会在服务启动前把它放回去。
+
+export PKG_UPGRADE=1
+
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "${IPKG_INSTROOT}/lib/functions.sh"
+export root="${IPKG_INSTROOT}"
+export pkgname="aellus"
+
+if [ -z "${IPKG_INSTROOT}" ] && [ -s /etc/config/aellus ]; then
+	cp /etc/config/aellus /tmp/aellus-config.bak 2>/dev/null
+fi
+
+default_prerm
+
+exit 0

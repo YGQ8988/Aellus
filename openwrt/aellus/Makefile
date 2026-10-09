@@ -1,8 +1,9 @@
 # Aellus —— OpenWrt 包定义（官方 package.mk 格式）
 #
 # 两种构建方式：
-#  1) 日常发布（推荐）：直接用项目根目录的 build-openwrt.sh 产 ipk，不需要 SDK。
-#     它每跑一次会把下面两行的 PKG_VERSION / PKG_RELEASE 自动同步后回写本文件。
+#  1) 日常发布（推荐）：直接用项目根目录的 build-openwrt.sh 产 ipk（24.10）与
+#     apk（25.12+），不需要 SDK。它每跑一次会把下面两行的 PKG_VERSION / PKG_RELEASE
+#     自动同步后回写本文件。
 #  2) 放进 OpenWrt 源码树 / SDK：把本目录拷成 package/aellus（或挂成自定义 feed），
 #     执行 make package/aellus/compile。默认安装预编译二进制 files/aellus；
 #     把源码放到 ./src 后设置 AELLUS_GO=1，则改用宿主 Go 工具链交叉编译。
@@ -23,7 +24,7 @@ include $(TOPDIR)/rules.mk
 # 手动指定：bash build-openwrt.sh <version> <release> 或 AELLUS_RELEASE=<n> bash build-openwrt.sh。
 PKG_NAME:=aellus
 PKG_VERSION:=1.0.5
-PKG_RELEASE:=6
+PKG_RELEASE:=7
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
@@ -126,6 +127,12 @@ endef
 
 # 三个维护脚本都在这里定义，内容与 control/{postinst,prerm,postrm} 保持一致
 # （build-openwrt.sh 走后者，SDK 走这里；两处改一处必须同步另一处）。
+#
+# 注意：这里定义的是「ipk 语义」的 postinst/prerm/postrm。25.12 起包管理器换成 apk，
+# 官方 package-pack.mk 会把它们分别包进 apk 的 post-install / pre-deinstall /
+# post-deinstall 事件（并自动补 export pkgname、default_postinst 等样板），
+# 由 SDK 构建时无需改动本文件；而 build-openwrt.sh 手工打 apk 走的是 apk/ 目录下
+# 那五份生命周期脚本 —— 那里的逻辑与这里一一对应，改这里也要同步改 apk/。
 #
 # postinst：官方 default_postinst（跑 uci-defaults、enable + start）+ 恢复 prerm 备份的
 #           UCI 配置（必须放在 default_postinst 之前，否则服务先起来就把默认配置生成了）

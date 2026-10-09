@@ -1,0 +1,33 @@
+#!/bin/sh
+# Aellus —— apk 升级后脚本（OpenWrt 25.12+ 的 post-upgrade 事件）
+#
+# 与 post-install 唯一的区别：`export PKG_UPGRADE=1`。
+# /lib/functions.sh 的 default_postinst 看到它就只 start、不再重复 enable
+#（开机自启的软链在上一次安装时已经建好了）。官方 buildroot 也是这么生成的。
+# 其余说明见同目录的 post-install。
+
+export PKG_UPGRADE=1
+
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "${IPKG_INSTROOT}/lib/functions.sh"
+export root="${IPKG_INSTROOT}"
+export pkgname="aellus"
+add_group_and_user
+
+if [ -z "${IPKG_INSTROOT}" ]; then
+	if [ -s /tmp/aellus-config.bak ] && [ ! -s /etc/config/aellus ]; then
+		mv /tmp/aellus-config.bak /etc/config/aellus 2>/dev/null
+		logger -t aellus "升级：已保留原有的 /etc/config/aellus"
+	fi
+	rm -f /tmp/aellus-config.bak 2>/dev/null
+fi
+
+default_postinst
+
+if [ -z "${IPKG_INSTROOT}" ]; then
+	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*.json 2>/dev/null
+	rm -rf /tmp/luci-modulecache 2>/dev/null
+fi
+
+exit 0

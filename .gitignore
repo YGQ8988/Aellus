@@ -29,6 +29,8 @@ aellus-drops/
 # 注意：只忽略目录内容再用 ! 放行源码，直接写 tools/ 的话 git 不会再往下看，例外不生效
 tools/*
 !tools/ipk_check.py
+!tools/mkapk.py
+!tools/apk_check.py
 
 # fnOS 打包目录中的编译产物（配置文件本身应提交）
 fnos/app/aellus*

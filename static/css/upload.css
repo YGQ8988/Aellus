@@ -58,8 +58,11 @@
   display: grid; grid-template-columns: 72px 1fr; column-gap: 12px; align-items: stretch;
 }
 .up-thumb { width: 72px; height: 72px; border-radius: calc(var(--radius) - 2px); background: hsl(var(--muted)); flex-shrink: 0; overflow: hidden; }
-.up-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.up-thumb-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; letter-spacing: .5px; color: hsl(var(--muted-foreground)); }
+/* 已上传卡片里可放三种缩略图：<img>、<video>（新增，与上传中的进度卡片一致）、
+   以及加载失败时替换上来的「扩展名占位块」（.thumb-other，来自 makeExtThumb） */
+.up-thumb img, .up-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.up-thumb-ph, .up-thumb .thumb-other { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 600; letter-spacing: .5px; color: hsl(var(--muted-foreground)); }
+.up-thumb .thumb-other svg { width: 28px; height: 28px; }
 /* 文字块与 72px 缩略图等高：文件名顶对齐、大小·时间底对齐 */
 .up-name { word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 @media (min-width: 640px) {

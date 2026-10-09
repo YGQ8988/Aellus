@@ -1,0 +1,18 @@
+#!/bin/sh
+# Aellus —— apk 卸载前脚本（OpenWrt 25.12+ 的 pre-deinstall 事件）
+#
+# 对应官方 buildroot 生成的默认实现：default_prerm —— 对本包安装的每个
+# /etc/init.d/ 脚本 disable（取消开机自启）+ stop（停止服务）。
+# 不删配置与已上传的文件，重装后仍在。
+#
+# 注意：不带 PKG_UPGRADE —— 真正卸载才走到这里；升级走的是 pre-upgrade。
+
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+. "${IPKG_INSTROOT}/lib/functions.sh"
+export root="${IPKG_INSTROOT}"
+export pkgname="aellus"
+
+default_prerm
+
+exit 0
