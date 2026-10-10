@@ -69,7 +69,7 @@
 /* hover 边框高亮，与输入框（.dir-input / .dir-trigger）效果一致 */
 @media (hover: hover) and (pointer: fine) {
   .file-item:hover {
-    border-color: hsl(var(--ring) / .35);
+    box-shadow: 0 8px 22px #0f172a13;
   }
 }
 
