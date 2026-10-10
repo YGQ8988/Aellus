@@ -357,7 +357,7 @@ aellus/
 | `AELLUS_LANG` | 控制台输出语言：`en` / `zh` | Linux=`en`，其余=`zh` |
 | `AELLUS_HEADLESS` | `1` 时跳过托盘 GUI，仅常驻 HTTP（CI / 调试） | 未设置 |
 | `AELLUS_STRICT_PORT` | `1` 时端口被占用直接退出（不自动 +1），飞牛端由启动脚本注入 | 未设置 |
-| `AELLUS_LOGS_DIR` | 日志目录（飞牛启动脚本注入，默认 `TRIM_PKGVAR/logs`） | 平台默认 |
+| `AELLUS_LOGS_DIR` | 日志目录（仅 OpenWrt 的 init 脚本注入，用于把日志指到 tmpfs；飞牛端固定 `TRIM_PKGVAR/logs`） | 平台默认 |
 
 > 另有一组由飞牛启动脚本注入、无需手工设置的变量：`TRIM_*`（打包 / 数据 / 共享目录）、`FNNAS_GATEWAY_SOCKET` 与 `FNNAS_GATEWAY_PREFIX`（统一网关 Socket 与门户路径前缀）。
 

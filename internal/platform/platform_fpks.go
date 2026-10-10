@@ -73,11 +73,10 @@ func (fpkPlatform) ConfigBaseDir(saveDir string) string {
 }
 
 // LogsDir fpk 端：访问/操作日志存放到飞牛私有运行时数据目录，不写入应用安装目录。
-// 优先级：AELLUS_LOGS_DIR（cmd/main 注入）> TRIM_PKGVAR/logs > 可执行文件同目录。
+// 优先级：TRIM_PKGVAR/logs > 可执行文件同目录。
+// 注：AELLUS_LOGS_DIR 仅 OpenWrt 的 init 脚本会注入（见 platform_impl.go），
+// 飞牛的 cmd/main 不注入该变量，故这里不再读取它（原先是永不命中的死分支）。
 func (fpkPlatform) LogsDir() string {
-	if d := os.Getenv("AELLUS_LOGS_DIR"); d != "" {
-		return d
-	}
 	if v := os.Getenv("TRIM_PKGVAR"); v != "" && strings.HasPrefix(v, "/vol") {
 		return filepath.Join(v, "logs")
 	}

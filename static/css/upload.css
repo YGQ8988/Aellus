@@ -45,8 +45,7 @@
 
 /* 进度容器：被新卡片列表接管，去掉旧的 6px 条带高度与 overflow:hidden 限制，让卡片自然撑高 */
 #progress { display: none; margin-top: 14px; }
-/* 旧的单条进度选择器只在没用到 .up-progress 列表时兜底（保留以防遗漏）。 */
-#progress > div:not(.up-prog-item) { height: 6px; background: hsl(var(--primary)); transition: width .2s; }
+
 
 /* 结果卡片 → shadcn Card */
 .result { background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg); padding: 16px; margin-top: 14px; display: none; }

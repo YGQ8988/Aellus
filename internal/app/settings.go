@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -123,7 +124,7 @@ func (a *App) handleListDir(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	sortStrings(dirs)
+	sort.Strings(dirs)
 	parent := filepath.Dir(p)
 	if parent == p || !withinAuthRoots(parent, roots) {
 		parent = ""
@@ -133,16 +134,7 @@ func (a *App) handleListDir(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// sortStrings 对字符串切片做原地升序排序（从 handleListDir 调用，等价于 sort.Strings）。
-func sortStrings(s []string) {
-	// 用简单的插入排序避免引入 sort 包到本文件（handlers.go 已引入 sort，
-	// 但保持 settings.go 依赖最小化）。
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j-1] > s[j]; j-- {
-			s[j-1], s[j] = s[j], s[j-1]
-		}
-	}
-}
+
 
 // resolvePickedDir 尝试将浏览器目录选择器返回的目录名解析为完整路径。
 // 按优先级依次在：当前保存目录的父级、用户主目录、桌面、Documents 中查找同名子目录。

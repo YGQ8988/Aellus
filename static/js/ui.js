@@ -94,8 +94,8 @@
             (opts.desc ? '<div class="alert-dialog-desc">' + escapeHtml(opts.desc) + '</div>' : '') +
           '</div>' +
           '<div class="alert-dialog-footer">' +
-            '<button class="btn btn-outline" data-act="cancel">' + escapeHtml(opts.cancelText || '取消') + '</button>' +
-            '<button class="btn ' + (destructive ? 'btn-destructive' : 'btn-primary') + '" data-act="ok">' + escapeHtml(opts.confirmText || '确定') + '</button>' +
+            '<button class="btn-outline" data-act="cancel">' + escapeHtml(opts.cancelText || '取消') + '</button>' +
+            '<button class="' + (destructive ? 'btn-destructive' : 'btn-primary') + '" data-act="ok">' + escapeHtml(opts.confirmText || '确定') + '</button>' +
           '</div>' +
         '</div>';
       root.appendChild(overlay);

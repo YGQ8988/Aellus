@@ -22,7 +22,6 @@ const (
 	saveDirName   = "file-drops"                                 // 文件保存目录名（实际路径在桌面上：~/Desktop/file-drops）
 	DefaultPort   = 5115                                         // 默认端口；被占用时自动尝试 5116、5117……
 	SettingsFile  = "aellus-settings.json"                       // 保存目录持久化配置文件名
-	SaveDirName   = saveDirName                                  // 导出别名（config.go 等同包文件直接用小写 saveDirName 即可）
 	trimAPISocket = "/var/run/trim_open_gateway_apiscope.socket" // 飞牛开放 API 后端网关 Unix Socket
 )
 

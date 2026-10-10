@@ -29,10 +29,6 @@ let canManage = false;
 // 会出现「按钮显示了却点不动」的错位。批量 ZIP 仍走 blob（POST 无法直连）。
 let hideDownload = false;
 
-// applyHideDownload 保留为空实现：hideDownload 恒为 false，各处调用点无需改动，
-// 便于将来若某个环境确实不支持下载时，只改这一处即可恢复隐藏。
-function applyHideDownload() {}
-
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
   $('filesView').classList.toggle('active', view === 'files');
@@ -117,9 +113,9 @@ async function loadDirs(autoEnter = true, page) {
     $('dirsList').innerHTML = data.dirs.map(d => {
       const delable = canManage;
       return `
-      <div class="file-item dir-card">
+      <div class="file-item">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(d.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
-        <div class="file-right">
+        <div>
           <div class="file-main" onclick="selectDir(${jsLit(d.name)})" style="cursor:pointer">
             <div class="thumb-folder">${SVG_FOLDER}</div>
             <div class="file-meta-col">
@@ -253,7 +249,7 @@ function buildBreadcrumb() {
   if (allDirs.length > 1) {
     parts.push('<span class="bc-sep">/</span>');
     // 不用 href="javascript:..."：它依赖 CSP 的 'unsafe-inline'，一旦收紧 CSP 就静默失效。
-    parts.push('<a class="bc-link bc-dirs" href="#" onclick="backToDirs(); return false;">目录</a>');
+    parts.push('<a class="bc-link" href="#" onclick="backToDirs(); return false;">目录</a>');
   }
   const segs = (currentDir || '').split('/').filter(s => s !== '');
   if (segs.length === 0) {
@@ -289,9 +285,9 @@ function renderFile(f, idx) {
   if (f.isDir) {
     const delable = canManage;
     return `
-      <div class="file-item folder-item">
+      <div class="file-item">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(f.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
-        <div class="file-right">
+        <div>
           <div class="file-main" onclick="enterFolder(${jsLit(f.name)})" style="cursor:pointer">
             <div class="thumb-folder">${SVG_FOLDER}</div>
             <div class="file-meta-col">

@@ -580,8 +580,12 @@ body.home .container {
 	}
 }
 
+/* 授权目录下拉项：文本 + 右侧「移除授权」✕（flex 让二者同行） */
 .dir-option {
-	display: block;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 	padding: 9px 10px;
 	border-radius: calc(var(--radius) - 4px);
 	cursor: pointer;
@@ -909,14 +913,6 @@ body.home .container {
 	font-size: 12px;
 	line-height: 1.5;
 	color: hsl(var(--muted-foreground));
-}
-
-/* 授权目录下拉项：文本 + 右侧「移除授权」✕（.dir-option 基础样式在 browse.css） */
-.dir-option {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
 }
 
 .dir-option-text {

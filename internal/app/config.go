@@ -42,9 +42,9 @@ func ResolveBaseDir() string {
 // 取不到家目录时回退到可执行文件同目录（不会崩）。
 func resolveSaveDir() string {
 	if home, err := os.UserHomeDir(); err == nil {
-		return filepath.Join(home, "Desktop", SaveDirName)
+		return filepath.Join(home, "Desktop", saveDirName)
 	}
-	return filepath.Join(ResolveBaseDir(), SaveDirName)
+	return filepath.Join(ResolveBaseDir(), saveDirName)
 }
 
 // ResolveSaveDir 是 resolveSaveDir 的导出版本，供 main 包启动阶段调用。

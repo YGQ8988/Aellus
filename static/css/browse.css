@@ -163,11 +163,10 @@
 .select-all { display: flex; align-items: center; gap: 6px; margin-bottom: 0; font-size: 14px; font-weight: 500; cursor: pointer; user-select: none; color: hsl(var(--foreground)); }
 .select-all input { width: 16px; height: 16px; cursor: pointer; }
 .batch-actions { display: flex; gap: 8px; margin-left: auto; }
-.btn-batch { padding: 8px 16px; min-height: 0; border-radius: calc(var(--radius) - 4px); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: opacity .15s, background-color .15s, color .15s, border-color .15s; }
+.btn-batch { padding: 8px 16px; min-height: 0; border-radius: calc(var(--radius) - 4px); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid hsl(var(--border)); transition: opacity .15s, background-color .15s, color .15s, border-color .15s; }
 .btn-batch:disabled { opacity: .5; cursor: not-allowed; }
 /* 批量下载/删除：所有宽度统一为与卡片按钮相同的行为 —— 默认描边静默（透明底 + 边框 +
    主色/危险色文字），勾选内容后实色填充；被禁用（未勾选）时仅描边 + 半透明。 */
-.btn-batch { border-color: hsl(var(--border)); }
 .btn-selected { background: transparent; color: hsl(var(--primary)); border-color: hsl(var(--border)); }
 .btn-del-selected { background: transparent; color: hsl(var(--destructive)); border-color: hsl(var(--border)); }
 .btn-selected:not(:disabled) { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
@@ -316,5 +315,6 @@
   line-height: 1;
   user-select: none;
 }
-@keyframes lanPop { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+/* 与 home.css 的 lanPop 保持一致（曾为 scale(1.1)，与首页回弹幅度不一致） */
+@keyframes lanPop { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.18); } 100% { transform: scale(1); opacity: 1; } }
 .qr-tip { font-size: 12px; color: hsl(var(--muted-foreground)); margin: 0; text-align: center; }
