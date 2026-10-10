@@ -35,11 +35,28 @@ body.home .container {
 	background: hsl(var(--card));
 	border: 1px solid hsl(var(--border));
 	border-radius: var(--radius-lg);
-	padding: 32px 24px;
-	text-align: center;
+	padding: 28px 26px;
+	text-align: left;
 	text-decoration: none;
 	color: hsl(var(--foreground));
 	transition: background .15s, border-color .15s, box-shadow .25s ease, transform .25s ease;
+}
+
+/* 卡片头部：左侧小标签（eyebrow）+ 右上角圆角图标块 */
+.entry-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 26px;
+}
+
+.entry-eyebrow {
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 3px;
+	text-transform: uppercase;
+	color: hsl(var(--muted-foreground));
 }
 
 /* hover 边框高亮，与输入框（.dir-input / .dir-trigger）效果一致 */
@@ -49,12 +66,33 @@ body.home .container {
 	}
 }
 
+/* 图标：右上角圆角色块（浅主色底 + 主色图标），居中摆放 svg */
 .entry .icon {
 	width: 48px;
 	height: 48px;
-	margin: 0 auto 14px;
-	display: block;
-	color: hsl(var(--foreground));
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 14px;
+	background: hsl(var(--primary) / .08);
+	color: hsl(var(--primary));
+}
+
+.entry .icon svg {
+	width: 22px;
+	height: 22px;
+}
+
+/* 各入口的图标配色：色值走 common.css 的 :root token，不在这里写死 */
+.entry--upload .icon {
+	background: hsl(var(--entry-icon-upload) / .08);
+	color: hsl(var(--entry-icon-upload));
+}
+
+.entry--browse .icon {
+	background: hsl(var(--entry-icon-browse) / .08);
+	color: hsl(var(--entry-icon-browse));
 }
 
 .entry .title {
@@ -693,7 +731,12 @@ body.home .container {
 	.entry .icon {
 		width: 56px;
 		height: 56px;
-		margin-bottom: 20px;
+		border-radius: 16px;
+	}
+
+	.entry .icon svg {
+		width: 26px;
+		height: 26px;
 	}
 
 	.entry .title {
@@ -817,7 +860,12 @@ body.home .container {
 	.entry .icon {
 		width: 42px;
 		height: 42px;
-		margin-bottom: 12px;
+		border-radius: 12px;
+	}
+
+	.entry .icon svg {
+		width: 20px;
+		height: 20px;
 	}
 
 	.entry .title {
@@ -840,5 +888,61 @@ body.home .container {
 	.home-footer .disclaimer {
 		font-size: 12px;
 		line-height: 1.6;
+	}
+}
+
+/* 设置面板：飞牛端「＋ 添加授权目录」行（桌面端隐藏） */
+.dir-auth-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+
+/* 同上：display:flex 会覆盖 UA 的 [hidden]{display:none}，必须显式声明 */
+.dir-auth-row[hidden] {
+	display: none;
+}
+
+.dir-auth-hint {
+	font-size: 12px;
+	line-height: 1.5;
+	color: hsl(var(--muted-foreground));
+}
+
+/* 授权目录下拉项：文本 + 右侧「移除授权」✕（.dir-option 基础样式在 browse.css） */
+.dir-option {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.dir-option-text {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.dir-option-del {
+	flex-shrink: 0;
+	padding: 2px 5px;
+	border: none;
+	border-radius: calc(var(--radius) - 4px);
+	background: transparent;
+	color: hsl(var(--muted-foreground));
+	font-size: 13px;
+	line-height: 1;
+	cursor: pointer;
+	transition: background .12s, color .12s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.dir-option-del:hover {
+		background: hsl(var(--accent));
+		color: hsl(var(--foreground));
 	}
 }

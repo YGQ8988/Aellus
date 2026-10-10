@@ -53,4 +53,7 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/listdir", noCache(http.HandlerFunc(a.handleListDir)))
 	mux.HandleFunc("/api/set-savedir", a.requireTrustedClient(a.handleSetSaveDir))
 	mux.HandleFunc("/api/pick-dir", a.requireTrustedClient(a.handlePickDir))
+	// 移除飞牛共享授权目录（官方 API trim.file.delSharedAccessibleFolder）；
+	// 权限要求与改保存目录一致
+	mux.HandleFunc("/api/del-authdir", a.requireTrustedClient(a.handleDelAuthDir))
 }

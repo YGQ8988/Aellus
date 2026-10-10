@@ -296,6 +296,80 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "saveDir": dir, "saveDirDisplay": saveDirDisplay})
 }
 
+// handleDelAuthDir POST /api/del-authdir 移除一个飞牛共享授权目录。
+//
+// 走官方后端 API trim.file.delSharedAccessibleFolder（Scope trim.file.sharedAccess，
+// 已在 config/resource 声明）。仅管理员门户 / 本机来源可调用（与改保存目录同权限）。
+//
+// 重要：移除后如果当前保存目录就在该目录之下，它会立刻落到授权范围外，
+// 上传必然失败。因此这里主动把保存目录回退到出厂默认目录（走 set-savedir
+// 同一套持久化），并把回退结果返回给前端，避免留下一个不可用的配置。
+func (a *App) handleDelAuthDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
+		return
+	}
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "无权限修改授权目录"})
+		return
+	}
+	// 授权目录是飞牛独有的概念；桌面端 / OpenWrt 没有这套 ACL，直接拒绝。
+	if !a.platform.EnforceAuthBoundary() {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "当前环境不支持授权目录"})
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		a.writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "请求格式错误"})
+		return
+	}
+	path := strings.TrimSpace(req.Path)
+	if path == "" {
+		a.writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "缺少要移除的目录"})
+		return
+	}
+	// 只允许移除「授权根目录」本身，避免传入任意路径（官方接口按精确路径删除，
+	// 这里先对齐一次，防止意外删掉不在列表里的条目）。
+	roots := saveDirAllowedRoots()
+	if !withinAuthRoots(path, roots) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "该目录不在当前授权目录内"})
+		return
+	}
+	if _, err := trimBackendAPI("trim.file.delSharedAccessibleFolder", map[string]string{"path": path}); err != nil {
+		// 错误详情可能含内部路径 / 系统信息，只写日志，客户端拿通用提示。
+		a.logOp(fmt.Sprintf("移除授权目录失败 path=%s 错误=%v", path, err))
+		a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": "移除授权失败，请稍后重试"})
+		return
+	}
+	a.logOp(fmt.Sprintf("已移除授权目录 path=%s", path))
+
+	// 移除完成后，重新拉取授权范围；若当前保存目录已不在其中，回退默认目录。
+	resp := map[string]interface{}{"ok": true, "path": path, "resetSaveDir": false}
+	newRoots := saveDirAllowedRoots()
+	cur := a.getSaveDir()
+	if len(newRoots) > 0 && !withinAuthRoots(cur, newRoots) {
+		def := bootDefaultSaveDir()
+		if def != "" {
+			if err := os.MkdirAll(def, 0755); err == nil {
+				a.setSaveDir(def)
+				if a.platform.PersistSaveDirAllowed() {
+					_ = SaveSaveDirConfig(def)
+				}
+				disp := def
+				if m := trimConvertPaths([]string{def}); m[def] != "" {
+					disp = m[def]
+				}
+				resp["resetSaveDir"] = true
+				resp["saveDir"] = def
+				resp["saveDirDisplay"] = disp
+			}
+		}
+	}
+	a.writeJSON(w, http.StatusOK, resp)
+}
+
 // handlePickDir 调用系统原生"选取文件夹"对话框，返回用户选择的绝对路径。
 // 仅本机来源可调用（见 isLocalRequest）；fpk 端无本机浏览器，不支持目录选择，返回 501。
 func (a *App) handlePickDir(w http.ResponseWriter, r *http.Request) {
