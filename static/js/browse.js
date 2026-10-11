@@ -110,7 +110,10 @@ async function loadDirs(autoEnter = true, page) {
       if (pg > last) { loadDirs(false, last); return; }
     }
     canManage = !!data.canDelete;
-    $('dirsList').innerHTML = data.dirs.map(d => {
+    // 设备目录卡片 + 根层散落文件（rootFiles）平铺在同一列表。
+    // 过去散落文件被包装成一个「未命名设备」虚拟文件夹：卡片上的大小只是汇总，
+    // 点进去又要重复列出各子目录，数字对不上、也容易被当成真实文件夹。
+    const dirCards = data.dirs.map(d => {
       const delable = canManage;
       return `
       <div class="file-item">
@@ -119,14 +122,65 @@ async function loadDirs(autoEnter = true, page) {
           <div class="file-main" onclick="selectDir(${jsLit(d.name)})" style="cursor:pointer">
             <div class="thumb-folder">${SVG_FOLDER}</div>
             <div class="file-meta-col">
-              <div class="fname fname-row"><span class="ftext">${escapeHtml(d.name === '' ? '未命名设备' : d.name)}</span><span class="badge badge-outline">文件夹</span></div>
+              <div class="fname fname-row"><span class="ftext">${escapeHtml(d.name)}</span><span class="badge badge-outline">文件夹</span></div>
               <div class="fmeta">${formatSize(d.size)} · ${formatCount(d.count)} 个文件 · ${formatDay(d.mtime)}</div>
             </div>
           </div>
           ${delable ? '<div class="file-actions"><a class="del-btn" data-name="' + escapeAttr(d.name) + '" onclick="event.stopPropagation(); onDeleteDir(this)">删除</a></div>' : ''}
         </div>
       </div>`;
-    }).join('');
+    });
+    // 根层散落文件：与目录卡片同构（复选框 + 缩略图 + 名称 + 大小/时间），不可进入目录。
+    // 缩略图结构必须与 renderFile 保持一致：.thumb 类直接挂在 <img> 上（没有外层包裹 div），
+    // 否则图片撑不开格子、只剩空白；并沿用 onload 标记 loaded / onerror 降级。
+    const rootFileCards = (data.rootFiles || []).map(f => {
+      const delable = canManage;
+      const url = 'api/download?dir=&file=' + encodeURIComponent(f.name);
+      const ext = String(f.name).split('.').pop().toLowerCase();
+      const isImg = isPreviewExt(ext) && !isVideoExt(ext);
+      const isVid = isVideoExt(ext);
+      let thumb;
+      if (isImg) {
+        if (ext === 'svg') {
+          // svg 不走 /api/thumb（服务端对可携带脚本的类型不内联，返回 octet-stream，
+          // <img> 渲染不出来）。hydrateSvgPreviews 只处理 #filesList 里的条目（依赖
+          // previewFiles 的 idx 映射），根层平铺卡片不在其中，所以这里直接用扩展名占位，
+          // 不放一个永远加载不出来的 <img>，免得留空白。
+          thumb = `<div class="thumb-other thumb-ext">SVG</div>`;
+        } else {
+          const thumbUrl = 'api/thumb?dir=&file=' + encodeURIComponent(f.name) + '&w=240';
+          thumb = `<img class="thumb" src="${thumbUrl}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="onThumbError(this)">`;
+        }
+      } else if (isVid) {
+        thumb = `<video class="thumb-video" src="${url}" preload="metadata" onerror="onThumbError(this)" data-name="${escapeAttr(f.name)}"></video>`;
+      } else {
+        let extText = '';
+        if (ext && f.name.indexOf('.') > 0 && !f.name.startsWith('.')) {
+          extText = ext.toUpperCase().slice(0, 4);
+        }
+        thumb = extText
+          ? `<div class="thumb-other thumb-ext">${escapeHtml(extText)}</div>`
+          : `<div class="thumb-other">${SVG_FILE}</div>`;
+      }
+      return `
+      <div class="file-item">
+        <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(f.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
+        <div>
+          <div class="file-main">
+            ${thumb}
+            <div class="file-meta-col">
+              <div class="fname">${escapeHtml(displayName(f.name))}</div>
+              <div class="fmeta">${formatSize(f.size)} · ${formatTime(f.mtime)}</div>
+            </div>
+          </div>
+          <div class="file-actions">
+            <a class="dl-btn" data-url="${escapeAttr(url)}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>
+            ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDeleteRootFile(this)">删除</a>' : ''}
+          </div>
+        </div>
+      </div>`;
+    });
+    $('dirsList').innerHTML = dirCards.concat(rootFileCards).join('');
     // 显示目录页批量操作栏，重置全选
     $('dirsBatchBar').style.display = 'flex';
     $('selectAllDirs').checked = false;
@@ -253,8 +307,10 @@ function buildBreadcrumb() {
   }
   const segs = (currentDir || '').split('/').filter(s => s !== '');
   if (segs.length === 0) {
+    // 根层级（currentDir 为空）：过去叫「未命名设备」，那个虚拟文件夹已取消
+    // （散落文件改为在目录列表里平铺），这里如实显示为「保存目录」。
     parts.push('<span class="bc-sep">/</span>');
-    parts.push('<span class="bc-cur">' + (currentDir === '' ? '未命名设备' : escapeHtml(currentDir)) + '</span>');
+    parts.push('<span class="bc-cur">保存目录</span>');
   } else {
     let acc = '';
     segs.forEach((s, i) => {
@@ -499,16 +555,18 @@ async function deleteSelected(btn) {
 }
 
 // 目录页「删除选中目录」：每个勾选项都是顶层目录，删除路径为 ('' , dirName)
-// 仅删除可删的目录，其余跳过并提示。
+// 删除选中的项。列表里既有设备目录、也有根层散落文件（rootFiles 平铺），
+// 两者删除路径都是 ('' , name)，由后端按实际类型处理；故文案不再限定为「目录」。
 async function deleteSelectedDirs(btn) {
   const checked = Array.from(document.querySelectorAll('#dirsList .file-check:checked'));
   const dirs = checked.filter(c => c.dataset.del === 'true').map(c => c.dataset.name);
   const skipped = checked.length - dirs.length;
   if (!dirs.length) return;
-  const desc = '确定删除选中的 ' + dirs.length + ' 个目录及其全部内容？'
+  const desc = '确定删除选中的 ' + dirs.length + ' 项吗？'
+    + '（选中的目录会被连同其全部内容一起删除）'
     + (skipped ? '另有 ' + skipped + ' 个来自其他设备、仅可下载，将跳过。' : '')
     + '此操作不可恢复。';
-  const ok = await confirmDialog({ title: '删除选中的目录', desc: desc, confirmText: '删除', cancelText: '取消', destructive: true });
+  const ok = await confirmDialog({ title: '删除选中项', desc: desc, confirmText: '删除', cancelText: '取消', destructive: true });
   if (!ok) return;
   const btns = Array.from(document.querySelectorAll('#dirsList .btn-batch'));
   // 记下原按钮文案：删除中会把 innerHTML 换成 spinner，必须在 finally 里还原，
@@ -526,6 +584,22 @@ async function deleteSelectedDirs(btn) {
     loadDirs(false, dirsPage);   // 分页下重拉当前页（删空自动回退）
     updateSelectedCount();
   }
+}
+
+// 根层散落文件单条「删除」：文件就在保存目录根下，删除路径同样是 ('' , fileName)。
+// 与 onDeleteDir 的区别只在于确认文案（不递归删除整个目录）。
+async function onDeleteRootFile(btn) {
+  const name = btn.dataset.name;
+  if (btn.classList.contains('loading')) return;
+  const ok = await confirmDialog({ title: '删除文件', desc: '确定删除「' + name + '」？此操作不可恢复。', confirmText: '删除', cancelText: '取消', destructive: true });
+  if (!ok) return;
+  btn.classList.add('loading');
+  const old = btn.textContent;
+  btn.textContent = '删除中';
+  const delOk = await apiDelete('', name);
+  if (!delOk) { btn.classList.remove('loading'); btn.textContent = old; return; }
+  updateSelectedCount();
+  loadDirs(false, dirsPage);
 }
 
 // 目录卡片单条「删除」：顶层目录，删除路径为 ('' , dirName)

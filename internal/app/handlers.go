@@ -465,28 +465,32 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 			dirs = append(dirs, DirInfo{Name: e.Name(), Count: count, Size: size, Mtime: mtime})
 		}
 	}
-	// 根目录（未命名设备）下直接存放的文件，也作为一个目录项展示；
-	// 其内部 Name 为空字符串，前端显示为「未命名设备」，并可在根目录下列出。
-	// 注意：这里只统计根目录的直接文件（不递归），因为子目录已作为单独卡片展示，避免重复计数。
-	rootSize, rootCount, rootMtime := int64(0), int64(0), int64(0)
+	// 根层「未归入任何设备目录」的散落文件：随本响应一起返回，由前端平铺在目录列表里，
+	// 不再包装成 Name 为空的虚拟目录项（前端曾显示为「未命名设备」）。
+	// 那个虚拟卡片的问题：卡片上只显示汇总大小，可点进去又要重复列出各子目录，
+	// 数字对不上、也容易被误认成真实文件夹。
+	// 这里只取根层的直接文件（子目录已作为单独卡片展示，不递归以免重复计数）。
+	rootFiles := []FileInfo{} // 空切片，确保无内容时输出 [] 而非 null
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".") || e.IsDir() {
 			continue
 		}
 		if info, err := e.Info(); err == nil {
-			rootSize += info.Size()
-			rootCount++
-			mt := info.ModTime().Unix()
-			if mt > rootMtime {
-				rootMtime = mt
-			}
+			rootFiles = append(rootFiles, FileInfo{
+				Name:  e.Name(),
+				Size:  info.Size(),
+				Mtime: info.ModTime().Unix(),
+			})
 		}
 	}
-	if rootCount > 0 {
-		dirs = append(dirs, DirInfo{Name: "", Count: int(rootCount), Size: rootSize, Mtime: rootMtime})
-	}
+	sort.SliceStable(rootFiles, func(i, j int) bool {
+		return rootFiles[i].Mtime > rootFiles[j].Mtime // 新的在前
+	})
 	part, total, page, size := pageScope(r, dirs)
-	a.writeJSON(w, http.StatusOK, DirsResp{Dirs: part, CanDelete: a.canManage(r), Total: total, Page: page, Size: size})
+	a.writeJSON(w, http.StatusOK, DirsResp{
+		Dirs: part, RootFiles: rootFiles,
+		CanDelete: a.canManage(r), Total: total, Page: page, Size: size,
+	})
 }
 
 // handleFiles GET /api/files?dir=xxx 列出某目录下的文件与子目录。

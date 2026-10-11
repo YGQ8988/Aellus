@@ -27,6 +27,11 @@ type DirInfo struct {
 type DirsResp struct {
 	Dirs      []DirInfo `json:"dirs"`
 	CanDelete bool      `json:"canDelete"` // 当前请求是否可删除（桌面端本机 / 飞牛门户内）：同一请求内所有目录一致，前端据此显隐删除按钮
+	// RootFiles 保存目录根层「未归入任何设备目录」的散落文件。
+	// 过去这些文件被包装成一个 Name 为空的虚拟目录项（前端显示为「未命名设备」），
+	// 卡片上只显示汇总大小、点进去又要重复列出各子目录，数字对不上、也容易被误认成
+	// 真实文件夹。改为直接平铺在目录列表里，与各设备目录平级，最符合直觉。
+	RootFiles []FileInfo `json:"rootFiles"`
 	// 分页字段：size=0 表示未分页（返回全量，兼容旧调用）
 	Total int `json:"total"` // 分页前的完整数量
 	Page  int `json:"page"`  // 当前页（从 1 开始）
