@@ -104,6 +104,13 @@ func (a *App) Serve(ln net.Listener, port int) {
 	// 门户路径前缀由启动脚本注入（如 /app/aellus）；未注入时为无前缀模式。
 	a.mountPrefix = strings.TrimSuffix(strings.TrimSpace(os.Getenv("FNNAS_GATEWAY_PREFIX")), "/")
 
+	// 启动即清理上一进程遗留的临时文件（被 OOM kill / kill -9 / 断电时 defer 不会执行）：
+	// 上传中间文件与批量打包的 ZIP 都落在保存卷上，不清理会永久占空间。
+	if tmpDir := a.uploadTempDir(); tmpDir != "" {
+		a.cleanStaleUploadTemps(tmpDir)
+		a.cleanStaleDownloadTemps(tmpDir)
+	}
+
 	// 裸端口：先剥离伪造的 X-Trim-*，再归一化前缀，最后进入路由。
 	// iframe 嵌入策略按平台区分：
 	//   - 飞牛端：门户会以「端口 + 路径」或跨端口 iframe 的方式嵌入应用，
@@ -150,11 +157,17 @@ func (a *App) buildMux(port int) *http.ServeMux {
 	// 必须指向 IP:端口（免登录上传），不能返回网关地址（网关要求飞牛登录态）。
 	mux.HandleFunc("/api/addr", func(w http.ResponseWriter, r *http.Request) {
 		curIP := GetLANIP()
+		// clientIP（对方 IP）与 platform（飞牛/OpenWrt/桌面端）只对管理者返回：
+		// 首页地址栏与二维码只需要 ip/port/url，不该把内网拓扑与运行平台
+		// 无条件交给局域网任意设备。
 		clientIP := ""
-		if ip := remoteIP(r); ip != nil {
-			clientIP = ip.String()
+		platform := ""
+		if a.canManage(r) {
+			if ip := remoteIP(r); ip != nil {
+				clientIP = ip.String()
+			}
+			platform = platformLabel(a.platform, IsOpenWrt())
 		}
-		platform := platformLabel(a.platform, IsOpenWrt())
 		a.writeJSON(w, http.StatusOK, map[string]string{
 			"ip":       curIP,
 			"port":     strconv.Itoa(port),

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -32,6 +33,13 @@ const (
 	maxRelPathBytes     = 8 << 10 // 单个 rels 字段（相对路径，Linux PATH_MAX 为 4096）
 	maxRelEntries       = 20000   // rels 条数上限
 	maxBatchFiles       = 10000   // 批量下载一次可指定的文件条数上限（防重复放大）
+	// maxBatchBytes 单次打包的字节总量上限（防写放大）：
+	// /api/download-batch 是免登录接口，files 为空时会递归收集整个保存目录打包，
+	// 若不设总量上限，一条 1MB 的请求就能把保存目录全部内容重抄一遍（可达数百 GB），
+	// 直接写满存储卷，且临时 ZIP 与保存目录同盘。上限按"合理批量导出"取 4GB。
+	maxBatchBytes = 4 << 30
+	// maxUploadFiles 单个请求允许携带的文件 part 数上限（上传免登录，必须限条数）
+	maxUploadFiles = 10000
 )
 
 // uploadTempDir 返回临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
@@ -62,8 +70,20 @@ func (a *App) uploadTempDir() string {
 	return dir
 }
 
-// cleanStaleUploadTemps 清理临时目录里的残留文件（上传/打包过程中进程被强杀，来不及删除的）。
-// 只删超过 6 小时的，避免误删正在传输的文件；只处理该目录下的普通文件。best-effort。
+// cleanStaleUploadTemps 清理临时目录里的残留上传中间文件（上传过程中进程被强杀，
+// 来不及删除的）。只处理该目录下的普通文件，best-effort。
+//
+// 误删问题（原实现）：判据只有「前缀 + mtime 早于阈值」。一个持续超过阈值的极慢上传，
+// 其临时文件 mtime 会一直停在过去——因为内容是先写完、再由 rels 配对 rename。于是另一台
+// 设备随便发一次上传请求就会把它删掉，该上传随后在 rename 处失败、返回 500，用户白传。
+//
+// 现在加了两道保护：
+//  1. 阈值 6h → 24h：正常上传（即使是十几 GB 的慢速上传）几乎不可能跨越；
+//  2. 「刚刚还在写」豁免：若文件 mtime 距今不足 2 分钟，说明此刻仍有人在写，判为进行中。
+//     （createTemp 刚建好但尚未写入时 mtime 也是新的，同样被豁免，符合预期。）
+const staleTempAge = 24 * time.Hour
+const tempWritingGrace = 2 * time.Minute
+
 func (a *App) cleanStaleUploadTemps(dir string) {
 	if dir == "" {
 		return
@@ -72,20 +92,63 @@ func (a *App) cleanStaleUploadTemps(dir string) {
 	if err != nil {
 		return
 	}
-	cutoff := time.Now().Add(-6 * time.Hour)
+	now := time.Now()
+	cutoff := now.Add(-staleTempAge)
+	writingSince := now.Add(-tempWritingGrace)
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		// 只清理上传临时文件：批量下载的 ZIP 也放在这个目录里，而打包大目录可能持续
-		// 很久（低速写入时 mtime 长时间不更新），按 6 小时一刀切会删掉还在进行中的
-		// 打包产物，导致下载拿到半截文件。
+		// 只清理上传临时文件：批量下载的 ZIP 也放在这个目录里，由
+		// cleanStaleDownloadTemps 单独处理（那边同样是 24h 窗口）。
 		if !strings.HasPrefix(e.Name(), "aellus-upload-") {
 			continue
 		}
-		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
-			_ = os.Remove(filepath.Join(dir, e.Name()))
+		info, err := e.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
 		}
+		if info.ModTime().After(writingSince) {
+			continue // 刚刚还被写过：视为进行中，不动
+		}
+		_ = os.Remove(filepath.Join(dir, e.Name()))
+	}
+}
+
+// cleanStaleDownloadTemps 清理批量下载遗留的临时 ZIP。
+//
+// 这些 ZIP 与保存目录同盘，一次打包大目录可达数十 GB。原先只清理上传临时文件
+// （见 cleanStaleUploadTemps），于是：进程被 OOM kill / kill -9 / 断电时 defer 来不及
+// 执行，ZIP 会永久残留；而且清理逻辑只在 handleUpload 里被触发，没有任何启动清理入口，
+// 重启后垃圾文件依然躺在卷上。与批量打包的写放大叠加，一次攻击就能留下巨大垃圾。
+//
+// 判据：仅处理 aellus-download-*.zip，且 mtime 早于 24 小时——正在写入的 ZIP 其 mtime
+// 会随写入持续推进，故不会被误删（无需额外的 in-flight 计数）。
+func (a *App) cleanStaleDownloadTemps(dir string) {
+	if dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleTempAge)
+	writingSince := time.Now().Add(-tempWritingGrace)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(e.Name(), "aellus-download-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		if info.ModTime().After(writingSince) {
+			continue // 仍在写入（异常缓慢的打包），不动
+		}
+		_ = os.Remove(filepath.Join(dir, e.Name()))
 	}
 }
 
@@ -188,6 +251,12 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 			rels = append(rels, scratch.String())
 		case formName == "files" && fileName != "":
+			// 文件条数上限：rels 有 maxRelEntries 限制，files 若不限，一个百 MB 的请求
+			// 就能在保存目录里建十万级临时文件并逐个 rename（inode/CPU 双重放大）。
+			if len(pending) >= maxUploadFiles {
+				part.Close()
+				continue
+			}
 			// 先把文件内容流式写入临时文件（内容不限大小），之后再用 rels 配对重命名。
 			// 临时文件放保存目录内的隐藏子目录（同盘 rename、空间算对盘），不可用时回退系统临时目录。
 			tmp, terr := os.CreateTemp(tmpDir, "aellus-upload-*")
@@ -309,36 +378,60 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 // dirStats 递归统计目录：返回总大小（字节，含子目录内文件）、
 // 文件总数（仅文件，不含目录本身）、最新修改时间（Unix 时间戳，含子目录与文件）。
 // 若某路径无法读取则忽略该分支，不影响其余统计。纯函数。
+//
+// 遍历预算：/api/dirs 与 /api/files 是免登录接口，且统计发生在分页之前——
+// 无上限递归时，一个 10 万文件的目录，一条请求就是 10 万次 Info()（外加
+// handleFiles 对每个子目录各统计一次），几条并发即可把 NAS / 路由器 CPU 打满。
+// 故设深度与条目上限，超出即停止累加：返回的 size/count 变成「下限值」
+// （至少不会阻塞页面），对超大目录是可接受的取舍。
+const (
+	dirStatsMaxDepth   = 8     // 最多递归 8 层
+	dirStatsMaxEntries = 20000 // 最多访问 20000 个目录项
+)
+
 func dirStats(path string) (size int64, count int, mtime int64) {
+	budget := dirStatsMaxEntries
+	dirStatsDepth(path, 0, &budget, &count, &size, &mtime)
+	return
+}
+
+// dirStatsDepth 递归实现。
+// budget 为本次调用链共享的剩余条目预算（用指针传递，让所有子目录共用同一份额度，
+// 否则每层各算一份会让上限失效）；count 语义保持原样：只计文件、不计目录。
+func dirStatsDepth(path string, depth int, budget *int, count *int, size *int64, mtime *int64) {
+	if depth > dirStatsMaxDepth {
+		return
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
-		return 0, 0, 0
+		return
 	}
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
+		if *budget <= 0 {
+			return
+		}
+		*budget--
 		info, err := e.Info()
 		if err != nil {
 			continue
 		}
 		mt := info.ModTime().Unix()
-		if mt > mtime {
-			mtime = mt
+		if mt > *mtime {
+			*mtime = mt
 		}
 		if e.IsDir() {
-			s, c, m := dirStats(filepath.Join(path, e.Name()))
-			size += s
-			count += c
-			if m > mtime {
-				mtime = m
+			if depth >= dirStatsMaxDepth {
+				continue // 超深度：不再深入，该子目录内容不计入
 			}
+			dirStatsDepth(filepath.Join(path, e.Name()), depth+1, budget, count, size, mtime)
 		} else {
-			size += info.Size()
-			count++
+			*size += info.Size()
+			*count++
 		}
 	}
-	return
 }
 
 // handleDirs GET /api/dirs 列出所有设备目录及其文件数、总大小、最新修改时间。
@@ -516,10 +609,27 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	// 确定要打包的文件名列表（names 为相对 dirAbs 的路径，可含子目录层级）
 	var names []string
 	if len(req.Files) == 0 {
-		// files 为空 -> 递归打包该目录（含子目录）全部非隐藏文件，保留层级结构
+		// files 为空 -> 递归打包该目录（含子目录）全部非隐藏文件，保留层级结构。
+		// 递归分支同样受 maxBatchFiles / maxBatchBytes 约束：否则 1MB 请求就能让服务端
+		// 把整个保存目录重抄一遍（写放大 → 写满存储卷）。
+		var walkTotal int64
+		walkCount := 0
+		walkErr := errors.New("打包内容超出上限")
 		err := filepath.WalkDir(dirAbs, func(p string, d os.DirEntry, werr error) error {
 			if werr != nil {
 				return werr
+			}
+			if !d.IsDir() {
+				if walkCount >= maxBatchFiles {
+					return walkErr
+				}
+				if info, ierr := d.Info(); ierr == nil {
+					walkTotal += info.Size()
+					if walkTotal > maxBatchBytes {
+						return walkErr
+					}
+				}
+				walkCount++
 			}
 			if d.IsDir() {
 				// 隐藏目录必须整棵跳过（SkipDir）：只 return nil 仅表示"不把目录本身加入列表"，
@@ -541,6 +651,12 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 		if err != nil {
+			if errors.Is(err, walkErr) {
+				// 内容超出上限：明确告知用户分批下载，而不是硬着头皮打包把卷写满。
+				a.logOp(fmt.Sprintf("批量下载 超出上限 目录=%s 文件数=%d 字节=%d", req.Dir, walkCount, walkTotal))
+				http.Error(w, "打包内容过多，请分批次下载", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, "读取目录失败", http.StatusInternalServerError)
 			return
 		}
@@ -592,6 +708,8 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	zw := zip.NewWriter(tmp)
 	// seen 记录已写入 ZIP 的条目名（去时间戳前缀后），用于给重名条目加序号。
 	seen := map[string]int{}
+	var totalWritten int64 // 已写入 ZIP 的累计字节（用于 maxBatchBytes 上限）
+	aborted := false       // 是否因超限 / 写入失败而中止
 	for _, name := range names {
 		full := filepath.Join(dirAbs, name)
 		// 双重校验：isInside 防路径穿越（仅字符串判断），realInside 解析符号链接防逃逸。
@@ -625,14 +743,32 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 			src.Close()
 			continue
 		}
-		if _, werr := io.CopyBuffer(zwEntry, src, buf); werr != nil {
-			// 写入失败（多为保存目录空间不足）：记一条日志便于排查，其余文件继续打包。
-			a.logOp(fmt.Sprintf("批量下载 写入失败 文件=%s 错误=%v", name, werr))
-		}
+		// 累计实际写入量，超过 maxBatchBytes 立即中止：
+		// 一方面限制单请求对存储卷的写入放大，另一方面在保存目录空间不足时
+		// 不再继续往满盘上写（原先写失败只是 continue，会持续写下去）。
+		written, werr := io.CopyBuffer(zwEntry, src, buf)
+		totalWritten += written
 		src.Close()
+		if werr != nil {
+			a.logOp(fmt.Sprintf("批量下载 写入失败 文件=%s 错误=%v", name, werr))
+			aborted = true
+			break
+		}
+		if totalWritten > maxBatchBytes {
+			a.logOp(fmt.Sprintf("批量下载 超出字节上限 目录=%s", req.Dir))
+			aborted = true
+			break
+		}
 	}
 	zw.Close() // 必须 Close 才能写完 ZIP 中央目录
 	tmp.Close()
+
+	// 因超限或写入失败中止：不返回残缺的 ZIP（解压会失败且浪费一次全量传输），
+	// 直接告知客户端分批下载。临时文件由上面的 defer 删除。
+	if aborted {
+		http.Error(w, "打包内容过多或存储空间不足，请分批次下载", http.StatusRequestEntityTooLarge)
+		return
+	}
 
 	// 设置下载响应头（zip 文件名取 dir 最后一段，避免路径分隔符出现在文件名里）
 	zipName := filepath.Base(req.Dir)
