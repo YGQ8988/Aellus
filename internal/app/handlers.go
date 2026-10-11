@@ -33,14 +33,33 @@ const (
 	maxRelPathBytes     = 8 << 10 // 单个 rels 字段（相对路径，Linux PATH_MAX 为 4096）
 	maxRelEntries       = 20000   // rels 条数上限
 	maxBatchFiles       = 10000   // 批量下载一次可指定的文件条数上限（防重复放大）
-	// maxBatchBytes 单次打包的字节总量上限（防写放大）：
+	// maxBatchBytes 单次打包的绝对兜底上限（防写放大）：
 	// /api/download-batch 是免登录接口，files 为空时会递归收集整个保存目录打包，
-	// 若不设总量上限，一条 1MB 的请求就能把保存目录全部内容重抄一遍（可达数百 GB），
-	// 直接写满存储卷，且临时 ZIP 与保存目录同盘。上限按"合理批量导出"取 4GB。
-	maxBatchBytes = 4 << 30
+	// 若不设总量上限，一条 1MB 的请求就能把保存目录全部内容重抄一遍，直接写满存储卷。
+	// 实际限制主要用「剩余空间」判断（见 batchSpaceBudget），这个值只是超大卷上的兜底。
+	maxBatchBytes = 64 << 30
 	// maxUploadFiles 单个请求允许携带的文件 part 数上限（上传免登录，必须限条数）
 	maxUploadFiles = 10000
 )
+
+// batchSpaceBudget 根据保存卷剩余空间，给出本次打包允许写入的字节上限。
+//
+// 为什么按剩余空间而不是固定值：固定阈值（如 4GB）会误伤 legit 的大批量导出
+// （想打包 100GB 的用户直接被拒），而真正的风险是「把卷写满」——那就直接看剩余空间：
+//   - 剩余空间的 50%：留出充足余量，避免写满影响同卷其它应用 / 共享；
+//   - 再叠加 maxBatchBytes 作为超大卷上的兜底。
+// 卷空间拿不到时（Windows 桌面端 / Statfs 失败）返回 0，表示不按空间限制。
+func batchSpaceBudget(saveDir string) int64 {
+	free, ok := availableBytes(saveDir)
+	if !ok || free == 0 {
+		return 0 // 拿不到空间信息 → 不做空间限制
+	}
+	budget := int64(free / 2) // 只允许用到一半剩余空间
+	if budget > maxBatchBytes {
+		budget = maxBatchBytes
+	}
+	return budget
+}
 
 // uploadTempDir 返回临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
 // 上传的临时文件与批量下载的临时 ZIP 都落在这里。
@@ -608,6 +627,9 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 
 	// 确定要打包的文件名列表（names 为相对 dirAbs 的路径，可含子目录层级）
 	var names []string
+	// 打包预算 = min(剩余空间的 50%, 64GB 兜底)；拿不到空间信息时为 0 = 不限。
+	// 声明放在分支外：递归统计与写入循环都要用它。
+	spaceBudget := batchSpaceBudget(a.getSaveDir())
 	if len(req.Files) == 0 {
 		// files 为空 -> 递归打包该目录（含子目录）全部非隐藏文件，保留层级结构。
 		// 递归分支同样受 maxBatchFiles / maxBatchBytes 约束：否则 1MB 请求就能让服务端
@@ -625,7 +647,7 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 				}
 				if info, ierr := d.Info(); ierr == nil {
 					walkTotal += info.Size()
-					if walkTotal > maxBatchBytes {
+					if spaceBudget > 0 && walkTotal > spaceBudget {
 						return walkErr
 					}
 				}
@@ -700,6 +722,15 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "创建临时文件失败", http.StatusInternalServerError)
 		return
 	}
+	// 开写前再看一次剩余空间：临时 ZIP 与保存目录同卷，卷满时 zip.Writer 会写失败，
+	// 而写失败是逐条 continue（原本还会继续往满盘写）。空间明显不足时直接拒绝，
+	// 省得白跑一遍全量读取。留1GB 余量给系统与其它应用。
+	if free, ok := availableBytes(tmpDir); ok && free < 1<<30 {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		http.Error(w, "存储空间不足，无法打包（剩余需大于 1GB）", http.StatusInsufficientStorage)
+		return
+	}
 	// 关键：响应结束后自动删除临时 ZIP（无论成功失败）。
 	// defer 会在本函数返回（即 http.ServeFile 写完之后）才执行。
 	defer os.Remove(tmp.Name())
@@ -754,8 +785,8 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 			aborted = true
 			break
 		}
-		if totalWritten > maxBatchBytes {
-			a.logOp(fmt.Sprintf("批量下载 超出字节上限 目录=%s", req.Dir))
+		if spaceBudget > 0 && totalWritten > spaceBudget {
+			a.logOp(fmt.Sprintf("批量下载 超出空间预算 目录=%s 预算=%d", req.Dir, spaceBudget))
 			aborted = true
 			break
 		}
