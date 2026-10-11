@@ -1,8 +1,124 @@
 #!/bin/bash
 
-### This script is called after the application is uninstalled.
+### 该脚本在系统删除应用程序文件之后被调用（卸载流程的最后一个钩子）。
+###
+### 为什么目录树的清理放在这里，而不是 uninstall_init：
+### 飞牛给每个应用都建了六棵同名目录树——
+###   /volN/@appcenter/<App>  安装目录（可执行文件）
+###   /volN/@appconf/<App>    配置
+###   /volN/@appdata/<App>    运行时数据（TRIM_PKGVAR）
+###   /volN/@apphome/<App>    home
+###   /volN/@appmeta/<App>    元数据（cmd/* 生命周期脚本多半在这里）
+###   /volN/@apptemp/<App>    临时目录
+### 卸载时飞牛只会清掉里面的内容、不删目录本身，于是留下一堆同名空壳。
+### 而 init 阶段系统还没删完，此时把这些目录删掉会让后续钩子
+### （回调脚本自身就在 @appmeta 里）跑不起来，所以放到最后一个钩子来做。
+###
+### 「是否清理」由 uninstall_init 写下的标记文件决定：卸载向导值只在 init
+### 阶段注入，回调阶段读不到。
+### 原则：**用户上传的文件一律保留**，只清应用自己的东西和空目录壳。
 
-### 卸载时是否保留应用配置由卸载确认页开关决定（keep_config → uninstall_init，
-### 在系统删除文件之前执行，应用已停止、var 持久卷保留，是清理配置的唯一正确时机）。
-### 本脚本在系统删除文件之后运行，卸载向导值已不可用，无需再执行任何操作。
+VAR_DIR="${TRIM_PKGVAR:-}"
+case "$VAR_DIR" in
+  /vol*/@appdata/*) ;;
+  *) exit 0 ;;
+esac
+
+# 标记文件由 uninstall_init 写入；不存在说明用户选了「保留应用配置」，什么都不做。
+MARK="${VAR_DIR}/.aellus-uninstalling"
+[ -f "${MARK}" ] || exit 0
+
+# 标记内容：第一行 = 当前保存目录（可能为空）
+SAVE_DIR=$(head -n 1 "${MARK}" 2>/dev/null)
+
+APP_NAME=$(basename "${VAR_DIR}")                 # 如 Aellus
+VOL_DIR=$(dirname "$(dirname "${VAR_DIR}")")      # 如 /vol1
+
+# 兜底：保存目录没取到时用飞牛的共享路径第一项（与运行时优先级一致）
+if [ -z "${SAVE_DIR}" ]; then
+  SAVE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+fi
+
+# ---------------------------------------------------------------------------
+# ① 配置 / 日志 / pid / 标记文件（init 里删过一遍，这里再兜一次，幂等）
+# ---------------------------------------------------------------------------
+rm -rf "${VAR_DIR}/aellus-settings.json" "${VAR_DIR}/devices.json" \
+       "${VAR_DIR}/info.log" "${VAR_DIR}/app.pid" "${VAR_DIR}/logs" \
+       "${MARK}" 2>/dev/null
+
+# ---------------------------------------------------------------------------
+# ② 数据共享目录（/volN/@appshare/aellus/…）里的空目录骨架
+#    应用安装时飞牛就建好了这棵树，卸载不回收。这里自下而上删空目录：
+#    含用户上传文件的目录删不掉，其父目录也一并保留——刻意如此，
+#    目的是「不留空壳」而不是「清空用户数据」。
+#    整个子树都空时会一路删到 @appshare 之下，不留 aellus 空壳。
+# ---------------------------------------------------------------------------
+prune_empty_up() {
+  # 从 $1 的父目录开始逐级向上 rmdir，直到 @appshare（不含）或不再为空
+  local d="$1" parent
+  while :; do
+    parent=$(dirname "$d")
+    [ "$parent" = "$d" ] && break
+    case "$parent" in */@appshare) break ;; esac
+    rmdir "$parent" 2>/dev/null || break
+    d="$parent"
+  done
+  return 0
+}
+
+if [ -n "${TRIM_DATA_SHARE_PATHS:-}" ]; then
+  _oldifs="$IFS"
+  IFS=':'
+  for p in ${TRIM_DATA_SHARE_PATHS}; do
+    # 只处理飞牛给本应用分配的共享路径（@appshare/<appname>/…）；
+    # 用户自己授权进来的共享目录（如 /vol1/1000/photo）一律跳过，绝不碰。
+    case "$p" in
+      /vol*/@appshare/*) ;;
+      *) continue ;;
+    esac
+    [ -d "$p" ] || continue
+    # -depth：先子后父（子目录先 rmdir，父目录随后就空了）；
+    # rmdir 对非空目录会报错，静默忽略即可——含用户上传文件的目录原样保留。
+    # 这里不用 `find -empty -delete`：BSD find（macOS / 部分精简系统）下 -empty 与
+    # -delete 组合在级联空目录上会漏删，rmdir 的语义在 GNU/BSD 上完全一致。
+    find "$p" -depth -type d 2>/dev/null | while IFS= read -r d; do
+      rmdir "$d" 2>/dev/null
+    done
+    prune_empty_up "$p"
+  done
+  IFS="$_oldifs"
+fi
+
+# ---------------------------------------------------------------------------
+# ③ 六棵应用目录树：尽力而为，只留「保存目录所在的那一棵」。
+#    ⚠️ 实测结论：@appconf / @appdata / @apphome / @appmeta 的父目录归 root，
+#    应用进程没有写权限，rm -rf 只能清空内容、删不掉 <App> 这一层——这四个
+#    空壳由飞牛保留，应用侧无解（手动清理办法见 README「常见问题」）。
+#    @appcenter / @apptemp 由系统回收，这里顺带删一次，删得掉就删。
+#    保存目录那一棵保留：里面可能有用户上传的文件，只回收空目录。
+# ---------------------------------------------------------------------------
+targets=()
+for kind in appcenter appconf appdata apphome appmeta apptemp; do
+  d="${VOL_DIR}/@${kind}/${APP_NAME}"
+  [ -d "$d" ] || continue
+  if [ -n "${SAVE_DIR}" ]; then
+    # 注意判断方向：要看「保存目录是否位于 $d 之下」（$d 是父），
+    # 而不是「$d 是否位于保存目录之下」——写反会把保存目录连同用户文件一起删掉。
+    case "${SAVE_DIR}" in
+      "$d"|"$d"/*)
+        # 保存目录就在这棵树里 → 只回收空目录，保留目录与用户文件
+        rmdir "$d" 2>/dev/null
+        continue
+        ;;
+    esac
+  fi
+  targets+=("$d")
+done
+
+# 用 exec 把当前 shell 换成 rm：本脚本自身就在 @appmeta 里，
+# 边跑边被删会让 bash 读不到后面的行（exec 之后不再需要读脚本）。
+if [ ${#targets[@]} -gt 0 ]; then
+  exec rm -rf "${targets[@]}"
+fi
+
 exit 0

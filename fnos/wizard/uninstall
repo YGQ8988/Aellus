@@ -4,20 +4,20 @@
     "items": [
       {
         "type": "radio",
-        "field": "keep_config",
+        "field": "wizard_delete_data",
         "label": "保留或删除应用配置",
-        "initValue": "true",
+        "initValue": "false",
         "rules": [
           { "required": true, "message": "请选择是否保留应用配置" }
         ],
         "options": [
-          { "label": "仅卸载，保留应用配置(保存路径、设备名映射、日志)", "value": "true" },
-          { "label": "删除应用配置(重新安装后需重新设置)", "value": "false" }
+          { "label": "仅卸载，保留应用配置(保存路径、设备名映射、日志)", "value": "false" },
+          { "label": "删除应用配置(重新安装后需重新设置)", "value": "true" }
         ]
       },
       {
         "type": "tips",
-        "helpText": "<small>已上传到共享目录 / 授权目录的文件不受影响。</small>"
+        "helpText": "<small>选「删除应用配置」只会清掉 Aellus 自己的配置与日志，已上传的文件会保留。系统为应用建的几个空目录由飞牛保留（应用无权删除，重新安装会复用）。</small>"
       }
     ]
   }
