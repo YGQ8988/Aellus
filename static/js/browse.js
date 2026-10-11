@@ -511,6 +511,9 @@ async function deleteSelectedDirs(btn) {
   const ok = await confirmDialog({ title: '删除选中的目录', desc: desc, confirmText: '删除', cancelText: '取消', destructive: true });
   if (!ok) return;
   const btns = Array.from(document.querySelectorAll('#dirsList .btn-batch'));
+  // 记下原按钮文案：删除中会把 innerHTML 换成 spinner，必须在 finally 里还原，
+  // 否则按钮会永久停在「删除中...」（同 deleteSelected 的处理）。
+  const states = btns.map(b => ({ el: b, html: b.innerHTML }));
   btns.forEach(b => { b.disabled = true; });
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner"></span>删除中...';
@@ -519,6 +522,7 @@ async function deleteSelectedDirs(btn) {
   } catch (e) {
     toast('删除失败: ' + e.message, { variant: 'destructive' });
   } finally {
+    btns.forEach(b => { b.classList.remove('loading'); b.innerHTML = states.find(s => s.el === b).html; });
     loadDirs(false, dirsPage);   // 分页下重拉当前页（删空自动回退）
     updateSelectedCount();
   }

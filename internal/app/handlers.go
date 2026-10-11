@@ -32,33 +32,30 @@ const (
 	maxDeviceFieldBytes = 4 << 10 // device 字段（设备名）
 	maxRelPathBytes     = 8 << 10 // 单个 rels 字段（相对路径，Linux PATH_MAX 为 4096）
 	maxRelEntries       = 20000   // rels 条数上限
-	maxBatchFiles       = 10000   // 批量下载一次可指定的文件条数上限（防重复放大）
-	// maxBatchBytes 单次打包的绝对兜底上限（防写放大）：
-	// /api/download-batch 是免登录接口，files 为空时会递归收集整个保存目录打包，
-	// 若不设总量上限，一条 1MB 的请求就能把保存目录全部内容重抄一遍，直接写满存储卷。
-	// 实际限制主要用「剩余空间」判断（见 batchSpaceBudget），这个值只是超大卷上的兜底。
-	maxBatchBytes = 64 << 30
+	maxBatchFiles = 10000 // 批量下载一次可指定的文件条数上限（防重复放大）
 	// maxUploadFiles 单个请求允许携带的文件 part 数上限（上传免登录，必须限条数）
 	maxUploadFiles = 10000
 )
 
 // batchSpaceBudget 根据保存卷剩余空间，给出本次打包允许写入的字节上限。
 //
-// 为什么按剩余空间而不是固定值：固定阈值（如 4GB）会误伤 legit 的大批量导出
-// （想打包 100GB 的用户直接被拒），而真正的风险是「把卷写满」——那就直接看剩余空间：
-//   - 剩余空间的 50%：留出充足余量，避免写满影响同卷其它应用 / 共享；
-//   - 再叠加 maxBatchBytes 作为超大卷上的兜底。
+// 为什么按剩余空间而不是固定阈值：固定值（如 4GB / 64GB）会误伤 legit 的大批量导出
+// （想打包 100GB、200GB 的用户直接被拒），而真正的风险只有一个——「把卷写满」。
+// 所以限制直接来自剩余空间：
+//
+//	预算 = 剩余空间 × 50%
+//
+// 这恰好也是打包方式的物理上限：临时 ZIP 与保存目录同卷，卷剩 500GB 时最多只能
+// 打包约 250GB（否则临时 ZIP 本身就占满，压缩写不完、传输也做不了）。
+// 留另外一半给系统、同卷其它应用与用户数据。
+//
 // 卷空间拿不到时（Windows 桌面端 / Statfs 失败）返回 0，表示不按空间限制。
 func batchSpaceBudget(saveDir string) int64 {
 	free, ok := availableBytes(saveDir)
 	if !ok || free == 0 {
 		return 0 // 拿不到空间信息 → 不做空间限制
 	}
-	budget := int64(free / 2) // 只允许用到一半剩余空间
-	if budget > maxBatchBytes {
-		budget = maxBatchBytes
-	}
-	return budget
+	return int64(free / 2)
 }
 
 // uploadTempDir 返回临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
@@ -632,7 +629,7 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	spaceBudget := batchSpaceBudget(a.getSaveDir())
 	if len(req.Files) == 0 {
 		// files 为空 -> 递归打包该目录（含子目录）全部非隐藏文件，保留层级结构。
-		// 递归分支同样受 maxBatchFiles / maxBatchBytes 约束：否则 1MB 请求就能让服务端
+		// 递归分支同样受 maxBatchFiles / 空间预算约束：否则 1MB 请求就能让服务端
 		// 把整个保存目录重抄一遍（写放大 → 写满存储卷）。
 		var walkTotal int64
 		walkCount := 0
@@ -739,7 +736,7 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 	zw := zip.NewWriter(tmp)
 	// seen 记录已写入 ZIP 的条目名（去时间戳前缀后），用于给重名条目加序号。
 	seen := map[string]int{}
-	var totalWritten int64 // 已写入 ZIP 的累计字节（用于 maxBatchBytes 上限）
+	var totalWritten int64 // 已写入 ZIP 的累计字节（用于空间预算判定）
 	aborted := false       // 是否因超限 / 写入失败而中止
 	for _, name := range names {
 		full := filepath.Join(dirAbs, name)
@@ -774,7 +771,7 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 			src.Close()
 			continue
 		}
-		// 累计实际写入量，超过 maxBatchBytes 立即中止：
+		// 累计实际写入量，超过空间预算（剩余空间 50%）立即中止：
 		// 一方面限制单请求对存储卷的写入放大，另一方面在保存目录空间不足时
 		// 不再继续往满盘上写（原先写失败只是 continue，会持续写下去）。
 		written, werr := io.CopyBuffer(zwEntry, src, buf)
