@@ -19,7 +19,9 @@ body.home .container {
 .hero-logo {
 	display: block;
 	margin: 0 auto -1.25rem;
-	width: clamp(3.25rem, 13vw, 5.5rem);
+	/* 下限由 3.25rem 提到 4rem(64px)、系数 13vw 提到 15vw：手机（<768px）上放大，
+	   桌面端本来就压在上限 5.5rem 附近，不受影响。高度按图片比例自适应。 */
+	width: clamp(4rem, 15vw, 5.5rem);
 	height: auto;
 }
 
@@ -222,6 +224,83 @@ body.home .container {
 	100% {
 		transform: scale(1);
 	}
+}
+
+/* 首次进入引导气泡（去设置授权 / 选择保存路径）：默认 hidden，
+   JS 判定「没点过设置 + 本次可管理」后才显示；点过设置即永久隐藏。
+   定位：固定在设置按钮【左侧同一行】，右端尖角指向设置图标——
+   与按钮同行而不是压在按钮下方，是为了避开首页 hero（桌面端垂直居中、
+   矮窗口/手机端从顶部排布，下方都会被 logo 和标题占满）。
+   气泡可点，点击即打开设置。 */
+.auth-tip {
+	position: fixed;
+	top: 18px;       /* 与 .settings-btn 同一行 */
+	right: 75px;     /* 在按钮左边缘(18+42)之外留出间隙，尖角指向按钮 */
+	z-index: 49;     /* 压在设置按钮(50)下方，尖角指向它 */
+	display: inline-flex;
+	align-items: center;
+	max-width: calc(100vw - 96px);
+	margin: 0;
+	/* 高度与 .settings-btn 完全一致（42px），两者并排时上下沿齐平 */
+	height: 42px;
+	padding: 0 15px 0 20px;
+	min-height: 0;
+	/* 覆盖 common.css 的 button 基础样式：这里是深色实心胶囊，非主色按钮 */
+	background: hsl(var(--primary));
+	color: hsl(var(--primary-foreground));
+	border: none;
+	border-radius: 999px;
+	box-shadow: 0 10px 26px -10px rgb(0 0 0 / .3), 0 3px 8px -3px rgb(0 0 0 / .18);
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.4;
+	text-align: left;
+	transform: none;         /* 宽条做整块缩放很怪，取消 button 的 active 缩放 */
+	transition: opacity .15s;
+}
+
+/* 同上：display:inline-flex 会盖掉 UA 的 [hidden]{display:none}，需显式声明 */
+.auth-tip[hidden] {
+	display: none;
+}
+
+.auth-tip:active {
+	transform: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.auth-tip:hover {
+		opacity: .92;
+		background: hsl(var(--primary));
+	}
+}
+
+.auth-tip:focus {
+	outline: none;
+}
+
+.auth-tip:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 2px;
+}
+
+/* 指向设置图标的尖角：10×10 方块旋转 45°，右半边露在气泡外。
+   right:-3px 让方块中心略缩进气泡右边缘，旋转后露出一个小等腰直角三角，
+   同时保证方块左半仍压在气泡上（不留缝）。 */
+.auth-tip::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	right: -3px;
+	width: 10px;
+	height: 10px;
+	background: hsl(var(--primary));
+	transform: translateY(-50%) rotate(45deg);
+}
+
+/* 文案：min-width:0 允许在窄屏收缩换行，否则会把胶囊撑出屏幕 */
+.auth-tip-text {
+	min-width: 0;
 }
 
 /* 设置按钮（右上角固定）→ ghost 图标按钮 */
@@ -702,9 +781,42 @@ body.home .container {
    手机端与电脑端看到的内容与文案完全一致（能否修改保存路径由服务端权限决定，
    不按屏幕尺寸判断），避免两端体验割裂。 */
 @media (max-width: 767px) {
+	/* 顶部这个 72px 是「给引导气泡预留的位置」：气泡占 14~50px，logo 顶边落在 62px。
+	   刻意不做成「气泡可见时才撑开」——那样点掉气泡后 logo 会往上跳 48px，
+	   构图前后不一致；这里恒定留出，点不点掉 logo 都在同一位置。
+	   注意：这会让手机端首屏整体比不留白时高 48px（引导气泡消失后这段就是留白）。 */
 	body.home .container {
 		justify-content: flex-start;
-		padding-top: 24px;
+		padding-top: 72px;
+	}
+
+	/* 手机端 logo 放大后整体偏高，把 logo 上提 10px 找回构图（72 → 62）。
+	   .container 是 column flex 容器：首项负 margin-top 会让 logo 上移，
+	   其后的标题/副标题/卡片依次跟着上移；footer 在 .container 之外，不受影响。 */
+	.hero-logo {
+		margin-top: -10px;
+	}
+
+	/* 右上角设置按钮与引导气泡在手机上同步缩小（42 → 36）。
+	   二者必须一起改：气泡靠 right 偏移对准按钮，尺寸不同会错位。
+	   缩小后 42px 的圆角相对更显圆，故同步收到 8px。
+	   注意 .settings-btn 的基础规则在更早的位置，必须写在这个靠后的媒体查询里
+	   才能覆盖它（同优先级靠后者生效）。 */
+	.settings-btn {
+		top: 14px;
+		right: 14px;
+		width: 36px;
+		height: 36px;
+		border-radius: 8px;
+	}
+
+	/* 65px = 缩小后的按钮左边缘(14+36) + 15px 间隙，尖角仍指向按钮中心 */
+	.auth-tip {
+		top: 14px;
+		right: 65px;
+		height: 36px;
+		padding: 0 13px 0 16px;
+		font-size: 13px;
 	}
 
 	/* 移动端隐藏顶部地址栏（手机本身就在局域网上，无需再展示/扫码；桌面端保留）。 */

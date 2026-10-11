@@ -49,12 +49,43 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
 		"canManage":      manage,                           // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
 		"deviceName":     deviceName,                       // 仅管理者可见：当前设备 ID 对应的上次设备名（供上传页自动填充）
+		// 首页引导条（提示去设置里授权保存路径）是否已被看过：看过就不再展示。
+		// 标记存在服务端配置文件里而非浏览器 localStorage——后者跟着「主机+端口」走，
+		// 卸载重装应用并不会清掉，用户会看到「第一次见过、再装却不出现」的错觉。
+		// 无敏感信息，故不限管理者可见（局域网访客本来也拿不到引导条，前端会额外判 canManage）。
+		"tipSeen": LoadTipSeen(),
 		// 请求是否经飞牛统一网关到达：飞牛的应用入口（应用中心微应用 / 手机 App 客户端）
 		// 都经网关转发，网关会注入 X-Trim-Userid；而局域网其它设备「输入 IP + 端口」
 		// 直连走裸端口、不经网关（裸端口入口还会剥离伪造的 X-Trim-*）。
 		// 前端据此在飞牛客户端内隐藏下载入口（那里的下载不可靠），直连下载不受影响。
 		"viaGateway": gatewayUser(r) != "",
 	})
+}
+
+// handleTipSeen POST /api/tip-seen 记录「首页引导条已被看过」，此后不再展示。
+//
+// 标记写在服务端配置文件（与保存目录同一份 aellus-settings.json，飞牛端位于 TRIM_PKGVAR
+// 持久卷）而非浏览器 localStorage：卸载重装应用时，若用户在卸载向导里选择不保留配置，
+// 数据会一并清空，新装后引导条重新出现——符合「首次进入」的语义。
+//
+// 权限与改保存目录一致（见 canManage）：只有管理者会看到这条引导条，
+// 局域网访客无谓写盘，直接拒绝。
+func (a *App) handleTipSeen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
+		return
+	}
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "无权限"})
+		return
+	}
+	if err := SaveTipSeen(); err != nil {
+		// 失败不打扰用户：引导条下次还在，只是又出现一次
+		a.logOp(fmt.Sprintf("记录引导条已读失败 错误=%v", err))
+		a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false})
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 // handleAuthPaths GET /api/authpaths 返回飞牛授权给应用的共享目录（供网页选择保存位置）。

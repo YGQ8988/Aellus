@@ -2,10 +2,12 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // === 配置与路径纯函数 ===
@@ -147,6 +149,74 @@ func LoadSaveDirConfig() string {
 	return cfg.SaveDir
 }
 
+// === 其它配置项（与保存目录共用 aellus-settings.json）===
+//
+// 「首页引导条是否已被看过」这类一次性标记也写进同一个文件，而不是浏览器 localStorage：
+// localStorage 跟着「协议+主机+端口」走，卸载重装应用并不会清掉它，用户会看到「装完第一次
+// 见过引导、再装却不出现」的错觉。写在这里则跟随应用数据（飞牛端在 TRIM_PKGVAR 持久卷），
+// 卸载时不保留配置就会一并清空，新装后引导条重新出现，符合「首次进入」的语义。
+const tipSeenKey = "tipSeen"
+
+// settingsMu 串行化配置文件的读-改-写：保存目录与引导标记共用一个文件，
+// 并发写会各自基于旧快照覆盖对方（后写的把先写的字段抹掉）。
+var settingsMu sync.Mutex
+
+// readSettingsConfig 读取配置文件为通用 map，供同一文件里的多个配置项共享。
+// 文件不存在（首次运行）返回空 map + ok=true，允许写入；
+// 读取失败或 JSON 解析失败返回 ok=false，调用方应放弃写入——
+// 宁可这次标记没记上（引导条多出现一次），也不能拿残缺内容覆盖文件里已有的设置。
+func readSettingsConfig() (map[string]interface{}, bool) {
+	b, err := os.ReadFile(settingsConfPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return map[string]interface{}{}, true
+		}
+		return nil, false
+	}
+	m := map[string]interface{}{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, false
+	}
+	return m, true
+}
+
+// writeSettingsConfig 把通用 map 写回配置文件（目录不存在则先建）。
+func writeSettingsConfig(m map[string]interface{}) error {
+	p := settingsConfPath()
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		return err
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, b, 0644)
+}
+
+// LoadTipSeen 读取「首页引导条已被看过」标记；无配置 / 解析失败按未看过处理。
+func LoadTipSeen() bool {
+	settingsMu.Lock()
+	defer settingsMu.Unlock()
+	m, ok := readSettingsConfig()
+	if !ok {
+		return false
+	}
+	v, _ := m[tipSeenKey].(bool)
+	return v
+}
+
+// SaveTipSeen 记录「首页引导条已被看过」，之后不再展示。
+func SaveTipSeen() error {
+	settingsMu.Lock()
+	defer settingsMu.Unlock()
+	m, ok := readSettingsConfig()
+	if !ok {
+		return errors.New("配置文件读取失败")
+	}
+	m[tipSeenKey] = true
+	return writeSettingsConfig(m)
+}
+
 // validSaveDirConfig 判断保存目录配置是否为当前系统合法的绝对路径。
 func validSaveDirConfig(p string) bool {
 	if runtime.GOOS == "windows" {
@@ -158,15 +228,17 @@ func validSaveDirConfig(p string) bool {
 	return filepath.IsAbs(p)
 }
 
-// SaveSaveDirConfig 把保存目录写回配置文件（桌面端持久化用）。
+// SaveSaveDirConfig 把保存目录写回配置文件（桌面端 / 飞牛端持久化用）。
+// 读-改-写：文件里可能还有引导标记等其它字段，整份覆盖会把它们抹掉。
 func SaveSaveDirConfig(dir string) error {
-	p := settingsConfPath()
-	// 系统配置目录下的 Aellus 子目录可能尚未创建（首次写入），先建目录
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		return err
+	settingsMu.Lock()
+	defer settingsMu.Unlock()
+	// 这里与 SaveTipSeen 相反：读取失败时仍然写入——本次调用明确要设置保存目录，
+	// 旧的（无法解析的）内容本就是无效配置，不值得为保留它而放弃这次保存。
+	m, ok := readSettingsConfig()
+	if !ok {
+		m = map[string]interface{}{}
 	}
-	b, _ := json.Marshal(struct {
-		SaveDir string `json:"saveDir"`
-	}{dir})
-	return os.WriteFile(p, b, 0644)
+	m["saveDir"] = dir
+	return writeSettingsConfig(m)
 }

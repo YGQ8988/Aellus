@@ -14,6 +14,10 @@
   <button class="settings-btn" title="设置" onclick="openSettings()">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
+  <!-- 首次进入引导气泡：尖角指向左上角的设置按钮，整条可点，点开设置即消失（见 hideAuthTip） -->
+  <button type="button" class="auth-tip" id="authTip" hidden onclick="openSettings()">
+    <span class="auth-tip-text" id="authTipText">首次使用请授权文件保存路径 👉</span>
+  </button>
   <div class="settings-overlay modal-overlay" id="settingsOverlay">
     <div class="settings-panel modal-card">
       <div class="settings-head">
@@ -153,7 +157,34 @@
       fallback();
     }
   }
+  // —— 首次进入引导（提示去设置里授权 / 选择保存路径）——
+  // 显示条件：服务端还没记过「点过设置」，且本次访问者有权修改保存路径
+  // （飞牛门户内 / 桌面端本机）。局域网访客点开设置只能看到「关于 Aellus」，
+  // 给他们提示授权没有意义，故 canManage 为 false 时不展示。
+  //
+  // 「已读」标记存在服务端配置文件（飞牛端在 TRIM_PKGVAR 持久卷），不用 localStorage：
+  // 后者跟着浏览器的「协议+主机+端口」走，卸载重装应用并不会清掉它，用户会看到
+  // 「第一次见过引导、再装却不出现」的错觉。
+  function hideAuthTip(){
+    var tip=document.getElementById('authTip');
+    if(tip){ tip.hidden=true; }
+    // 静默上报即可：失败时引导条下次还会出现，不打扰用户
+    fetch('api/tip-seen',{method:'POST'}).catch(function(){});
+  }
+  function maybeShowAuthTip(){
+    var tip=document.getElementById('authTip');
+    if(!tip) return;
+    fetch('api/settings').then(function(r){ return r.json(); }).then(function(d){
+      if(d && d.canManage && !d.tipSeen){
+        // 飞牛端由管理员授权共享目录，桌面端是本机自选目录，文案区分
+        var txt=document.getElementById('authTipText');
+        if(txt){ txt.textContent = d.hasTrim ? '首次使用请授权文件保存路径 👉' : '首次使用请选择文件保存路径 👉'; }
+        tip.hidden=false;
+      }
+    }).catch(function(){});   // 接口失败不展示，不阻塞页面
+  }
   function openSettings(){
+    hideAuthTip();   // 看过设置即认为完成引导，此后不再出现
     document.getElementById('settingsOverlay').classList.add('active');
     // 弹窗打开期间锁定背景滚动：html/body 双锁（html 才是实际滚动容器），
     // 于是滚轮 / 触摸只会滚动弹窗内容，背景保持不动。
@@ -555,6 +586,7 @@
   }
   // 自定义下拉的全局事件：点 popup 外收起 / ESC 收起，popup 本身阻止冒泡避免误关 settings
   document.addEventListener('DOMContentLoaded', function(){
+    maybeShowAuthTip();
     // 版本徽标：设置页标题旁展示版本号与构建时间（/api/info 的值由打包脚本在编译时注入，
     // BuildTime 即每次实际打包时刻；接口失败静默，不影响页面）
     fetch('api/info').then(function(r){ return r.json(); }).then(function(d){
