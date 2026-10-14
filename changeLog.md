@@ -1,6 +1,48 @@
 # Aellus 更新&Todo记录
 
 ## 未发布（dev 分支）
+ - [x] 修复浏览页白屏报错 `ReferenceError: $ is not defined`：给 browse.html 追加
+       `<script>` 时手滑把 `ui.js` 那行挤掉了，而 `$` / `displayName` /
+       `confirmDialog` 这些全局全在 ui.js 里（`window.$ = $`）。已在 embed_check 里
+       加了两条模板检查防复发：
+       - 每个模板引用的本地资源必须真实存在；
+       - 每个模板必须引用 `base.js` 与 `ui.js`（公共依赖，见 COMMON_SCRIPTS 注释）。
+ - [x] 发布体检升级：**前端内容指纹**。文件名清单查不出「模板内容改了、二进制没重编」
+       ——文件还是那些文件。现在构建时用 tools/static_hash.sh 计算 templates/static
+       全树 sha256，经 ldflags -X 写进二进制（`internal/app.BuildStaticHash`），
+       embed_check.py 重算源树指纹与二进制里的记录比对，不一致即中止发布。
+       注意 BuildStaticHash 必须在 init() 里引用一次，否则会被链接器死代码消除裁掉、
+       -X 注入落空（这个坑已写进注释）。
+ - [x] **回滚 HEIC / HEIF 缩略图专项支持**（抠 EXIF 缩略图 + 浏览器端 WASM 真解码两级）。
+       实测在用户真机与浏览器上仍不能稳定出图，收益不抵成本，整条链路移除：
+       删除 `internal/app/heicthumb.go`（含单测）、`static/js/heicthumb.js`、
+       `static/js/heicwasm.js`、`static/js/vendor/libheif-bundle.js`（LGPL-3.0，2MB），
+       并摘掉 `thumb.go` 的 heic 分支、`upload.js` 的 `isHeicFile`/`heicPreviewURL`、
+       `browse.js` 的 `tryHeicWasm`、两个模板的 `<script>` 引用、README 第三方组件一节。
+       回滚后 HEIC 恢复为「浏览器解不了就显示扩展名占位块」（Safari 仍能原生显示）。
+       —— 保留下来的只有与 HEIC 无关的那部分：缩略图限流修复、构建自检、内容指纹。
+ - [x] OpenWrt 固件升级不再丢配置：包内新增官方标准保留清单
+       `/lib/upgrade/keep.d/aellus`（`/etc/aellus/` + `/etc/config/aellus`）。
+       本包刻意不把 UCI 配置装成 conffile，而 sysupgrade 只保留「conffile +
+       /etc/sysupgrade.conf + keep.d」三类，不声明这两项就会随升级丢失（端口、
+       保存目录、设备名映射都没了）。README 同步写了注意事项，并提示把 save_dir
+       放在闪存会让升级备份变大。
+ - [x] 修复「版本号涨了、功能却没变」的误导性发布事故：`.build/openwrt/bin` 下残留
+       上一次的编译产物，而 build-openwrt.sh 里「同一 GOARCH 已编译过就跳过」只判断
+       文件在不在，于是直接复用了旧二进制 —— 打出来的包版本号正常递增（到 r16）、
+       也能正常安装，**里面装的却还是改代码之前的程序**，连 go:embed 的静态资源列表
+       都停在旧版本（缺 trim-auth.js 等后加的文件）。表现就是「明明修好了怎么
+       还不行」。两处修正：
+       - 构建脚本每次开局强制清空 `${BUILD_TMP}/bin`，杜绝跨次复用
+       - 新增 **tools/embed_check.py**：拿当前源树 templates/ 与 static/ 的文件清单
+         去二进制里逐个比对（embed 的文件名会以裸字符串留在只读数据段，即使 -s -w
+         去掉符号表也还在），缺任何一个就判定「这份二进制不是用当前源码编的」并中止
+         构建。已在 [1/5] 编译完成后接进 build-openwrt.sh
+ - [x] 修复浏览页「有的图片预览失败」：控制台一片 503，与文件能不能解码无关。
+       根因是 /api/thumb 的并发槽位只有 2 个，且「拿不到槽位就立刻 503」，而列表页
+       一次并发拉几十张缩略图，绝大多数请求直接被打回。改为**排队等槽位**（最多 5 秒，
+       客户端断开立即放弃），前端 onThumbError 对 503 自动退避重试 3 次，仍失败才回退
+       扩展名占位块；补了两个单测（并发全部成功 / 压满仍 503）
  - [x] 新增 OpenWrt 24.10 支持：ipk 安装包 + procd 服务脚本（x86_64 / arm64 / MIPS）
  - [x] LuCI 配置页（服务 → Aellus局域网传输）：启用服务勾选、服务端口号、文件储存目录，
        保存并应用后按配置自动启动或停止服务

@@ -149,7 +149,9 @@ async function loadDirs(autoEnter = true, page) {
           thumb = `<div class="thumb-other thumb-ext">SVG</div>`;
         } else {
           const thumbUrl = 'api/thumb?dir=&file=' + encodeURIComponent(f.name) + '&w=240';
-          thumb = `<img class="thumb" src="${thumbUrl}" alt="" loading="lazy" decoding="async" onload="this.classList.add('loaded')" onerror="onThumbError(this)">`;
+          // data-name 必须带上：加载失败时要据此把该项从可预览列表里摘掉，
+          // 否则点开灯箱只会看到一张空图，退化成占位块时也没有扩展名可显示。
+          thumb = `<img class="thumb" src="${thumbUrl}" alt="" loading="lazy" decoding="async" data-name="${escapeAttr(f.name)}" onload="this.classList.add('loaded')" onerror="onThumbError(this)">`;
         }
       } else if (isVid) {
         thumb = `<video class="thumb-video" src="${url}" preload="metadata" onerror="onThumbError(this)" data-name="${escapeAttr(f.name)}"></video>`;
@@ -446,10 +448,27 @@ function extThumbEl(name) {
   return ph;
 }
 
-// 缩略图加载失败：浏览器解不了这个格式（如 Chrome 下的 TIFF、不支持的 HEIC）。
-// 回退成扩展名占位块，同时把它从可预览列表里摘掉——否则点开灯箱只会看到一张空白图。
+// 缩略图加载失败分两种情况，处理方式完全不同：
+//   1) 服务端并发限流的 503 —— 与文件本身无关。/api/thumb 最多 2 路同时解码，
+//      列表页并发拉几十张图时绝大多数会撞上限流。这类必须自动重试，
+//      否则用户看到的是「有的图片预览失败」（实际是裂图）。
+//   2) 浏览器解不了这个格式（如 Chrome 下的 TIFF / 不支持的 HEIC）——回退成
+//      扩展名占位块，同时把它从可预览列表里摘掉，避免点开灯箱是一张空图。
+const THUMB_RETRY_MAX = 3;
 function onThumbError(el) {
   const name = el.dataset ? el.dataset.name : '';
+  const src = el.getAttribute ? el.getAttribute('src') : '';
+  const isThumbReq = el.tagName === 'IMG' && src.indexOf('api/thumb') >= 0;
+  const tries = Number((el.dataset && el.dataset.tries) || 0);
+  if (isThumbReq && tries < THUMB_RETRY_MAX) {
+    el.dataset.tries = String(tries + 1);
+    // 退避重试，并带一个随机参数绕开浏览器缓存（否则 503 可能被直接缓存复用）
+    setTimeout(() => {
+      const sep = src.indexOf('?') >= 0 ? '&' : '?';
+      el.src = src + sep + 'retry=' + tries + '&_=' + Math.random().toString(36).slice(2);
+    }, 500 * (tries + 1));
+    return;
+  }
   if (name) previewFiles = previewFiles.filter(p => p.name !== name);
   el.replaceWith(extThumbEl(name));
 }

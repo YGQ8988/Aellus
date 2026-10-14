@@ -8,12 +8,29 @@ import (
 //
 //	-X 'aellus/internal/app.Version=1.0.4'
 //	-X 'aellus/internal/app.BuildTime=2026-09-29 08:30:00'
+//	-X 'aellus/internal/app.BuildStaticHash=<sha256>'
 //
 // 本地 go run / 未注入时为占位值。BuildTime 即实际打包时间（每次构建取当前时间）。
+//
+// BuildStaticHash 是 templates/ + static/ 全部文件的内容指纹（算法见
+// tools/static_hash.sh），同样在编译时注入。它存在的唯一目的：给发布前体检
+// （tools/embed_check.py）提供「这份二进制是用哪一版前端编出来的」的凭据 ——
+// 只比对文件名清单发现不了「模板内容改了但二进制没重编」，那正是两次
+// 「版本号涨了功能没变」事故的实际形态。未注入（本地 go run）时为空串。
 var (
-	Version   = "dev"
-	BuildTime = "unknown"
+	Version         = "dev"
+	BuildTime       = "unknown"
+	BuildStaticHash = ""
 )
+
+// init 里引用一次 BuildStaticHash：没有任何代码用到的变量会被链接器的死代码消除
+// 裁掉，-X 注入就落空了（指纹根本不进二进制，体检永远失败）。init 的引用让链接器
+// 必须保留它；条件恒假的比较让运行时零开销。
+func init() {
+	if BuildStaticHash != "" && len(BuildStaticHash) != 64 {
+		BuildStaticHash = ""
+	}
+}
 
 // handleInfo GET /api/info 返回版本号与构建时间（无副作用、无鉴权，任何设备可读）。
 // 设置页标题旁展示「v版本号 · 构建时间」，帮助用户核对所装包是否最新。

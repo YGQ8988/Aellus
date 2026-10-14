@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // === 缩略图 ===
@@ -105,18 +106,30 @@ const (
 // thumbSem 限制缩略图解码的并发数。
 // /api/thumb 是免登录接口，而一次解码的内存开销可达数十 MB（见 maxPixels 注释），
 // 不限并发时几条并发就能把进程内存打满（OpenWrt 上 GOMEMLIMIT 仅 96MiB，会直接 OOM
-// 并被 procd respawn 拉进重启循环）。这里只允许 2 路同时解码，其余快速失败。
+// 并被 procd respawn 拉进重启循环）。这里只允许 2 路同时解码，其余排队等一小会儿。
 var thumbSem = make(chan struct{}, 2)
+
+// thumbWaitTimeout 是拿不到解码槽位时的等待上限，超过才返回 503。
+//
+// 以前是「拿不到槽位就立刻 503」，而浏览页一次会并发拉几十张缩略图（每张 240px）、
+// 槽位只有 2 个，结果绝大多数请求直接失败、列表页一片裂图——用户看到的现象是
+// 「有的图片预览失败」，实际上与文件本身能不能解码无关，纯粹是限流。
+// 改成排队等待后，并发请求会自然平滑成串行解码；仍等不到槽位（真被压满）才 503，
+// 前端此时还会自动重试（见 static/js/browse.js 的 onThumbError）。
+const thumbWaitTimeout = 5 * time.Second
 
 // handleThumb GET /api/thumb?dir=xxx&file=xxx[&w=240]
 // 列表缩略图：仅对 jpeg/png/gif 做服务端缩放（标准库），其它格式原样返回原文件。
 // 用 Last-Modified + 304 缓存，文件不变时重复访问秒开、零流量。
 func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
+	// 拿槽位：排队等 thumbWaitTimeout，客户端断开则立即放弃（不白占 CPU）
 	select {
 	case thumbSem <- struct{}{}:
 		defer func() { <-thumbSem }()
-	default:
+	case <-time.After(thumbWaitTimeout):
 		http.Error(w, "缩略图服务繁忙，请稍后重试", http.StatusServiceUnavailable)
+		return
+	case <-r.Context().Done():
 		return
 	}
 	dir := r.URL.Query().Get("dir")

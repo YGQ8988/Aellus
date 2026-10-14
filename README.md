@@ -114,7 +114,24 @@ uci set aellus.main.port=5115 && uci commit aellus && /etc/init.d/aellus restart
 
 > 从 24.10 **sysupgrade 到 25.12 后，opkg 装的包不会被自动迁移成 apk**，需要用上面的 `apk add` 重新安装一次（配置 `uci` 与已上传的文件都在，不会丢）。24.10 系列已于 2026 年 9 月停止安全更新，建议升到 25.12。
 
+> **固件升级（sysupgrade）后配置还在吗？** 在。包里带了一份官方标准的保留清单
+> `/lib/upgrade/keep.d/aellus`，固件升级时会保留：
+>
+> | 保留路径 | 内容 |
+> |---|---|
+> | `/etc/aellus/` | 设备名映射 `devices.json` 等持久化数据（`XDG_CONFIG_HOME` 指向此处） |
+> | `/etc/config/aellus` | 你在 LuCI 里设的端口 / 保存目录 / 是否启用 |
+>
+> 之所以需要显式声明：本包刻意不把配置文件装成 conffile（否则每次升级都要比对、还可能
+> 抛 `-opkg` 副本），而 sysupgrade 默认只保留「包声明的 conffile + `/etc/sysupgrade.conf`
+> + `keep.d`」三类，上面两处都不在其中，不声明就会随固件升级丢失。
+> 注意用 `-n`（不保留配置）升级时这些依然会被清掉，那是明确的预期行为。
+>
 > ⚠️ **保存目录请指向外挂硬盘 / U 盘**（如 `/mnt/sda1/aellus`）。不要指向 `/root`、`/overlay` 等闪存路径：路由器闪存只有百来 MB 且写入寿命有限。留空时自动探测 `/mnt`、`/media` 下第一个容量 ≥64MB 的可写挂载点。
+>
+> 上面那条「保存目录在闪存上」的做法除了伤闪存，还有个副作用：升级时 sysupgrade 会把
+> `/etc/aellus/` 整个打进备份（含里面存的文件），传了一堆文件到闪存的话备份会很大、
+> 甚至挤爆内存导致升级中止。把 `save_dir` 指到 `/mnt` 下就没这个问题。
 >
 > 25.12 用 **apk**、24.10 用 **opkg**，两种包都提供（见上）。
 >

@@ -21,7 +21,10 @@ VERSION="${VERSION:-1.0.1}"
 echo "构建版本：${VERSION}"
 # 注入版本信息：设置页展示版本号与构建时间（BuildTime 取每次实际打包时刻）
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
-LDFLAGS_BASE="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}'"
+# 前端内容指纹：编译时写进二进制，发布前的 embed_check.py 靠它判断
+# 「这份二进制是不是用当前源码编的」（光比对文件名查不出内容级变更）
+STATIC_HASH="$(bash tools/static_hash.sh)"
+LDFLAGS_BASE="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}' -X 'aellus/internal/app.BuildStaticHash=${STATIC_HASH}'"
 
 # arch_out：把 goarch 映射为产物命名用的架构标识：
 #   amd64 → x64（64 位 x86）、386 → x86（32 位 x86）、arm64 保持 arm64。

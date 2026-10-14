@@ -94,6 +94,8 @@ else
 fi
 
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
+# 前端内容指纹：编译时写进二进制，发布前的 embed_check.py 靠它核对源码一致性
+STATIC_HASH="$(bash tools/static_hash.sh)"
 # 产物文件名带上小版本号（-r<N>）：否则 r9 / r10 的文件名完全一样，传到路由器后
 # 分不清新旧，很容易装上旧包还以为是新包没修好。
 FULL="${VERSION}-r${RELEASE}"
@@ -131,7 +133,14 @@ mipsel_24kc|mipsle|GOMIPS=hardfloat
 "
 
 # —— 1) 交叉编译（同一 GOARCH 只编译一次，多个架构名复用同一份二进制）——
-echo ">> [1/5] 交叉编译 Go 二进制"
+# 必须先清掉上一次留下来的二进制：下面的 `同一 GOARCH 已编译过` 判断只看文件在不在，
+# 而 .build 并不总能删干净（删的时候会被「批量删除确认」拦下、或者上一次构建被中断），
+# 一旦留下旧文件，本次就会直接复用它 —— 现象是版本号涨到了 r17，包里装的却还是
+# 改代码之前那份旧程序（连 go:embed 的静态资源列表都还是旧的），装到路由器上当然是
+# 「明明修了却没生效」。这里每次开局强制重编译，宁可多花一分钟，也不发错包。
+rm -rf "${BUILD_TMP}/bin" || true
+mkdir -p "${BUILD_TMP}/bin"
+echo ">> [1/5] 交叉编译 Go 二进制（先清空上次残留）"
 while IFS='|' read -r arch goarch govars; do
   [ -z "$arch" ] && continue
   case "$arch" in \#*) continue ;; esac
@@ -140,11 +149,21 @@ while IFS='|' read -r arch goarch govars; do
   echo "   ${goarch} ${govars}"
   # 纯静态：CGO_ENABLED=0，不依赖路由器的 libc；-s -w 去掉符号表，减小体积
   env CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" ${govars} \
-    go build -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}'" \
+    go build -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}' -X 'aellus/internal/app.BuildStaticHash=${STATIC_HASH}'" \
     -o "$BIN" .
 done <<EOF
 ${TARGETS}
 EOF
+
+# 编译完立刻体检一次：确认这批二进制是用【当前源码】编出来的，而不是复用了旧产物。
+# 光看版本号递增是看不出问题的 —— 包照样能装，只是里面装的还是旧程序，
+# 表现就是「改了没生效」。详见 tools/embed_check.py 头部注释。
+if command -v python3 >/dev/null 2>&1; then
+  python3 tools/embed_check.py "${BUILD_TMP}"/bin/aellus-* || {
+    echo "[错误] 二进制与当前源码不一致（疑似复用了旧编译产物），已中止"; exit 1; }
+else
+  echo "   [警告] 未找到 python3，跳过「源码与二进制一致性」校验"
+fi
 
 # —— 2) 组装每个架构的包内容 ——
 echo ">> [2/5] 组装包内容"
@@ -160,6 +179,7 @@ while IFS='|' read -r arch goarch govars; do
            "$ROOT/usr/share/aellus" \
            "$ROOT/www/luci-static/resources/view/aellus" \
            "$ROOT/usr/share/luci/menu.d" "$ROOT/usr/share/rpcd/acl.d" \
+           "$ROOT/lib/upgrade/keep.d" \
            "$CTRL"
 
   # 主程序与服务脚本：0755
@@ -178,6 +198,16 @@ while IFS='|' read -r arch goarch govars; do
                   "$ROOT/usr/share/luci/menu.d/luci-app-aellus.json"
   install -m 0644 "$PKG_DIR/files/usr/share/rpcd/acl.d/luci-app-aellus.json" \
                   "$ROOT/usr/share/rpcd/acl.d/luci-app-aellus.json"
+  # sysupgrade 保留清单：告诉固件升级流程「这两处要留着」。
+  # 为什么非加不可：本包刻意不把 /etc/config/aellus 装成 conffile（否则每次升级都要
+  # 比对，见上面模板的注释），而 sysupgrade 默认只保留「包声明过的 conffile +
+  # /etc/sysupgrade.conf + keep.d」这三类。这两份数据都不在其中，固件一升级就会丢：
+  #   /etc/aellus/      XDG_CONFIG_HOME，设备名映射 devices.json 等持久化数据
+  #                     （init.d 注入 XDG_CONFIG_HOME=/etc/aellus，程序不写用户目录）
+  #   /etc/config/aellus  用户在 LuCI 里设的端口 / 保存目录 / 是否启用
+  # 这是 OpenWrt 官方给 ipk 维护者的标准做法（见 docs: sysupgrade → keep.d）。
+  install -m 0644 "$PKG_DIR/files/lib/upgrade/keep.d/aellus" \
+                  "$ROOT/lib/upgrade/keep.d/aellus"
 
   # 维护脚本（control.tar.gz 内，不进文件系统）
   install -m 0755 "$PKG_DIR/control/postinst" "$CTRL/postinst"
