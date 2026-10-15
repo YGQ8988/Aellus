@@ -641,10 +641,23 @@ body.home .container {
 	border-radius: var(--radius);
 	box-shadow: 0 10px 28px -12px rgb(0 0 0 / .22), 0 2px 6px -2px rgb(0 0 0 / .06);
 	padding: 6px;
+	/* 行间距与内边距取同一个值（6px）：弹层内「上/下边距 = 行间距」处处一致。
+	   用 column + gap 而不是给行加 margin-bottom——gap 只在行与行之间生效，
+	   最后一行下面不会多出一段空白。 */
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
 	max-height: 320px;
 	overflow-y: auto;
 	overscroll-behavior: contain;
 	animation: dirPopupIn .14s ease;
+}
+
+/* [hidden] 必须显式声明 display:none：上面的 display:flex（Author CSS）
+   会覆盖浏览器默认的 [hidden]{display:none}（UA CSS），导致弹层收起后仍然显示。
+   项目里 .dir-input-wrap / .dir-auth-row 是同样的坑，勿删。 */
+.dir-popup[hidden] {
+	display: none;
 }
 
 @keyframes dirPopupIn {
@@ -1037,7 +1050,18 @@ body.home .container {
 
 .dir-option-del {
 	flex-shrink: 0;
-	padding: 2px 5px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	/* 两处都是为了让「带 ✕ 的选项」与「不带 ✕ 的选项」一样高：
+	   ① 显式覆盖 common.css 里全局 button 的 min-height:40px；
+	   ② 上下负外边距抵消按钮对行高的贡献（24 - 3 - 3 = 18 ≤ 文本行高 18.2），
+	      否则 ✕ 比文字高，会把整行撑到 40px（行内 9px 内边距足够容纳溢出的 3px）。 */
+	min-height: 0;
+	margin: -3px 0;
+	padding: 0;
 	border: none;
 	border-radius: calc(var(--radius) - 4px);
 	background: transparent;
