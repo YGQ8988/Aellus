@@ -34,6 +34,7 @@ tools/*
 !tools/mkapk.py
 !tools/apk_check.py
 !tools/embed_check.py
+!tools/static_hash.sh
 
 # fnOS 打包目录中的编译产物（配置文件本身应提交）
 fnos/app/aellus*
