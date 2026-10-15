@@ -256,14 +256,11 @@ aellus/
 │   ├── middleware.go             # 中间件（日志/安全响应头/no-cache）
 │   ├── logx.go                   # 日志写入（含轮转与注入清洗）
 │   ├── fileout.go                # 文件输出统一出口（下载 / 缩略图的类型白名单与附件判定）
-│   ├── version.go                # 版本号与构建时间（打包脚本 ldflags 注入，/api/info 返回）
+│   ├── version.go                # 版本号 / 构建时间 / 前端内容指纹（打包脚本 ldflags 注入，/api/info 返回）
 │   ├── types.go                  # 数据结构定义
 │   ├── available_unix.go         # 保存目录所在卷的剩余空间探测（syscall.Statfs）
 │   ├── available_windows.go      # 同上，Windows 桩实现（拿不到剩余空间时不限制）
-│   ├── paging.go                 # 分页计算（总页数/偏移/页码纠正）
-│   ├── openwrt_test.go           # OpenWrt 平台判定测试
-│   ├── paging_test.go            # 分页单元测试
-│   └── security_test.go          # 安全回归测试（`go test ./...` 即可运行）
+│   └── paging.go                 # 分页计算（总页数/偏移/页码纠正）
 ├── internal/platform/            # 平台层（build-tag 选择编译；实现 Platform 接口）
 │   ├── platform_impl.go          # 桌面端实现（!fpk；托盘/通知/单实例/文件夹选择）
 │   ├── platform_fpks.go          # fpk 端实现（//go:build fpk；headless 桩）
@@ -294,10 +291,12 @@ aellus/
 ├── build-all.sh                  # 全平台构建脚本（macOS/Linux 裸二进制 + Windows exe 打成 zip）
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本（分架构，直接产出 .fpk）
 ├── build-openwrt.sh              # OpenWrt 构建脚本（交叉编译，按官方包格式产出 ipk / apk）
-├── tools/                        # 构建辅助工具（仓库只提交下面三个 .py；fnpack 是需自行下载的二进制，见 .gitignore）
+├── tools/                        # 构建辅助工具（下面 5 个提交进仓库；fnpack 是需自行下载的二进制，见 .gitignore）
 │   ├── ipk_check.py              # 校验 ipk 能否被 opkg 解包（有无 pax 头 / AppleDouble）
 │   ├── mkapk.py                  # 打包 apk（25.12+，apk-tools v2：控制段 + 数据段两个 gzip 流）
-│   └── apk_check.py              # 校验 apk 结构（分段 / .PKGINFO / datahash / 坏成员）
+│   ├── apk_check.py              # 校验 apk 结构（分段 / .PKGINFO / datahash / 坏成员）
+│   ├── static_hash.sh            # 计算 templates/ + static/ 全树内容指纹（构建时经 ldflags 注入二进制）
+│   └── embed_check.py            # 发布体检：模板引用完整性 + 二进制里的静态资源清单与内容指纹是否与当前源码一致
 ├── changeLog.md                  # 版本更新记录
 ├── fnpack.json                   # FnDepot 第三方应用源描述文件
 ├── aellus.icns                   # macOS 应用图标
