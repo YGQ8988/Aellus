@@ -1078,3 +1078,19 @@ body.home .container {
 		color: hsl(var(--foreground));
 	}
 }
+
+/* 实测不可写的授权目录：置灰不可选（见服务端 dirWritable） */
+.dir-option.disabled {
+	cursor: not-allowed;
+	opacity: .55;
+}
+
+/* 同上：右侧「无写入权限」小字。字号比正文小一档，行高不超过正文
+   （13px * 1.4 ≈ 18.2px），保证置灰行与其它行一样高。 */
+.dir-option-note {
+	flex-shrink: 0;
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 1;
+	color: hsl(var(--muted-foreground));
+}

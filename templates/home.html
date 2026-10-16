@@ -281,7 +281,8 @@
   }
   // 在 popup 里渲染一组路径选项；每一项点击 -> 选中、收 popup、触发保存。
   // labels 为内部路径 -> 语义化展示路径映射（飞牛端 /vol1/... 转换结果），仅用于展示。
-  function renderDirOptions(paths, currentPath, labels, removable){
+  // unwritable 为实测不可写的目录，这些项置灰不可选（见 dirWritable 一侧的注释）。
+  function renderDirOptions(paths, currentPath, labels, removable, unwritable){
     var popup=document.getElementById('dirPopup');
     popup.innerHTML='';
     if(!paths.length){
@@ -304,6 +305,19 @@
       txt.textContent=labels[val]||val;
       opt.appendChild(txt);
       if(val===currentPath){ opt.classList.add('selected'); }
+      // 实测不可写：置灰、不可选，比让用户选中后才发现存不进去更直观。
+      if(unwritable && unwritable.indexOf(val)!==-1){
+        opt.classList.add('disabled');
+        opt.title='该目录当前不可写入，请在飞牛「应用设置 → 授权目录」中重新授权';
+        opt.setAttribute('aria-disabled','true');
+        var note=document.createElement('span');
+        note.className='dir-option-note';
+        note.textContent='无写入权限';
+        opt.appendChild(note);
+        popup.appendChild(opt);
+        known[val]=true;
+        return;                       // 不绑定 click、不显示 ✕
+      }
       // removable 中的项（授权根目录，不含出厂默认目录）右侧显示「移除授权」✕
       if(removable && removable.indexOf(val)!==-1){
         var del=document.createElement('button');
@@ -528,6 +542,10 @@
       var arFly=document.getElementById('dirAuthRow');
       if(arFly){ arFly.hidden=false; }
       var labels=Object.assign({}, (d&&d.pathLabels)||{});
+      // editable：飞牛明确给出的「管理员能否移除该授权」标志（isEditable），只含飞牛确实返回的项。
+      // unwritable：服务端实测不可写的授权目录（见 dirWritable）。
+      var editable=(d&&d.editable)||{};
+      var unwritable=(d&&d.unwritable)||[];
       // 出厂默认目录（应用私有数据目录，如 存储空间1/应用文件/aellus/drops）不在授权
       // 列表里，但服务端允许随时切回，故始终并入选项——避免"改到其它目录后，再想切回
       // 默认目录却报『保存目录必须位于飞牛已授权目录内』"。
@@ -552,8 +570,15 @@
       renderDirTrigger(cur, labels[cur]||(s&&s.saveDirDisplay)||cur);
       // 选项 = 授权根目录 + 出厂默认目录（+ 当前目录兜底）；只展示根目录，不展开子目录
       // 可移除的只有「授权根目录」——出厂默认目录是应用私有目录，不允许移除。
-      var removable=roots.filter(function(p){ return !def || p!==def; });
-      renderDirOptions(all, cur, labels, removable);
+      var removable=roots.filter(function(p){
+        if(def && p===def) return false;   // 出厂默认目录：应用私有，不允许移除
+        // 是否可移除以飞牛的官方标志为准（应用设置里那条授权能不能删由飞牛决定）。
+        // 飞牛明确返回 isEditable=false 时不显示 ✕——点了必然失败。
+        // 只有飞牛没返回该字段的版本才回退到「非默认目录即可移除」的本地推断。
+        if(Object.prototype.hasOwnProperty.call(editable,p) && editable[p]===false) return false;
+        return true;
+      });
+      renderDirOptions(all, cur, labels, removable, unwritable);
     }).catch(function(){
       if(popup){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; }
     });

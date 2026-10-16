@@ -88,6 +88,21 @@ func (a *App) handleTipSeen(w http.ResponseWriter, r *http.Request) {
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
+// dirWritable 实测目录是否可写（建一个临时文件再删掉）。
+//
+// 不用飞牛返回的 perm 级别判断可写性：各版本 perm 语义未公开（真机上同时出现过 6 与 7，
+// 且两者都可写），按数值猜测会误伤能写的目录；实测是唯一权威的判据。
+// 注意会短暂改变目录 mtime，故只在设置面板这类低频路径上使用。
+// 返回 nil 表示可写；返回的错误只用于记操作日志，不回显给客户端（含内部路径与 errno）。
+func dirWritable(dir string) error {
+	test := filepath.Join(dir, ".aellus-write-test")
+	if err := os.WriteFile(test, []byte("ok"), 0644); err != nil {
+		return err
+	}
+	os.Remove(test)
+	return nil
+}
+
 // handleAuthPaths GET /api/authpaths 返回飞牛授权给应用的共享目录（供网页选择保存位置）。
 // 优先通过飞牛官方后端 API（trim.file.getSharedAccessibleFolders，Unix socket + TRIM_API_TOKEN）
 // 查询管理员在应用设置中授权的目录；非飞牛环境回退到环境变量。
@@ -98,7 +113,27 @@ func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"error": "无权限"})
 		return
 	}
-	paths := authorizedSavePaths()
+	metas := authorizedSavePathMeta()
+	paths := make([]string, 0, len(metas))
+	// editable：飞牛明确给出的「管理员能否移除该授权」标志（应用设置里那条是否显示 ✕）。
+	// 只收录飞牛确实返回了该字段的目录；没返回的由前端回退到「非默认目录即可移除」。
+	editable := map[string]bool{}
+	for _, m := range metas {
+		paths = append(paths, m.Path)
+		if m.Editable != nil {
+			editable[m.Path] = *m.Editable
+		}
+	}
+	// unwritable：实测不可写的授权目录，前端置灰，避免用户选中后才发现存不进去。
+	unwritable := []string{}
+	if a.platform.EnforceAuthBoundary() {
+		for _, p := range paths {
+			if err := dirWritable(p); err != nil {
+				unwritable = append(unwritable, p)
+				a.logOp(fmt.Sprintf("授权目录不可写 dir=%s 错误=%v", p, err))
+			}
+		}
+	}
 	labels := map[string]string{}
 	// 飞牛环境：把授权目录内部路径转成语义化展示路径，供设置页面下拉展示。
 	if a.platform.EnforceAuthBoundary() {
@@ -121,6 +156,8 @@ func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
 		"hasTrim":      a.platform.EnforceAuthBoundary(),
 		"defaultPath":  def,
 		"defaultLabel": defLabel,
+		"editable":     editable,
+		"unwritable":   unwritable,
 	})
 }
 
@@ -301,14 +338,12 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// 可写性校验
-	test := filepath.Join(dir, ".aellus-write-test")
-	if err := os.WriteFile(test, []byte("ok"), 0644); err != nil {
+	// 可写性校验（实测，见 dirWritable；仍是最后一道关，列表里已置灰的目录也走这里）
+	if err := dirWritable(dir); err != nil {
 		a.logOp(fmt.Sprintf("保存目录不可写 dir=%s 错误=%v", dir, err))
 		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "该目录不可写（请确认权限）"})
 		return
 	}
-	os.Remove(test)
 	a.setSaveDir(dir)
 	// 持久化保存目录到本地配置（桌面端 + 飞牛端都持久化）；飞牛端写到 TRIM_PKGVAR 持久卷，
 	// 重启加载时再校验是否仍在授权目录内（见 main 的 IsPersistedSaveDirValid）。

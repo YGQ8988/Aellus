@@ -19,38 +19,70 @@ import (
 
 // === 飞牛开放 API 与授权目录（纯函数，无 App 状态） ===
 
-// authorizedSavePaths 返回当前应用可访问的授权目录（去重后的真实绝对路径）：
+// authPathMeta 描述一个授权目录及其飞牛侧属性。
+// Perm / Editable 用指针，是因为「飞牛没返回这个字段」与「返回了 0 / false」必须区分：
+// 不同 fnOS 版本返回的授权目录结构不一样（有的只有路径字符串，有的带属性对象），
+// 拿不到时按「未知」处理，调用方回退到本地推断，绝不能当成 0 / false 用。
+type authPathMeta struct {
+	Path     string
+	Perm     *int
+	Editable *bool
+}
+
+// trimAuthPathItem 对应飞牛授权目录对象里的字段（字段缺失时为 nil，语义见 authPathMeta）。
+type trimAuthPathItem struct {
+	Path       string `json:"path"`
+	Perm       *int   `json:"perm"`
+	IsEditable *bool  `json:"isEditable"`
+}
+
+// authorizedSavePaths 返回当前应用可访问的授权目录（去重后的真实绝对路径），
+// 只取路径、丢掉属性；需要飞牛侧属性时用 authorizedSavePathMeta。
+func authorizedSavePaths() []string {
+	metas := authorizedSavePathMeta()
+	out := make([]string, 0, len(metas))
+	for _, m := range metas {
+		out = append(out, m.Path)
+	}
+	return out
+}
+
+// authorizedSavePathMeta 返回授权目录及其飞牛侧属性（去重后的真实绝对路径）：
 // 合并两个来源——飞牛官方 API trim.file.getSharedAccessibleFolders 查询的共享授权目录，
 // 以及环境变量 TRIM_DATA_ACCESSIBLE_PATHS / TRIM_DATA_SHARE_PATHS（data-share 共享目录 +
 // 管理员在应用设置授权的目录）。两者可能只覆盖部分目录，合并取并集再按真实路径去重，
 // 避免「API 只返回 1 个目录时漏掉应用设置里授权的其它目录」。
-func authorizedSavePaths() []string {
-	raw := []string{}
+func authorizedSavePathMeta() []authPathMeta {
+	raw := []authPathMeta{}
 	// 1) 官方 API 查询共享授权目录（失败静默，交给环境变量兜底）
-	if paths, err := trimQuerySharedFolders(); err == nil {
-		raw = append(raw, paths...)
+	if metas, err := trimQuerySharedFolders(); err == nil {
+		raw = append(raw, metas...)
 	}
 	// 2) 环境变量补充（data-share 共享目录 + 用户授权目录，冒号分隔）
+	//    环境变量只给路径，没有 perm / isEditable，属性保持 nil。
 	for _, key := range []string{"TRIM_DATA_ACCESSIBLE_PATHS", "TRIM_DATA_SHARE_PATHS"} {
 		if v := os.Getenv(key); v != "" {
-			raw = append(raw, splitPathList(v)...)
+			for _, p := range splitPathList(v) {
+				raw = append(raw, authPathMeta{Path: p})
+			}
 		}
 	}
 	// 3) 解析每个授权根为真实绝对路径（跟随飞牛可能注入的软链，如 @appshare），
 	// 让边界校验对齐真实存储位置，避免软链绕过，同时去重。
 	seen := map[string]bool{}
-	var out []string
-	for _, p := range raw {
-		if p == "" {
+	var out []authPathMeta
+	for _, m := range raw {
+		if m.Path == "" {
 			continue
 		}
-		real, err := realResolve(p)
+		real, err := realResolve(m.Path)
 		if err != nil {
-			real = filepath.Clean(p)
+			real = filepath.Clean(m.Path)
 		}
 		if !seen[real] {
 			seen[real] = true
-			out = append(out, real)
+			m.Path = real
+			out = append(out, m)
 		}
 	}
 	return out
@@ -106,30 +138,44 @@ func saveDirAllowedRoots() []string {
 
 // trimQuerySharedFolders 调用飞牛官方后端 API 查询共享授权目录（trim.file.getSharedAccessibleFolders，
 // Scope: trim.file.sharedAccess，要求 fnOS >= 1.2.0401、App >= 1.34.0）。
-func trimQuerySharedFolders() ([]string, error) {
+//
+// 返回结构在不同飞牛版本间差异较大，这里兼容四种形态：
+//   {"paths":["/a"]}、["/a"]、{"paths":[{path,perm,isEditable}]}、[{path,perm,isEditable}]
+// 后两种会带上飞牛侧的授权属性（perm / isEditable），一并返回给调用方，
+// 让「能不能移除授权」以飞牛的官方标志为准，而不是本地猜。
+func trimQuerySharedFolders() ([]authPathMeta, error) {
 	rawData, err := trimBackendAPI("trim.file.getSharedAccessibleFolders", nil)
 	if err != nil {
 		return nil, err
 	}
-	// data 可能是 {paths:[...]} 对象，也可能是直接的路径数组（不同飞牛版本实现差异），兼容解析。
+	// 先取出「目录那一段」：可能是 {paths: ...} 里的值，也可能整个返回就是数组。
+	var rawPaths json.RawMessage
 	var obj struct {
-		Paths []string `json:"paths"`
+		Paths json.RawMessage `json:"paths"`
 	}
 	if err := json.Unmarshal(rawData, &obj); err == nil && obj.Paths != nil {
-		out := make([]string, 0, len(obj.Paths))
-		for _, s := range obj.Paths {
-			if s != "" {
-				out = append(out, s)
+		rawPaths = obj.Paths
+	} else {
+		rawPaths = rawData
+	}
+	// 优先按「对象数组」解析（带 perm / isEditable 属性）
+	var items []trimAuthPathItem
+	if err := json.Unmarshal(rawPaths, &items); err == nil {
+		out := make([]authPathMeta, 0, len(items))
+		for _, it := range items {
+			if it.Path != "" {
+				out = append(out, authPathMeta{Path: it.Path, Perm: it.Perm, Editable: it.IsEditable})
 			}
 		}
 		return out, nil
 	}
+	// 回退：纯路径字符串数组（拿不到属性，全部保持 nil）
 	var arr []string
-	if err := json.Unmarshal(rawData, &arr); err == nil {
-		out := make([]string, 0, len(arr))
+	if err := json.Unmarshal(rawPaths, &arr); err == nil {
+		out := make([]authPathMeta, 0, len(arr))
 		for _, s := range arr {
 			if s != "" {
-				out = append(out, s)
+				out = append(out, authPathMeta{Path: s})
 			}
 		}
 		return out, nil
