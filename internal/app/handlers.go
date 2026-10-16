@@ -49,14 +49,21 @@ const (
 // 打包约 250GB（否则临时 ZIP 本身就占满，压缩写不完、传输也做不了）。
 // 留另外一半给系统、同卷其它应用与用户数据。
 //
-// 卷空间拿不到时（Windows 桌面端 / Statfs 失败）返回 0，表示不按空间限制。
+// 卷空间拿不到时（Windows 桌面端：availableBytes 在该平台恒返回 false）用
+// batchFallbackBudget 兜底，而不是「不限制」——后者是唯一完全没有约束的分支，
+// 一次批量下载就能把用户磁盘写满。
 func batchSpaceBudget(saveDir string) int64 {
 	free, ok := availableBytes(saveDir)
 	if !ok || free == 0 {
-		return 0 // 拿不到空间信息 → 不做空间限制
+		return batchFallbackBudget
 	}
 	return int64(free / 2)
 }
+
+// batchFallbackBudget 取不到卷剩余空间时的兜底打包上限（64 GiB）。
+// 取值口径：足够覆盖正常的大批量导出（几千个文件、几十 GB 的照片/视频），
+// 又能挡住「把磁盘写满」这一真实风险。
+const batchFallbackBudget = 64 << 30
 
 // uploadTempDir 返回临时文件目录：保存目录内的隐藏子目录 <saveDir>/.aellus-tmp。
 // 上传的临时文件与批量下载的临时 ZIP 都落在这里。
@@ -396,18 +403,23 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 // 若某路径无法读取则忽略该分支，不影响其余统计。纯函数。
 //
 // 遍历预算：/api/dirs 与 /api/files 是免登录接口，且统计发生在分页之前——
-// 无上限递归时，一个 10 万文件的目录，一条请求就是 10 万次 Info()（外加
-// handleFiles 对每个子目录各统计一次），几条并发即可把 NAS / 路由器 CPU 打满。
-// 故设深度与条目上限，超出即停止累加：返回的 size/count 变成「下限值」
-// （至少不会阻塞页面），对超大目录是可接受的取舍。
+// 无上限递归时，一个 10 万文件的目录，一条请求就是 10 万次 Info()，几条并发即可
+// 把 NAS / 路由器 CPU 打满。故设深度与条目上限，超出即停止累加：返回的 size/count
+// 变成「下限值」（至少不会阻塞页面），对超大目录是可接受的取舍。
+//
+// 预算是【按请求】分配的：handleDirs / handleFiles 自己建一份并传给每个子目录
+// （见 dirStatsWithBudget）。早先的写法是 dirStats 内部每次调用各建一份，于是
+// 「每个子目录各 20000」把上限放大成 子目录数 × 20000，一条免登录请求即可放大百倍。
 const (
 	dirStatsMaxDepth   = 8     // 最多递归 8 层
-	dirStatsMaxEntries = 20000 // 最多访问 20000 个目录项
+	dirStatsMaxEntries = 20000 // 每个请求最多访问 20000 个目录项
 )
 
-func dirStats(path string) (size int64, count int, mtime int64) {
-	budget := dirStatsMaxEntries
-	dirStatsDepth(path, 0, &budget, &count, &size, &mtime)
+// dirStatsWithBudget 用调用方提供的共享预算统计一个目录，返回总大小、文件数与最新修改时间。
+// 预算必须由请求级入口（handleDirs / handleFiles）统一持有并传给每个子目录，
+// 详见 dirStatsMaxEntries 处的说明。
+func dirStatsWithBudget(path string, budget *int) (size int64, count int, mtime int64) {
+	dirStatsDepth(path, 0, budget, &count, &size, &mtime)
 	return
 }
 
@@ -453,6 +465,9 @@ func dirStatsDepth(path string, depth int, budget *int, count *int, size *int64,
 // handleDirs GET /api/dirs 列出所有设备目录及其文件数、总大小、最新修改时间。
 func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 	dirs := []DirInfo{} // 用空切片而非 nil，确保 JSON 输出为 [] 而非 null
+	// 一份预算供本请求内所有设备目录共享（见 dirStatsWithBudget）：
+	// 若每个子目录各建一份，20000 的条目上限会被放大成 子目录数 × 20000。
+	budget := dirStatsMaxEntries
 	entries, err := os.ReadDir(a.getSaveDir())
 	if err == nil {
 		for _, e := range entries {
@@ -461,7 +476,7 @@ func (a *App) handleDirs(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			// 递归统计该目录的总大小、文件数、最新修改时间
-			size, count, mtime := dirStats(filepath.Join(a.getSaveDir(), e.Name()))
+			size, count, mtime := dirStatsWithBudget(filepath.Join(a.getSaveDir(), e.Name()), &budget)
 			dirs = append(dirs, DirInfo{Name: e.Name(), Count: count, Size: size, Mtime: mtime})
 		}
 	}
@@ -510,6 +525,8 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files := []FileInfo{} // 空切片，确保无内容时输出 [] 而非 null
+	// 一份预算供本请求内所有子目录共享（同 handleDirs）。
+	budget := dirStatsMaxEntries
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
@@ -525,9 +542,9 @@ func (a *App) handleFiles(w http.ResponseWriter, r *http.Request) {
 			IsDir: e.IsDir(),
 			Count: 0,
 		}
-		// 文件夹：递归计算总大小、文件数、最新修改时间
+		// 文件夹：递归计算总大小、文件数、最新修改时间（共用本请求的预算）
 		if e.IsDir() {
-			s, c, m := dirStats(filepath.Join(dirAbs, e.Name()))
+			s, c, m := dirStatsWithBudget(filepath.Join(dirAbs, e.Name()), &budget)
 			fi.Size = s
 			fi.Count = c
 			fi.Mtime = m
@@ -628,8 +645,8 @@ func (a *App) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
 
 	// 确定要打包的文件名列表（names 为相对 dirAbs 的路径，可含子目录层级）
 	var names []string
-	// 打包预算 = min(剩余空间的 50%, 64GB 兜底)；拿不到空间信息时为 0 = 不限。
-	// 声明放在分支外：递归统计与写入循环都要用它。
+	// 打包预算 = 保存卷剩余空间的 50%（见 batchSpaceBudget）；拿不到空间信息时用
+	// batchFallbackBudget 兜底。声明放在分支外：递归统计与写入循环都要用它。
 	spaceBudget := batchSpaceBudget(a.getSaveDir())
 	if len(req.Files) == 0 {
 		// files 为空 -> 递归打包该目录（含子目录）全部非隐藏文件，保留层级结构。

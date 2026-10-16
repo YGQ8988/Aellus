@@ -243,7 +243,6 @@
 .share-name { font-size: 13px; font-weight: 600; color: hsl(var(--foreground)); width: 240px; max-width: 100%; margin: 0 auto; text-align: center; word-break: break-all; }
 .qr-code { width: 240px; max-width: 100%; }
 .qr-code svg { width: 240px; max-width: 100%; height: auto; display: block; margin: 0 auto; background: #fff; border-radius: calc(var(--radius) - 2px); }
-.qr-url { font-size: 13px; color: hsl(var(--muted-foreground)); margin: 0; word-break: break-all; text-align: center; font-family: var(--font-mono); }
 /* 分享弹窗地址条：与首页 LAN 地址栏（.lan-addr-bar）样式完全统一 */
 .share-url-bar {
   display: flex;

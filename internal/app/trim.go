@@ -20,19 +20,21 @@ import (
 // === 飞牛开放 API 与授权目录（纯函数，无 App 状态） ===
 
 // authPathMeta 描述一个授权目录及其飞牛侧属性。
-// Perm / Editable 用指针，是因为「飞牛没返回这个字段」与「返回了 0 / false」必须区分：
+// Editable 用指针，是因为「飞牛没返回这个字段」与「返回了 false」必须区分：
 // 不同 fnOS 版本返回的授权目录结构不一样（有的只有路径字符串，有的带属性对象），
-// 拿不到时按「未知」处理，调用方回退到本地推断，绝不能当成 0 / false 用。
+// 拿不到时按「未知」处理，调用方回退到本地推断，绝不能当成 false 用。
+//
+// 飞牛的返回里还有一个 perm（授权级别），本结构【有意不解析】：其语义未公开
+// （真机上同时出现过 6 与 7，且两者都可写），按数值猜测会误伤可写目录。
+// 可写性一律以实测为准（见 settings.go 的 dirWritable）。
 type authPathMeta struct {
 	Path     string
-	Perm     *int
 	Editable *bool
 }
 
 // trimAuthPathItem 对应飞牛授权目录对象里的字段（字段缺失时为 nil，语义见 authPathMeta）。
 type trimAuthPathItem struct {
 	Path       string `json:"path"`
-	Perm       *int   `json:"perm"`
 	IsEditable *bool  `json:"isEditable"`
 }
 
@@ -158,13 +160,13 @@ func trimQuerySharedFolders() ([]authPathMeta, error) {
 	} else {
 		rawPaths = rawData
 	}
-	// 优先按「对象数组」解析（带 perm / isEditable 属性）
+	// 优先按「对象数组」解析（带 isEditable 等属性）
 	var items []trimAuthPathItem
 	if err := json.Unmarshal(rawPaths, &items); err == nil {
 		out := make([]authPathMeta, 0, len(items))
 		for _, it := range items {
 			if it.Path != "" {
-				out = append(out, authPathMeta{Path: it.Path, Perm: it.Perm, Editable: it.IsEditable})
+				out = append(out, authPathMeta{Path: it.Path, Editable: it.IsEditable})
 			}
 		}
 		return out, nil

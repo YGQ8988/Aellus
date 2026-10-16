@@ -27,7 +27,6 @@ let canManage = false;
 // WebView 里没有下载管理器、点了没反应。改用直连后该限制失去意义，且 viaGateway
 // 判据本身漏掉了「门户 iframe 走裸端口 + 路径前缀」这种入口（无 X-Trim-Userid），
 // 会出现「按钮显示了却点不动」的错位。批量 ZIP 仍走 blob（POST 无法直连）。
-let hideDownload = false;
 
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
@@ -409,7 +408,7 @@ function renderFile(f, idx) {
           </div>
         </div>
         <div class="file-actions">
-          ${hideDownload ? '' : `<a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>`}
+          <a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>
           <a class="share-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onShare(this)">分享</a>
           ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDelete(this)">删除</a>' : ''}
         </div>
@@ -942,11 +941,10 @@ function showLbImage(dir) {
   const showNav = previewFiles.length > 1;
   $('lbPrev').style.display = showNav ? 'flex' : 'none';
   $('lbNext').style.display = showNav ? 'flex' : 'none';
-  // 重置顶部下载按钮为图标态（飞牛客户端里保持隐藏）
+  // 重置顶部下载按钮为图标态
   const dlBtn = $('lbDownload');
   dlBtn.classList.remove('loading');
   dlBtn.disabled = false;
-  dlBtn.style.display = hideDownload ? 'none' : '';
   dlBtn.innerHTML = SVG_DOWNLOAD;
   // 删除按钮：无管理权限（局域网设备直连）时隐藏（切换图片时同步显隐）
   $('lbDelete').style.display = canManage ? '' : 'none';
@@ -1161,7 +1159,7 @@ async function apiDelete(dir, name) {
 }
 
 // 启动：加载目录列表。原先此处会先「探测是否飞牛客户端」再决定是否隐藏下载入口，
-// 该探测已随直连下载方案一并移除（hideDownload 恒为 false）。
+// 该探测已随直连下载方案一并移除（见文件开头关于下载入口的说明）。
 (async function () {
   loadDirs();
 })();

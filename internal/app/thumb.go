@@ -97,7 +97,8 @@ func resizeBox(src image.Image, dw, dh int) *image.RGBA {
 //   - maxThumbHeight ：输出高度上限，超过则不做缩略、直接返回原文件。
 //
 // 配合 handleThumb 里「只缩小、不放大」的规则，输出像素数一定不超过源图像素数
-// （源图已由 maxPixels 限制在 4000 万像素内），内存因此有界。
+// （源图已由 maxPixels 限制在 1600 万像素内；icns 分支另有 icnsMaxPixels = 400 万），
+// 内存因此有界。
 const (
 	maxThumbWidth  = 800
 	maxThumbHeight = 8000

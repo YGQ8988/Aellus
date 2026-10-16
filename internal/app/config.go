@@ -120,7 +120,8 @@ func MigrateLegacySettings() {
 	if err := os.MkdirAll(filepath.Dir(newPath), 0755); err != nil {
 		return
 	}
-	if err := os.WriteFile(newPath, b, 0644); err != nil {
+	// 0600：配置里是保存目录等本机信息，不应对同机其它用户可读（与日志一致）。
+	if err := os.WriteFile(newPath, b, 0600); err != nil {
 		return
 	}
 	// 迁移成功，删除旧文件（忽略错误，旧文件残留无害）
@@ -190,7 +191,8 @@ func writeSettingsConfig(m map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, b, 0644)
+	// 0600：同上，配置内容仅本机用户可读。
+	return os.WriteFile(p, b, 0600)
 }
 
 // LoadTipSeen 读取「首页引导条已被看过」标记；无配置 / 解析失败按未看过处理。

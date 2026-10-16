@@ -20,9 +20,9 @@ type UploadResp struct {
 // —— 目录列表返回 ——
 type DirInfo struct {
 	Name  string `json:"name"`  // 设备目录名
-	Count int    `json:"count"` // 目录下（仅一层）非隐藏文件数量
-	Size  int64  `json:"size"`  // 目录下非隐藏文件总大小（字节）
-	Mtime int64  `json:"mtime"` // 目录下最新修改时间（Unix 时间戳）
+	Count int    `json:"count"` // 目录及其子目录内的非隐藏文件数量（递归统计，受预算所限可能是下限值）
+	Size  int64  `json:"size"`  // 目录及其子目录内非隐藏文件总大小（字节，同为递归统计）
+	Mtime int64  `json:"mtime"` // 目录及其子目录内最新修改时间（Unix 时间戳）
 }
 type DirsResp struct {
 	Dirs      []DirInfo `json:"dirs"`

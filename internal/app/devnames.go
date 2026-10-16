@@ -60,7 +60,8 @@ func (a *App) recordDeviceName(devID, name string) {
 	m[devID] = name
 	b, _ := json.Marshal(m)
 	_ = os.MkdirAll(filepath.Dir(a.deviceNamesPath()), 0755)
-	_ = os.WriteFile(a.deviceNamesPath(), b, 0644)
+	// 0600：设备名映射属本机信息，不应对同机其它用户可读。
+	_ = os.WriteFile(a.deviceNamesPath(), b, 0600)
 }
 
 // deviceNameOf 返回设备 ID 对应的设备名；无记录返回空串。

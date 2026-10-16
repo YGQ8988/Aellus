@@ -394,13 +394,23 @@ func (a *App) handleDelAuthDir(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "缺少要移除的目录"})
 		return
 	}
-	// 只允许移除「授权根目录」本身，避免传入任意路径（官方接口按精确路径删除，
-	// 这里先对齐一次，防止意外删掉不在列表里的条目）。
-	roots := saveDirAllowedRoots()
-	if !withinAuthRoots(path, roots) {
+	// 只允许移除「授权根目录」本身：必须与某个授权根【精确相等】，不能是其子路径。
+	// 不能用 withinAuthRoots——它按前缀匹配、对根目录下的任意子路径都返回 true，
+	// 会把任意路径递交给官方删除接口（注释与实现因此长期不符）。
+	// 这里比对的列表已是 realResolve 后的真实路径，与前端回传的一致。
+	cp := filepath.Clean(path)
+	matched := false
+	for _, root := range saveDirAllowedRoots() {
+		if cp == filepath.Clean(root) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
 		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "该目录不在当前授权目录内"})
 		return
 	}
+	path = cp
 	if _, err := trimBackendAPI("trim.file.delSharedAccessibleFolder", map[string]string{"path": path}); err != nil {
 		// 错误详情可能含内部路径 / 系统信息，只写日志，客户端拿通用提示。
 		a.logOp(fmt.Sprintf("移除授权目录失败 path=%s 错误=%v", path, err))

@@ -6,8 +6,8 @@
 *.log
 server.pid
 
-# 上传文件落盘目录（运行时生成）
-aellus-drops/
+# 上传文件落盘目录（运行时生成）：目录名见 internal/app/app.go 的 saveDirName
+file-drops/
 
 # macOS
 .DS_Store
@@ -39,4 +39,5 @@ tools/*
 # fnOS 打包目录中的编译产物（配置文件本身应提交）
 fnos/app/aellus*
 
-.workbuddy
+# IDE 助手的数据目录（历史规则名写错了，实际目录是 .codebuddy）
+.codebuddy/

@@ -214,7 +214,7 @@ var (
 	openWrtOnce sync.Once
 	openWrt     bool // 探测结果缓存，避免每个请求都读文件
 
-	// 探测路径单独抽成变量，便于单测用临时文件替换（见 openwrt_test.go）。
+	// 探测路径单独抽成变量，便于单测用临时文件替换（*_test.go 不入库，见 .gitignore）。
 	// 使用这些路径时统一走包变量，不要写死字符串。
 	osReleasePaths = []string{"/etc/os-release", "/usr/lib/os-release"}
 	openWrtMarker  = "/etc/openwrt_release"

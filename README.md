@@ -502,7 +502,7 @@ const (
 <table>
   <tr>
     <td align="center">
-      <img src="static/img/qr-dev-ygq.png" width="180" alt="开发者 染洛凉 支付宝二维码"><br>
+      <img src="static/img/qr-dev-ygq.jpg" width="180" alt="开发者 染洛凉 支付宝二维码"><br>
       <sub>开发者 染洛凉</sub>
     </td>
     <td align="center">
