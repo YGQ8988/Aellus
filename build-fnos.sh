@@ -33,12 +33,12 @@ mkdir -p dist
 BUILD_TMP=".build"
 mkdir -p "${BUILD_TMP}"
 
-# 版本号：优先命令行参数；不传则读 fnos/manifest（与 build-mac.sh 一致）；兜底 1.0.1。
+# 版本号：优先命令行参数；不传则读 fnos/manifest（与 build-mac.sh 一致）；兜底 1.0.6。
 VERSION="${1:-}"
 if [ -z "${VERSION}" ]; then
   VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 fi
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.6}"
 # 记录 manifest 原版本（打包结束后还原，保持 git 干净）
 ORIG_VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 echo "构建版本：${VERSION}"

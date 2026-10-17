@@ -6,18 +6,18 @@
 # Windows 与 macOS 风格一致：打成 zip（架构体现在 zip 文件名，解压后统一是 Aellus.exe / Aellus.app）。
 # darwin / linux 为裸二进制（无外层压缩）。
 #
-# 用法：./build-all.sh [version]   （默认 1.0.1）
+# 用法：./build-all.sh [version]   （默认读 fnos/manifest，兜底 1.0.6）
 set -e
 cd "$(dirname "$0")"
 mkdir -p dist
 
 # 版本号：优先命令行参数；不传则读 fnos/manifest（与 build-mac.sh / build-fnos.sh 一致，
-# 保证各平台产物版本统一）；兜底 1.0.1。
+# 保证各平台产物版本统一）；兜底 1.0.6。
 VERSION="${1:-}"
 if [ -z "${VERSION}" ]; then
   VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 fi
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.6}"
 echo "构建版本：${VERSION}"
 # 注入版本信息：设置页展示版本号与构建时间（BuildTime 取每次实际打包时刻）
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -40,7 +40,7 @@ arch_out() {
 # Windows 走 build_win_zip（打成 zip，内含 Aellus.exe）。
 build() {
   local goos=$1 goarch=$2 extra=$3
-  # 命名带版本号，版本号紧跟产品名：Aellus-<version>-<os>-<arch>，如 Aellus-1.0.2-darwin-arm64
+  # 命名带版本号，版本号紧跟产品名：Aellus-<version>-<os>-<arch>，如 Aellus-1.0.6-darwin-arm64
   local out="dist/Aellus-${VERSION}-${goos}-$(arch_out "$goarch")"
   local cgo=0
   [ "$goos" = "darwin" ] && cgo=1

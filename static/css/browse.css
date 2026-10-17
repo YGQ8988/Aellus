@@ -77,6 +77,11 @@
 .file-item .thumb { width: 72px; height: 72px; }
 .file-item .thumb-video { width: 72px; height: 72px; }
 .file-item .thumb-other, .file-item .thumb-folder { width: 72px; height: 72px; }
+/* 文件夹卡片：底色与图标色对齐首页「读取文件」入口卡片（.entry--browse .icon）的配色，
+   色值同样走 common.css 的 token，不在这里写死。
+   底色需要 .file-item 前缀才能盖过 components.css 里 .thumb-folder 的通用底色
+   （components.css 在 browse.css 之后加载，同权重时后者会赢）。 */
+.file-item .thumb-folder { background: hsl(var(--entry-icon-browse) / .08); }
 .file-item .thumb-other svg { width: 28px; height: 28px; color: hsl(var(--muted-foreground)); }
 /* 与上传页已上传列表 .up-thumb-ph 一致：非图片/视频文件显示居中大号扩展名文字 */
 .file-item .thumb-other.thumb-ext {
@@ -85,8 +90,8 @@
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   padding: 0 4px;
 }
-/* 文件夹项：可点击进入，无下载/删除 */
-.file-item .thumb-folder svg { width: 40px; height: 40px; color: hsl(var(--muted-foreground)); }
+/* 文件夹项：可点击进入，无下载/删除。图标色同首页「读取文件」卡片 */
+.file-item .thumb-folder svg { width: 40px; height: 40px; color: hsl(var(--entry-icon-browse)); }
 .file-item .fname { word-break: break-all; line-height: 1.4; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
 /* 文件夹卡片：文件名与「文件夹」badge 同行、垂直居中对齐 */
 .file-item .fname-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; -webkit-line-clamp: initial; line-clamp: initial; }
@@ -116,19 +121,22 @@
 .lightbox { display: none; position: fixed; inset: 0; z-index: 1000; align-items: center; justify-content: center; }
 /* 遮罩：保持灯箱原有的深色暗度（90% 黑），叠加与设置弹窗同参数的 2px 毛玻璃 */
 .lb-backdrop { position: absolute; inset: 0; background: rgb(0 0 0 / 0.9); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
-.lb-media { position: relative; z-index: 1; max-width: 92vw; max-height: 82vh; border-radius: calc(var(--radius) - 2px); object-fit: contain; background: #000; }
-/* 灯箱大图：先透明，加载完成再淡入（首开 / 无方向切换用）；带方向的切换走 .lb-ghost 平移 */
-#lbImg { opacity: 0; transition: opacity .18s ease; }
-#lbImg.loaded { opacity: 1; }
-/* 灯箱平移切换的幽灵层：定格上一张图，向反方向滑出并淡出后由 JS 移除。
-   过渡参数与 JS 中 slideToImage 的 LB_SLIDE_MS 保持一致。 */
-.lb-ghost {
-  position: fixed; z-index: 1; display: block; object-fit: contain;
-  background: #000; border-radius: calc(var(--radius) - 2px);
-  pointer-events: none;
-  transition: transform .26s ease, opacity .26s ease;
-  will-change: transform, opacity;
+/* 舞台：一屏一格，超出部分裁掉。track 宽 300%，三块各占 1/3（= 一屏），
+   平时平移 -1 屏让中间那块居中；拖动时由 JS 改写 transform 跟手。 */
+.lb-stage {
+  position: relative; z-index: 1; width: 100%; height: 100%; overflow: hidden;
+  cursor: grab; user-select: none; -webkit-user-select: none;
 }
+.lb-stage.lb-dragging { cursor: grabbing; }
+.lb-track { display: flex; width: 300%; height: 100%; will-change: transform; }
+.lb-slide { flex: 0 0 33.3333%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.lb-slide img, .lb-slide video {
+  max-width: 92vw; max-height: 82vh; display: block;
+  border-radius: calc(var(--radius) - 2px); object-fit: contain; background: #000;
+}
+/* 图片解码完成再淡入，避免拖动途中出现半张白块 */
+.lb-slide img { opacity: 0; transition: opacity .16s ease; }
+.lb-slide img.loaded { opacity: 1; }
 /* 灯箱导航/工具按钮：覆盖在媒体上的深色控件（保持原样） */
 .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 54px; height: 54px; min-height: 0; padding: 0; box-sizing: border-box; border-radius: 50%; background: rgb(255 255 255 / 0.18); color: #fff; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; }
 @media (hover: hover) and (pointer: fine) {

@@ -70,8 +70,10 @@
   <!-- 灯箱预览 -->
   <div id="lightbox" class="lightbox">
     <div class="lb-backdrop"></div>
-    <img id="lbImg" class="lb-media" alt="">
-    <video id="lbVideo" class="lb-media" controls></video>
+    <!-- 一屏一格：三块 .lb-slide 并排（上一张 / 当前 / 下一张），拖动整条 track 跟手位移 -->
+    <div class="lb-stage" id="lbStage">
+      <div class="lb-track" id="lbTrack"></div>
+    </div>
     <button id="lbPrev" class="lb-nav lb-prev" onclick="lbNav(-1)"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.293 13.207a1 1 0 010-1.414l5.5-5.5a1 1 0 111.414 1.414L10.414 12.5l4.793 4.793a1 1 0 01-1.414 1.414l-5.5-5.5z"></path></svg></button>
     <button id="lbNext" class="lb-nav lb-next" onclick="lbNav(1)"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M15.457 11.543a1 1 0 010 1.414l-5.5 5.5a1 1 0 01-1.414-1.414l4.793-4.793-4.793-4.793a1 1 0 011.414-1.414l5.5 5.5z"></path></svg></button>
     <button class="lb-top-btn lb-close-left" onclick="closeLightbox()"><svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>

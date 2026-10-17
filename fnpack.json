@@ -71,6 +71,21 @@
               "size": 5256291
             }
           }
+        },
+        "1.0.6": {
+          "changelog": "1.灯箱改为相册式跟手滑动，图片与视频之间切换不再卡顿\n2.修复含 .. 的文件名上传后无法下载或删除\n3.统一 Windows 非法文件名校验，拒绝冒号等非法字符\n4.大目录统计与批量打包增加预算兜底\n5.若干注释、失效配置与死代码清理",
+          "packages": {
+            "x86": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.6/Aellus-1.0.6-fnos-x64.fpk",
+              "sha256": "5ad79e4a689c67bd699a2b711e56475f255209610f9da472c2d2bfe842707b7b",
+              "size": 5218677
+            },
+            "arm": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.6/Aellus-1.0.6-fnos-arm64.fpk",
+              "sha256": "19445227035eb9dcbbd2d440fcae2337380dd2bbcad557388ad5a9cfba5d6b16",
+              "size": 4849291
+            }
+          }
         }
       },
       "preview_urls": [

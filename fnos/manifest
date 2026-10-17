@@ -1,5 +1,5 @@
 appname               = Aellus
-version               = 1.0.5
+version               = 1.0.6
 display_name          = Aellus 局域网传输
 desc                  = <h3>Aellus — 局域网传输</h3><strong>极简访问：</strong>手机 / 电脑 / 平板 通过任何浏览器即可直连 NAS 上传、浏览、下载，数据不经过任何中转服务器。<br><strong>防止误删：</strong>文件读写严格限定在管理员授权的目录内。其他设备仅能浏览与下载，删除或改路径等危险操作都需在飞牛中完成。<br><strong>隐私保障：</strong>授权与路径只通过飞牛官方接口获取，绝不访问授权外内容；不记录不上传个人信息，所有连接仅限局域网内完成。<h4>其他系统可前往Github Releases 页下载对应 Aellus 运行文件</h4>
 source                = thirdparty
@@ -20,4 +20,4 @@ checkport             = false
 ctl_stop              = true
 disable_authorization_path = false
 micro_app             = true
-changelog             = 1.修复飞牛门户内点击下载无反应。2.移除按环境隐藏下载入口的逻辑。3.批量下载修复大文件卡顿。4.单文件下载改为流式,不再整份读入内存。
+changelog             = 1.灯箱改为相册式跟手滑动,图片与视频之间切换不再卡顿。2.修复含 .. 的文件名上传后无法下载或删除。3.统一 Windows 非法文件名校验,拒绝冒号等非法字符。4.大目录统计与批量打包增加预算兜底。5.若干注释、失效配置与死代码清理。

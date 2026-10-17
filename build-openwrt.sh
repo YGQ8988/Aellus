@@ -15,8 +15,8 @@
 #     但包内容、维护脚本的意图一致（分别放在 control/ 与 apk/ 两个目录）。
 #   - 构建脚本与其它构建脚本共用 .build/ 中间目录（各自结束时会清理），
 #     因此 build-all.sh / build-mac.sh / build-fnos.sh / 本脚本必须串行执行。
-#   - 小版本号自动递增：ipk 的 Version 是 <主版本>-r<N>，每构建一次 N + 1（如这次 1.0.5-r1，
-#     下一次就是 1.0.5-r2，路由器才能按 opkg 的版本比较把它识别为更新版本）。N 记在
+#   - 小版本号自动递增：ipk 的 Version 是 <主版本>-r<N>，每构建一次 N + 1（如这次 1.0.6-r1，
+#     下一次就是 1.0.6-r2，路由器才能按 opkg 的版本比较把它识别为更新版本）。N 记在
 #     openwrt/aellus/Makefile 的 PKG_RELEASE 里，构建成功后回写；主版本号变化时自动重置为 1。
 #   - ipk 格式按 OpenWrt 官方约定：debian-binary + control.tar.gz + data.tar.gz 打包成一个 tar.gz。
 #     postinst / prerm 用的是 buildroot 的默认实现（default_postinst / default_prerm），
@@ -61,7 +61,7 @@ VERSION="${1:-}"
 if [ -z "${VERSION}" ]; then
   VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 fi
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.6}"
 
 # —— 小版本号（PKG_RELEASE）——
 # OpenWrt 包版本写成 <主版本>-r<PKG_RELEASE>（control 的 Version 字段），N 就是小版本号。
@@ -70,7 +70,7 @@ VERSION="${VERSION:-1.0.1}"
 #
 # 规则：每次构建自动 +1；主版本号（默认取 fnos/manifest 的 version）变化时自动重置为 1。
 # 手动指定（不参与递增）：
-#   bash build-openwrt.sh 1.0.5 7                  # 直接用 -r7
+#   bash build-openwrt.sh 1.0.6 7                  # 直接用 -r7
 #   AELLUS_RELEASE=1 bash build-openwrt.sh         # 强制回到 -r1
 # 回写放在构建全部成功之后（见文末），中途失败不会白白吃掉一个版本号。
 PKG_MK="${PKG_DIR}/Makefile"

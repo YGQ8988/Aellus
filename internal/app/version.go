@@ -6,7 +6,7 @@ import (
 
 // 版本信息：由打包脚本通过 ldflags 在编译时注入（见各 build-*.sh）：
 //
-//	-X 'aellus/internal/app.Version=1.0.4'
+//	-X 'aellus/internal/app.Version=1.0.6'
 //	-X 'aellus/internal/app.BuildTime=2026-09-29 08:30:00'
 //	-X 'aellus/internal/app.BuildStaticHash=<sha256>'
 //

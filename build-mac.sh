@@ -23,7 +23,7 @@ VERSION="${1:-}"
 if [ -z "${VERSION}" ]; then
   VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 fi
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.6}"
 echo "构建版本：${VERSION}"
 # 注入版本信息：设置页展示版本号与构建时间（BuildTime 取每次实际打包时刻）
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"

@@ -19,12 +19,12 @@
 
 include $(TOPDIR)/rules.mk
 
-# PKG_RELEASE 即 OpenWrt 的「小版本号」，最终落成 control 里的 Version: 1.0.5-r1。
+# PKG_RELEASE 即 OpenWrt 的「小版本号」，最终落成 control 里的 Version: 1.0.6-r1。
 # 约定由 build-openwrt.sh 维护：每次构建 +1；主版本（PKG_VERSION）变化时自动重置为 1。
 # 手动指定：bash build-openwrt.sh <version> <release> 或 AELLUS_RELEASE=<n> bash build-openwrt.sh。
 PKG_NAME:=aellus
-PKG_VERSION:=1.0.5
-PKG_RELEASE:=21
+PKG_VERSION:=1.0.6
+PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
