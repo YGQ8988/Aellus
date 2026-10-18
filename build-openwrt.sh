@@ -124,12 +124,23 @@ fi
 #   arm_cortex-a9|arm|GOARM=7
 #   i386_pentium4|386|GO386=sse2
 #   riscv64|riscv64|
+#
+# —— MIPS 一律 GOMIPS=softfloat，不要改成 hardfloat ——
+# Go 的 mips/mipsle 默认是 hardfloat（真正去执行 FPU 指令），而 OpenWrt 这两类
+# 目标（mips_24kc：ath79/ar71xx 等；mipsel_24kc：ramips/mt7621 等）的 CPU 都没有
+# FPU，OpenWrt 内核也默认不编译浮点模拟器（官方 bug FS#1929「ramips mt7621 target
+# does not enable FPU emulation by default」）。硬浮点二进制一旦跑到浮点指令就会
+# SIGILL（Illegal instruction），进程秒退 —— procd 只会报
+#     Instance aellus::aellus s in a crash loop 6 crashes, 0 seconds since last crash
+# 现象是「包装得上、服务起不来」，而且日志里没有任何业务输出，非常难查。
+# softfloat 让 Go 用整数指令模拟浮点，在有 FPU 的机器上同样能跑，故无需按机型分叉。
+# 发布前有 tools/mips_fpu_check.py 兜底，改回 hardfloat 会被拦下。
 TARGETS="
 x86_64|amd64|GOAMD64=v1
 aarch64_cortex-a53|arm64|
 aarch64_generic|arm64|
-mips_24kc|mips|GOMIPS=hardfloat
-mipsel_24kc|mipsle|GOMIPS=hardfloat
+mips_24kc|mips|GOMIPS=softfloat
+mipsel_24kc|mipsle|GOMIPS=softfloat
 "
 
 # —— 1) 交叉编译（同一 GOARCH 只编译一次，多个架构名复用同一份二进制）——
@@ -163,6 +174,15 @@ if command -v python3 >/dev/null 2>&1; then
     echo "[错误] 二进制与当前源码不一致（疑似复用了旧编译产物），已中止"; exit 1; }
 else
   echo "   [警告] 未找到 python3，跳过「源码与二进制一致性」校验"
+fi
+
+# 再体检一次：MIPS 二进制不许带硬浮点指令。
+# 硬浮点在无 FPU 的 MIPS 路由器（mips_24kc / mipsel_24kc 全覆盖）上一跑就 SIGILL，
+# 而它只表现为 procd 的 "crash loop"，主程序自己的日志一行都没有，极难定位。
+# 详见 tools/mips_fpu_check.py 头部注释与 build-openwrt.sh TARGETS 处的说明。
+if command -v python3 >/dev/null 2>&1; then
+  python3 tools/mips_fpu_check.py "${BUILD_TMP}"/bin/aellus-mips "${BUILD_TMP}"/bin/aellus-mipsle || {
+    echo "[错误] MIPS 二进制含硬浮点指令（应为 GOMIPS=softfloat），已中止"; exit 1; }
 fi
 
 # —— 2) 组装每个架构的包内容 ——

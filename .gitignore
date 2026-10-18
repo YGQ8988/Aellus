@@ -41,3 +41,4 @@ fnos/app/aellus*
 
 # IDE 助手的数据目录（历史规则名写错了，实际目录是 .codebuddy）
 .codebuddy/
+.workbuddy/
