@@ -152,7 +152,7 @@ uci set aellus.main.port=5115 && uci commit aellus && /etc/init.d/aellus restart
 |------|------|---------|------|
 | macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x64 独立打成 zip，已签名 |
 | 全平台 | `build-all.sh` | 任意平台 | macOS / Linux 裸二进制 + Windows `Aellus.exe`（打成 zip） |
-| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需自行准备 `fnpack`（放入 `tools/fnpack` 或加入 PATH） | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
+| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需自行准备 `fnpack`（放入 `buildtools/fnpack` 或加入 PATH） | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
 | OpenWrt `.ipk` / `.apk` | `build-openwrt.sh` | 任意平台（交叉编译） | x86_64 / arm64 / MIPS（大端 + 小端），含 LuCI 配置页 |
 
 ```bash
@@ -291,12 +291,15 @@ aellus/
 ├── build-all.sh                  # 全平台构建脚本（macOS/Linux 裸二进制 + Windows exe 打成 zip）
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本（分架构，直接产出 .fpk）
 ├── build-openwrt.sh              # OpenWrt 构建脚本（交叉编译，按官方包格式产出 ipk / apk）
-├── tools/                        # 构建辅助工具（下面 5 个提交进仓库；fnpack 是需自行下载的二进制，见 .gitignore）
+├── tools/                        # 构建辅助脚本（全部提交进仓库，均为源码）
 │   ├── ipk_check.py              # 校验 ipk 能否被 opkg 解包（有无 pax 头 / AppleDouble）
 │   ├── mkapk.py                  # 打包 apk（25.12+，apk-tools v2：控制段 + 数据段两个 gzip 流）
 │   ├── apk_check.py              # 校验 apk 结构（分段 / .PKGINFO / datahash / 坏成员）
 │   ├── static_hash.sh            # 计算 templates/ + static/ 全树内容指纹（构建时经 ldflags 注入二进制）
+│   ├── mips_fpu_check.py         # 校验 MIPS 二进制不含硬浮点指令（防 OpenWrt 上 SIGILL crash loop）
 │   └── embed_check.py            # 发布体检：模板引用完整性 + 二进制里的静态资源清单与内容指纹是否与当前源码一致
+├── buildtools/                   # 需自行下载的构建二进制（整目录被 .gitignore 忽略）
+│   └── fnpack                    # 飞牛打包工具，仅 build-fnos.sh 使用
 ├── changeLog.md                  # 版本更新记录
 ├── fnpack.json                   # FnDepot 第三方应用源描述文件
 ├── aellus.icns                   # macOS 应用图标

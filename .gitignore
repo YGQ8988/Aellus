@@ -27,14 +27,9 @@ file-drops/
 # 测试文件：本地开发跑 go test 用，不进版本库
 *_test.go
 
-# 下载的构建工具（fnpack 这类二进制不入库）
-# 注意：只忽略目录内容再用 ! 放行源码，直接写 tools/ 的话 git 不会再往下看，例外不生效
-tools/*
-!tools/ipk_check.py
-!tools/mkapk.py
-!tools/apk_check.py
-!tools/embed_check.py
-!tools/static_hash.sh
+# 需自行下载的构建二进制（fnpack 等大文件不入库，放 buildtools/）
+# tools/ 目录全是源码脚本，正常入库，不再需要逐条 ! 例外
+buildtools/
 
 # fnOS 打包目录中的编译产物（配置文件本身应提交）
 fnos/app/aellus*

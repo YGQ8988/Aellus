@@ -4,20 +4,20 @@
 #   dist/Aellus-<version>-fnos-x64.fpk / -fnos-arm64.fpk，直接上传飞牛应用中心安装。
 # 原理：x86 包 manifest platform=x86、仅含 amd64 二进制；arm 包 manifest platform=arm、仅含 arm64 二进制。
 #       cmd/main 已兼容两种包：按 uname -m 找 aellus-x86_64 / aellus-aarch64，找不到回退 aellus。
-# 前置：本机有 Go（交叉编译纯标准库，无需 cgo）与 fnpack（tools/fnpack 或 PATH 中）
+# 前置：本机有 Go（交叉编译纯标准库，无需 cgo）与 fnpack（buildtools/fnpack 或 PATH 中）
 set -e
 cd "$(dirname "$0")"
 
-# 定位 fnpack（macOS/Linux: tools/fnpack；Windows: tools/fnpack.exe；或 PATH 中）
+# 定位 fnpack（macOS/Linux: buildtools/fnpack；Windows: buildtools/fnpack.exe；或 PATH 中）
 FN_PACK=""
 if command -v fnpack >/dev/null 2>&1; then
   FN_PACK="fnpack"
-elif [ -f "tools/fnpack" ]; then
-  FN_PACK="$(pwd)/tools/fnpack"
-elif [ -f "tools/fnpack.exe" ]; then
-  FN_PACK="$(pwd)/tools/fnpack.exe"
+elif [ -f "buildtools/fnpack" ]; then
+  FN_PACK="$(pwd)/buildtools/fnpack"
+elif [ -f "buildtools/fnpack.exe" ]; then
+  FN_PACK="$(pwd)/buildtools/fnpack.exe"
 else
-  echo "[错误] 未找到 fnpack，请放入 tools/fnpack（或 tools/fnpack.exe）或加入 PATH"
+  echo "[错误] 未找到 fnpack，请放入 buildtools/fnpack（或 buildtools/fnpack.exe）或加入 PATH"
   exit 1
 fi
 
