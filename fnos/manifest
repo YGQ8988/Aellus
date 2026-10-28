@@ -20,4 +20,4 @@ checkport             = false
 ctl_stop              = true
 disable_authorization_path = false
 micro_app             = true
-changelog             = 1.灯箱改为相册式跟手滑动,图片与视频之间切换不再卡顿。2.修复含 .. 的文件名上传后无法下载或删除。3.统一 Windows 非法文件名校验,拒绝冒号等非法字符。4.大目录统计与批量打包增加预算兜底。5.若干注释、失效配置与死代码清理。
+changelog             = 1.首次安装主页增加保存目录设置引导\n2.全平台保存目录方式调整为选择系统目录方式\n3.主页样式优化\n4.大目录统计与批量打包增加预算兜底
