@@ -49,6 +49,7 @@ func lanCandidates() []string {
 	type cand struct {
 		ip   net.IP
 		prio int
+		bias int // OpenWrt 上用于在同优先级 RFC1918 地址里优先 LAN 口、压低 WAN 口
 	}
 	var cands []cand
 	ifaces, err := net.Interfaces()
@@ -61,7 +62,7 @@ func lanCandidates() []string {
 			continue
 		}
 		// 跳过隧道 / 虚拟网卡（VPN、容器、虚拟机网桥等）：局域网其它设备直连不到
-		if isVirtualIface(iface.Name) {
+		if skipForLAN(iface) {
 			continue
 		}
 		addrs, err := iface.Addrs()
@@ -81,14 +82,24 @@ func lanCandidates() []string {
 			if !ok {
 				continue
 			}
-			cands = append(cands, cand{ip: ip, prio: prio})
+			bias := 0
+			if IsOpenWrt() {
+				bias = lanBias(iface.Name)
+			}
+			cands = append(cands, cand{ip: ip, prio: prio, bias: bias})
 		}
 	}
 	if len(cands) == 0 {
 		return nil
 	}
 	sort.SliceStable(cands, func(i, j int) bool {
-		return cands[i].prio > cands[j].prio
+		if cands[i].prio != cands[j].prio {
+			return cands[i].prio > cands[j].prio
+		}
+		// 同优先级（多为两个都是 RFC1918 私网，例如 OpenWrt 双 NAT：WAN 拿上级私网、
+		// LAN 是 br-lan 私网）时，按 LAN / WAN 偏置再排一次，确保「访问地址」落在 LAN 口
+		// 而不是 WAN 口——否则局域网设备反而连不上。
+		return cands[i].bias > cands[j].bias
 	})
 	out := make([]string, 0, len(cands))
 	for _, c := range cands {
@@ -120,6 +131,50 @@ func lanPriority(ip net.IP) (int, bool) {
 		return 2, true
 	}
 	return 0, false
+}
+
+// skipForLAN 是 GetLANIP 选局域网地址时用的网卡过滤，逻辑与 isVirtualIface 基本一致，
+// 唯独在 OpenWrt 上放行【网桥】接口（br-*）。
+//
+// 为什么单独放行：OpenWrt 的 LAN 口就是网桥 br-lan（192.168.1.1 挂在其上），局域网设备
+// 正是经它访问本机。若按 isVirtualIface 把 br-lan 当作虚拟网卡跳过，LAN 候选被清空，
+// GetLANIP 就只能返回 WAN 口地址（公网 / 上层私网）——局域网设备反而连不上，与
+// control 文件里 "http://<router-ip>:5115" 的访问方式相悖。
+//
+// 注意：isVirtualIface 仍原样用于 isLocalIP 的安全判定（容器 / 网桥地址不算本机，防越权），
+// 这里只影响"访问地址展示用哪个 IP"，不影响"是否授予管理权限"，两条路径各取所需。
+func skipForLAN(iface net.Interface) bool {
+	if !isVirtualIface(iface.Name) {
+		return false
+	}
+	// OpenWrt 上放行网桥（br-lan / br-guest 等皆为 LAN 口），其余 VPN / 容器网桥仍跳过
+	if IsOpenWrt() && strings.HasPrefix(strings.ToLower(iface.Name), "br-") {
+		return false
+	}
+	return true
+}
+
+// lanBias 给 OpenWrt 上的网卡一个「LAN / WAN」偏置，用于在多个同优先级（都是 RFC1918
+// 私网）候选地址里挑出真正的局域网口，而不是把 WAN 口地址当成访问地址返回：
+//   - 网桥 br-*（OpenWrt 的 LAN 几乎都是 br-lan）给最高正向偏置；
+//   - 名字含 lan（且不含 wan，避开 wan6 / lan_wan 之类）给次高正向偏置；
+//   - 名字像 WAN 口（wan / wan6 / wwan / pppoe* / ppp*）给负向偏置。
+//
+// 仅 OpenWrt 生效（调用方已用 IsOpenWrt() 判断）；其它平台不计偏置，保持原行为。
+// 桌面端不会进这里：br-* 在 skipForLAN 里仍被跳过、不会成为候选，故无副作用。
+func lanBias(name string) int {
+	n := strings.ToLower(name)
+	if strings.HasPrefix(n, "br-") {
+		return 3
+	}
+	if strings.Contains(n, "lan") && !strings.Contains(n, "wan") {
+		return 2
+	}
+	if strings.HasPrefix(n, "wan") || strings.HasPrefix(n, "wwan") ||
+		strings.HasPrefix(n, "pppoe") || strings.HasPrefix(n, "ppp") {
+		return -3
+	}
+	return 0
 }
 
 // isVirtualIface 判断是否为隧道 / 虚拟 / 网桥网卡（VPN、容器、虚拟机网络等）。

@@ -52,5 +52,10 @@ func (a *App) registerRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/authpaths", noCache(http.HandlerFunc(a.handleAuthPaths)))
 	mux.Handle("/api/listdir", noCache(http.HandlerFunc(a.handleListDir)))
 	mux.HandleFunc("/api/set-savedir", a.requireTrustedClient(a.handleSetSaveDir))
+	// 首页引导条「已读」标记（会写配置文件，故与改保存目录一样走 CSRF 校验 + 管理者权限）
+	mux.HandleFunc("/api/tip-seen", a.requireTrustedClient(a.handleTipSeen))
 	mux.HandleFunc("/api/pick-dir", a.requireTrustedClient(a.handlePickDir))
+	// 移除飞牛共享授权目录（官方 API trim.file.delSharedAccessibleFolder）；
+	// 权限要求与改保存目录一致
+	mux.HandleFunc("/api/del-authdir", a.requireTrustedClient(a.handleDelAuthDir))
 }

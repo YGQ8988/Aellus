@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -35,19 +36,71 @@ func (a *App) handleSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		isDefault = filepath.Clean(cur) == filepath.Clean(bootDefaultSaveDir())
 	}
+	// 设备名映射只对管理者返回：它按请求头 Deviceid 查询，局域网任意设备可用
+	// 候选 UUID 探测某个映射是否存在（存在性 oracle），无业务必要对外开放。
+	deviceName := ""
+	if manage {
+		deviceName = a.deviceNameOf(deviceID(r))
+	}
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{
 		"saveDir":        saveDir,
 		"saveDirDisplay": saveDirDisplay,
 		"isDefault":      isDefault,
 		"hasTrim":        a.platform.EnforceAuthBoundary(), // 是否飞牛环境（fpk 构建）：前端据此显隐飞牛授权目录等模块
 		"canManage":      manage,                           // 是否有删除/修改保存目录权限（飞牛应用按网关注入的 X-Trim-Userid、非飞牛按本机 IP）：前端据此显隐「文件保存路径」模块
-		"deviceName":     a.deviceNameOf(deviceID(r)),      // 当前设备 ID 对应的上次设备名（供上传页自动填充）
+		"deviceName":     deviceName,                       // 仅管理者可见：当前设备 ID 对应的上次设备名（供上传页自动填充）
+		// 首页引导条（提示去设置里授权保存路径）是否已被看过：看过就不再展示。
+		// 标记存在服务端配置文件里而非浏览器 localStorage——后者跟着「主机+端口」走，
+		// 卸载重装应用并不会清掉，用户会看到「第一次见过、再装却不出现」的错觉。
+		// 无敏感信息，故不限管理者可见（局域网访客本来也拿不到引导条，前端会额外判 canManage）。
+		"tipSeen": LoadTipSeen(),
 		// 请求是否经飞牛统一网关到达：飞牛的应用入口（应用中心微应用 / 手机 App 客户端）
 		// 都经网关转发，网关会注入 X-Trim-Userid；而局域网其它设备「输入 IP + 端口」
 		// 直连走裸端口、不经网关（裸端口入口还会剥离伪造的 X-Trim-*）。
 		// 前端据此在飞牛客户端内隐藏下载入口（那里的下载不可靠），直连下载不受影响。
 		"viaGateway": gatewayUser(r) != "",
 	})
+}
+
+// handleTipSeen POST /api/tip-seen 记录「首页引导条已被看过」，此后不再展示。
+//
+// 标记写在服务端配置文件（与保存目录同一份 aellus-settings.json，飞牛端位于 TRIM_PKGVAR
+// 持久卷）而非浏览器 localStorage：卸载重装应用时，若用户在卸载向导里选择不保留配置，
+// 数据会一并清空，新装后引导条重新出现——符合「首次进入」的语义。
+//
+// 权限与改保存目录一致（见 canManage）：只有管理者会看到这条引导条，
+// 局域网访客无谓写盘，直接拒绝。
+func (a *App) handleTipSeen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
+		return
+	}
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "无权限"})
+		return
+	}
+	if err := SaveTipSeen(); err != nil {
+		// 失败不打扰用户：引导条下次还在，只是又出现一次
+		a.logOp(fmt.Sprintf("记录引导条已读失败 错误=%v", err))
+		a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false})
+		return
+	}
+	a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// dirWritable 实测目录是否可写（建一个临时文件再删掉）。
+//
+// 不用飞牛返回的 perm 级别判断可写性：各版本 perm 语义未公开（真机上同时出现过 6 与 7，
+// 且两者都可写），按数值猜测会误伤能写的目录；实测是唯一权威的判据。
+// 注意会短暂改变目录 mtime，故只在设置面板这类低频路径上使用。
+// 返回 nil 表示可写；返回的错误只用于记操作日志，不回显给客户端（含内部路径与 errno）。
+func dirWritable(dir string) error {
+	test := filepath.Join(dir, ".aellus-write-test")
+	if err := os.WriteFile(test, []byte("ok"), 0644); err != nil {
+		return err
+	}
+	os.Remove(test)
+	return nil
 }
 
 // handleAuthPaths GET /api/authpaths 返回飞牛授权给应用的共享目录（供网页选择保存位置）。
@@ -60,7 +113,27 @@ func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
 		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"error": "无权限"})
 		return
 	}
-	paths := authorizedSavePaths()
+	metas := authorizedSavePathMeta()
+	paths := make([]string, 0, len(metas))
+	// editable：飞牛明确给出的「管理员能否移除该授权」标志（应用设置里那条是否显示 ✕）。
+	// 只收录飞牛确实返回了该字段的目录；没返回的由前端回退到「非默认目录即可移除」。
+	editable := map[string]bool{}
+	for _, m := range metas {
+		paths = append(paths, m.Path)
+		if m.Editable != nil {
+			editable[m.Path] = *m.Editable
+		}
+	}
+	// unwritable：实测不可写的授权目录，前端置灰，避免用户选中后才发现存不进去。
+	unwritable := []string{}
+	if a.platform.EnforceAuthBoundary() {
+		for _, p := range paths {
+			if err := dirWritable(p); err != nil {
+				unwritable = append(unwritable, p)
+				a.logOp(fmt.Sprintf("授权目录不可写 dir=%s 错误=%v", p, err))
+			}
+		}
+	}
 	labels := map[string]string{}
 	// 飞牛环境：把授权目录内部路径转成语义化展示路径，供设置页面下拉展示。
 	if a.platform.EnforceAuthBoundary() {
@@ -83,6 +156,8 @@ func (a *App) handleAuthPaths(w http.ResponseWriter, r *http.Request) {
 		"hasTrim":      a.platform.EnforceAuthBoundary(),
 		"defaultPath":  def,
 		"defaultLabel": defLabel,
+		"editable":     editable,
+		"unwritable":   unwritable,
 	})
 }
 
@@ -123,7 +198,7 @@ func (a *App) handleListDir(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	sortStrings(dirs)
+	sort.Strings(dirs)
 	parent := filepath.Dir(p)
 	if parent == p || !withinAuthRoots(parent, roots) {
 		parent = ""
@@ -133,16 +208,7 @@ func (a *App) handleListDir(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// sortStrings 对字符串切片做原地升序排序（从 handleListDir 调用，等价于 sort.Strings）。
-func sortStrings(s []string) {
-	// 用简单的插入排序避免引入 sort 包到本文件（handlers.go 已引入 sort，
-	// 但保持 settings.go 依赖最小化）。
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j-1] > s[j]; j-- {
-			s[j-1], s[j] = s[j], s[j-1]
-		}
-	}
-}
+
 
 // resolvePickedDir 尝试将浏览器目录选择器返回的目录名解析为完整路径。
 // 按优先级依次在：当前保存目录的父级、用户主目录、桌面、Documents 中查找同名子目录。
@@ -272,14 +338,12 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// 可写性校验
-	test := filepath.Join(dir, ".aellus-write-test")
-	if err := os.WriteFile(test, []byte("ok"), 0644); err != nil {
+	// 可写性校验（实测，见 dirWritable；仍是最后一道关，列表里已置灰的目录也走这里）
+	if err := dirWritable(dir); err != nil {
 		a.logOp(fmt.Sprintf("保存目录不可写 dir=%s 错误=%v", dir, err))
 		a.writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"ok": false, "error": "该目录不可写（请确认权限）"})
 		return
 	}
-	os.Remove(test)
 	a.setSaveDir(dir)
 	// 持久化保存目录到本地配置（桌面端 + 飞牛端都持久化）；飞牛端写到 TRIM_PKGVAR 持久卷，
 	// 重启加载时再校验是否仍在授权目录内（见 main 的 IsPersistedSaveDirValid）。
@@ -294,6 +358,90 @@ func (a *App) handleSetSaveDir(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "saveDir": dir, "saveDirDisplay": saveDirDisplay})
+}
+
+// handleDelAuthDir POST /api/del-authdir 移除一个飞牛共享授权目录。
+//
+// 走官方后端 API trim.file.delSharedAccessibleFolder（Scope trim.file.sharedAccess，
+// 已在 config/resource 声明）。仅管理员门户 / 本机来源可调用（与改保存目录同权限）。
+//
+// 重要：移除后如果当前保存目录就在该目录之下，它会立刻落到授权范围外，
+// 上传必然失败。因此这里主动把保存目录回退到出厂默认目录（走 set-savedir
+// 同一套持久化），并把回退结果返回给前端，避免留下一个不可用的配置。
+func (a *App) handleDelAuthDir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.writeJSON(w, http.StatusMethodNotAllowed, map[string]interface{}{"ok": false, "error": "仅支持 POST"})
+		return
+	}
+	if !a.canManage(r) {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "无权限修改授权目录"})
+		return
+	}
+	// 授权目录是飞牛独有的概念；桌面端 / OpenWrt 没有这套 ACL，直接拒绝。
+	if !a.platform.EnforceAuthBoundary() {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "当前环境不支持授权目录"})
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		a.writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "请求格式错误"})
+		return
+	}
+	path := strings.TrimSpace(req.Path)
+	if path == "" {
+		a.writeJSON(w, http.StatusBadRequest, map[string]interface{}{"ok": false, "error": "缺少要移除的目录"})
+		return
+	}
+	// 只允许移除「授权根目录」本身：必须与某个授权根【精确相等】，不能是其子路径。
+	// 不能用 withinAuthRoots——它按前缀匹配、对根目录下的任意子路径都返回 true，
+	// 会把任意路径递交给官方删除接口（注释与实现因此长期不符）。
+	// 这里比对的列表已是 realResolve 后的真实路径，与前端回传的一致。
+	cp := filepath.Clean(path)
+	matched := false
+	for _, root := range saveDirAllowedRoots() {
+		if cp == filepath.Clean(root) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		a.writeJSON(w, http.StatusForbidden, map[string]interface{}{"ok": false, "error": "该目录不在当前授权目录内"})
+		return
+	}
+	path = cp
+	if _, err := trimBackendAPI("trim.file.delSharedAccessibleFolder", map[string]string{"path": path}); err != nil {
+		// 错误详情可能含内部路径 / 系统信息，只写日志，客户端拿通用提示。
+		a.logOp(fmt.Sprintf("移除授权目录失败 path=%s 错误=%v", path, err))
+		a.writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": "移除授权失败，请稍后重试"})
+		return
+	}
+	a.logOp(fmt.Sprintf("已移除授权目录 path=%s", path))
+
+	// 移除完成后，重新拉取授权范围；若当前保存目录已不在其中，回退默认目录。
+	resp := map[string]interface{}{"ok": true, "path": path, "resetSaveDir": false}
+	newRoots := saveDirAllowedRoots()
+	cur := a.getSaveDir()
+	if len(newRoots) > 0 && !withinAuthRoots(cur, newRoots) {
+		def := bootDefaultSaveDir()
+		if def != "" {
+			if err := os.MkdirAll(def, 0755); err == nil {
+				a.setSaveDir(def)
+				if a.platform.PersistSaveDirAllowed() {
+					_ = SaveSaveDirConfig(def)
+				}
+				disp := def
+				if m := trimConvertPaths([]string{def}); m[def] != "" {
+					disp = m[def]
+				}
+				resp["resetSaveDir"] = true
+				resp["saveDir"] = def
+				resp["saveDirDisplay"] = disp
+			}
+		}
+	}
+	a.writeJSON(w, http.StatusOK, resp)
 }
 
 // handlePickDir 调用系统原生"选取文件夹"对话框，返回用户选择的绝对路径。

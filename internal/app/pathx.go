@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -54,6 +55,11 @@ func resolveUploadTarget(root, deviceDir, rawName string) (string, string, error
 		// 文件名中正常出现的 ".."（如 clip..final.mp4、report..v2.pdf）属合法文件名，应放行。
 		// 真正的目录穿越由末尾 isInside() 兜底拦截。
 		if strings.ContainsAny(s, "/\\") {
+			return "", "", fmt.Errorf("invalid path segment: %q", s)
+		}
+		// Windows 额外限制与读端 isValidName 保持一致：否则会产出「传上去了却读不到」
+		// 的名字（冒号变 NTFS 备用数据流、结尾点/空格被系统静默截掉）。
+		if runtime.GOOS == "windows" && !validWindowsName(s) {
 			return "", "", fmt.Errorf("invalid path segment: %q", s)
 		}
 		cleanSegs = append(cleanSegs, s)
@@ -128,9 +134,15 @@ func stripUploadPrefix(name string) string {
 }
 
 // isValidName 判断一个“单段名字”（目录名或文件名）是否合法：
-// 不能是空、不能是 . 或 ..、不能以 . 开头（隐藏）、不能包含路径分隔符或 ".."，
+// 不能是空、不能是 . 或 ..、不能以 . 开头（隐藏）、不能包含路径分隔符，
 // 且长度不超过 255 字节、不含控制字符。
 // 目录和文件在我们的设计里都只应该是单层名字，不允许有任何路径层级。
+//
+// 名字【中间】出现 ".." 属于合法文件名（如 clip..final.mp4、report..v2.pdf），
+// 与上传端 resolveUploadTarget 的规则保持一致——上行能落盘的名字，下行（下载 / 删除 /
+// 缩略图）必须也能解析出来。历史上这里一律拒绝含 ".." 的名字，导致这类文件
+// 「传得上去、删不掉也下不了」。穿越风险由「只允许单段 + 全等 ".." 一律拒绝」
+// 以及调用方的 isInside / realInside 双重兜底承担。
 func isValidName(name string) bool {
 	if name == "" || name == "." || name == ".." {
 		return false
@@ -139,9 +151,6 @@ func isValidName(name string) bool {
 		return false
 	}
 	if strings.ContainsAny(name, "/\\") {
-		return false
-	}
-	if strings.Contains(name, "..") {
 		return false
 	}
 	// 纵深防御：单段名字上限 255 字节（常见文件系统的上限）；
@@ -153,6 +162,26 @@ func isValidName(name string) bool {
 		if r < 0x20 || r == 0x7f {
 			return false
 		}
+	}
+	// Windows 额外限制见 validWindowsName（NTFS 备用数据流 / 静默截断）。
+	if runtime.GOOS == "windows" && !validWindowsName(name) {
+		return false
+	}
+	return true
+}
+
+// validWindowsName 校验 Windows 文件名在通用规则之外的额外限制。
+// 上传端与读端共用，避免出现「上传成功却读不到」的名字。
+//   - 冒号会被解释为 NTFS 备用数据流（a.txt:payload 写进 a.txt 的数据流里，
+//     既不进目录项也不计入统计），`<>"|?*` 属非法字符；
+//   - 结尾的点或空格会被系统静默去掉（"a. " 实际落盘成 "a"），
+//     留着一个「写进去就立刻改名」的名字只会让后续读取/删除全部失败。
+func validWindowsName(name string) bool {
+	if strings.ContainsAny(name, `:<>"|?*`) {
+		return false
+	}
+	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return false
 	}
 	return true
 }

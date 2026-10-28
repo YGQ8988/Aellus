@@ -27,11 +27,6 @@ let canManage = false;
 // WebView 里没有下载管理器、点了没反应。改用直连后该限制失去意义，且 viaGateway
 // 判据本身漏掉了「门户 iframe 走裸端口 + 路径前缀」这种入口（无 X-Trim-Userid），
 // 会出现「按钮显示了却点不动」的错位。批量 ZIP 仍走 blob（POST 无法直连）。
-let hideDownload = false;
-
-// applyHideDownload 保留为空实现：hideDownload 恒为 false，各处调用点无需改动，
-// 便于将来若某个环境确实不支持下载时，只改这一处即可恢复隐藏。
-function applyHideDownload() {}
 
 function show(view) {
   $('dirsView').classList.toggle('active', view === 'dirs');
@@ -114,23 +109,79 @@ async function loadDirs(autoEnter = true, page) {
       if (pg > last) { loadDirs(false, last); return; }
     }
     canManage = !!data.canDelete;
-    $('dirsList').innerHTML = data.dirs.map(d => {
+    // 设备目录卡片 + 根层散落文件（rootFiles）平铺在同一列表。
+    // 过去散落文件被包装成一个「未命名设备」虚拟文件夹：卡片上的大小只是汇总，
+    // 点进去又要重复列出各子目录，数字对不上、也容易被当成真实文件夹。
+    const dirCards = data.dirs.map(d => {
       const delable = canManage;
       return `
-      <div class="file-item dir-card">
+      <div class="file-item">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(d.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
-        <div class="file-right">
+        <div>
           <div class="file-main" onclick="selectDir(${jsLit(d.name)})" style="cursor:pointer">
             <div class="thumb-folder">${SVG_FOLDER}</div>
             <div class="file-meta-col">
-              <div class="fname fname-row"><span class="ftext">${escapeHtml(d.name === '' ? '未命名设备' : d.name)}</span><span class="badge badge-outline">文件夹</span></div>
+              <div class="fname fname-row"><span class="ftext">${escapeHtml(d.name)}</span><span class="badge badge-outline">文件夹</span></div>
               <div class="fmeta">${formatSize(d.size)} · ${formatCount(d.count)} 个文件 · ${formatDay(d.mtime)}</div>
             </div>
           </div>
           ${delable ? '<div class="file-actions"><a class="del-btn" data-name="' + escapeAttr(d.name) + '" onclick="event.stopPropagation(); onDeleteDir(this)">删除</a></div>' : ''}
         </div>
       </div>`;
-    }).join('');
+    });
+    // 根层散落文件：与目录卡片同构（复选框 + 缩略图 + 名称 + 大小/时间），不可进入目录。
+    // 缩略图结构必须与 renderFile 保持一致：.thumb 类直接挂在 <img> 上（没有外层包裹 div），
+    // 否则图片撑不开格子、只剩空白；并沿用 onload 标记 loaded / onerror 降级。
+    const rootFileCards = (data.rootFiles || []).map(f => {
+      const delable = canManage;
+      const url = 'api/download?dir=&file=' + encodeURIComponent(f.name);
+      const ext = String(f.name).split('.').pop().toLowerCase();
+      const isImg = isPreviewExt(ext) && !isVideoExt(ext);
+      const isVid = isVideoExt(ext);
+      let thumb;
+      if (isImg) {
+        if (ext === 'svg') {
+          // svg 不走 /api/thumb（服务端对可携带脚本的类型不内联，返回 octet-stream，
+          // <img> 渲染不出来）。hydrateSvgPreviews 只处理 #filesList 里的条目（依赖
+          // previewFiles 的 idx 映射），根层平铺卡片不在其中，所以这里直接用扩展名占位，
+          // 不放一个永远加载不出来的 <img>，免得留空白。
+          thumb = `<div class="thumb-other thumb-ext">SVG</div>`;
+        } else {
+          const thumbUrl = 'api/thumb?dir=&file=' + encodeURIComponent(f.name) + '&w=240';
+          // data-name 必须带上：加载失败时要据此把该项从可预览列表里摘掉，
+          // 否则点开灯箱只会看到一张空图，退化成占位块时也没有扩展名可显示。
+          thumb = `<img class="thumb" src="${thumbUrl}" alt="" loading="lazy" decoding="async" data-name="${escapeAttr(f.name)}" onload="this.classList.add('loaded')" onerror="onThumbError(this)">`;
+        }
+      } else if (isVid) {
+        thumb = `<video class="thumb-video" src="${url}" preload="metadata" onerror="onThumbError(this)" data-name="${escapeAttr(f.name)}"></video>`;
+      } else {
+        let extText = '';
+        if (ext && f.name.indexOf('.') > 0 && !f.name.startsWith('.')) {
+          extText = ext.toUpperCase().slice(0, 4);
+        }
+        thumb = extText
+          ? `<div class="thumb-other thumb-ext">${escapeHtml(extText)}</div>`
+          : `<div class="thumb-other">${SVG_FILE}</div>`;
+      }
+      return `
+      <div class="file-item">
+        <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(f.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
+        <div>
+          <div class="file-main">
+            ${thumb}
+            <div class="file-meta-col">
+              <div class="fname">${escapeHtml(displayName(f.name))}</div>
+              <div class="fmeta">${formatSize(f.size)} · ${formatTime(f.mtime)}</div>
+            </div>
+          </div>
+          <div class="file-actions">
+            <a class="dl-btn" data-url="${escapeAttr(url)}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>
+            ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDeleteRootFile(this)">删除</a>' : ''}
+          </div>
+        </div>
+      </div>`;
+    });
+    $('dirsList').innerHTML = dirCards.concat(rootFileCards).join('');
     // 显示目录页批量操作栏，重置全选
     $('dirsBatchBar').style.display = 'flex';
     $('selectAllDirs').checked = false;
@@ -253,12 +304,14 @@ function buildBreadcrumb() {
   if (allDirs.length > 1) {
     parts.push('<span class="bc-sep">/</span>');
     // 不用 href="javascript:..."：它依赖 CSP 的 'unsafe-inline'，一旦收紧 CSP 就静默失效。
-    parts.push('<a class="bc-link bc-dirs" href="#" onclick="backToDirs(); return false;">目录</a>');
+    parts.push('<a class="bc-link" href="#" onclick="backToDirs(); return false;">目录</a>');
   }
   const segs = (currentDir || '').split('/').filter(s => s !== '');
   if (segs.length === 0) {
+    // 根层级（currentDir 为空）：过去叫「未命名设备」，那个虚拟文件夹已取消
+    // （散落文件改为在目录列表里平铺），这里如实显示为「保存目录」。
     parts.push('<span class="bc-sep">/</span>');
-    parts.push('<span class="bc-cur">' + (currentDir === '' ? '未命名设备' : escapeHtml(currentDir)) + '</span>');
+    parts.push('<span class="bc-cur">保存目录</span>');
   } else {
     let acc = '';
     segs.forEach((s, i) => {
@@ -289,9 +342,9 @@ function renderFile(f, idx) {
   if (f.isDir) {
     const delable = canManage;
     return `
-      <div class="file-item folder-item">
+      <div class="file-item">
         <input type="checkbox" class="file-check checkbox" data-name="${escapeAttr(f.name)}" data-del="${delable}" onchange="updateSelectedCount()" onclick="event.stopPropagation()">
-        <div class="file-right">
+        <div>
           <div class="file-main" onclick="enterFolder(${jsLit(f.name)})" style="cursor:pointer">
             <div class="thumb-folder">${SVG_FOLDER}</div>
             <div class="file-meta-col">
@@ -355,7 +408,7 @@ function renderFile(f, idx) {
           </div>
         </div>
         <div class="file-actions">
-          ${hideDownload ? '' : `<a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>`}
+          <a class="dl-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onSingleDownload(this)">下载</a>
           <a class="share-btn" data-url="${url}" data-name="${escapeAttr(f.name)}" onclick="event.stopPropagation(); onShare(this)">分享</a>
           ${delable ? '<a class="del-btn" data-name="' + escapeAttr(f.name) + '" onclick="event.stopPropagation(); onDelete(this)">删除</a>' : ''}
         </div>
@@ -394,10 +447,27 @@ function extThumbEl(name) {
   return ph;
 }
 
-// 缩略图加载失败：浏览器解不了这个格式（如 Chrome 下的 TIFF、不支持的 HEIC）。
-// 回退成扩展名占位块，同时把它从可预览列表里摘掉——否则点开灯箱只会看到一张空白图。
+// 缩略图加载失败分两种情况，处理方式完全不同：
+//   1) 服务端并发限流的 503 —— 与文件本身无关。/api/thumb 最多 2 路同时解码，
+//      列表页并发拉几十张图时绝大多数会撞上限流。这类必须自动重试，
+//      否则用户看到的是「有的图片预览失败」（实际是裂图）。
+//   2) 浏览器解不了这个格式（如 Chrome 下的 TIFF / 不支持的 HEIC）——回退成
+//      扩展名占位块，同时把它从可预览列表里摘掉，避免点开灯箱是一张空图。
+const THUMB_RETRY_MAX = 3;
 function onThumbError(el) {
   const name = el.dataset ? el.dataset.name : '';
+  const src = el.getAttribute ? el.getAttribute('src') : '';
+  const isThumbReq = el.tagName === 'IMG' && src.indexOf('api/thumb') >= 0;
+  const tries = Number((el.dataset && el.dataset.tries) || 0);
+  if (isThumbReq && tries < THUMB_RETRY_MAX) {
+    el.dataset.tries = String(tries + 1);
+    // 退避重试，并带一个随机参数绕开浏览器缓存（否则 503 可能被直接缓存复用）
+    setTimeout(() => {
+      const sep = src.indexOf('?') >= 0 ? '&' : '?';
+      el.src = src + sep + 'retry=' + tries + '&_=' + Math.random().toString(36).slice(2);
+    }, 500 * (tries + 1));
+    return;
+  }
   if (name) previewFiles = previewFiles.filter(p => p.name !== name);
   el.replaceWith(extThumbEl(name));
 }
@@ -503,18 +573,23 @@ async function deleteSelected(btn) {
 }
 
 // 目录页「删除选中目录」：每个勾选项都是顶层目录，删除路径为 ('' , dirName)
-// 仅删除可删的目录，其余跳过并提示。
+// 删除选中的项。列表里既有设备目录、也有根层散落文件（rootFiles 平铺），
+// 两者删除路径都是 ('' , name)，由后端按实际类型处理；故文案不再限定为「目录」。
 async function deleteSelectedDirs(btn) {
   const checked = Array.from(document.querySelectorAll('#dirsList .file-check:checked'));
   const dirs = checked.filter(c => c.dataset.del === 'true').map(c => c.dataset.name);
   const skipped = checked.length - dirs.length;
   if (!dirs.length) return;
-  const desc = '确定删除选中的 ' + dirs.length + ' 个目录及其全部内容？'
+  const desc = '确定删除选中的 ' + dirs.length + ' 项吗？'
+    + '（选中的目录会被连同其全部内容一起删除）'
     + (skipped ? '另有 ' + skipped + ' 个来自其他设备、仅可下载，将跳过。' : '')
     + '此操作不可恢复。';
-  const ok = await confirmDialog({ title: '删除选中的目录', desc: desc, confirmText: '删除', cancelText: '取消', destructive: true });
+  const ok = await confirmDialog({ title: '删除选中项', desc: desc, confirmText: '删除', cancelText: '取消', destructive: true });
   if (!ok) return;
   const btns = Array.from(document.querySelectorAll('#dirsList .btn-batch'));
+  // 记下原按钮文案：删除中会把 innerHTML 换成 spinner，必须在 finally 里还原，
+  // 否则按钮会永久停在「删除中...」（同 deleteSelected 的处理）。
+  const states = btns.map(b => ({ el: b, html: b.innerHTML }));
   btns.forEach(b => { b.disabled = true; });
   btn.classList.add('loading');
   btn.innerHTML = '<span class="spinner"></span>删除中...';
@@ -523,9 +598,26 @@ async function deleteSelectedDirs(btn) {
   } catch (e) {
     toast('删除失败: ' + e.message, { variant: 'destructive' });
   } finally {
+    btns.forEach(b => { b.classList.remove('loading'); b.innerHTML = states.find(s => s.el === b).html; });
     loadDirs(false, dirsPage);   // 分页下重拉当前页（删空自动回退）
     updateSelectedCount();
   }
+}
+
+// 根层散落文件单条「删除」：文件就在保存目录根下，删除路径同样是 ('' , fileName)。
+// 与 onDeleteDir 的区别只在于确认文案（不递归删除整个目录）。
+async function onDeleteRootFile(btn) {
+  const name = btn.dataset.name;
+  if (btn.classList.contains('loading')) return;
+  const ok = await confirmDialog({ title: '删除文件', desc: '确定删除「' + name + '」？此操作不可恢复。', confirmText: '删除', cancelText: '取消', destructive: true });
+  if (!ok) return;
+  btn.classList.add('loading');
+  const old = btn.textContent;
+  btn.textContent = '删除中';
+  const delOk = await apiDelete('', name);
+  if (!delOk) { btn.classList.remove('loading'); btn.textContent = old; return; }
+  updateSelectedCount();
+  loadDirs(false, dirsPage);
 }
 
 // 目录卡片单条「删除」：顶层目录，删除路径为 ('' , dirName)
@@ -728,18 +820,127 @@ async function downloadBatch(files, triggerBtn) {
   }
 }
 
-// ---- 灯箱预览：左右切换（PC 按钮 / 移动端滑动）+ 键盘导航 ----
+// ---- 灯箱预览：跟手滑动（手机相册手感）+ 左右按钮 + 键盘导航 ----
+// 结构：#lbTrack 里并排三块 .lb-slide（上一张 / 当前 / 下一张），每块一屏宽。
+// 拖动时整条 track 跟着手指走，松手按「位移比例 + 甩动速度」吸附到相邻一屏。
+// 三块里的 <img>/<video> 元素按索引复用（lbSlideCache）：/api/download 是 no-store，
+// 每重建一次元素就会重下一整份文件——视频尤其致命，这也是之前切换很卡的主因。
+const LB_SETTLE_MS = 280;        // 松手后的吸附动画时长
+const LB_SNAP_RATIO = 0.18;      // 拖过一屏宽的这个比例即翻页
+const LB_SNAP_VELOCITY = 0.35;   // 轻扫速度（px/ms）达到这个值也翻页
+const lbSlideCache = new Map();  // idx → .lb-slide 元素（复用，避免 no-store 资源反复下载）
+let lbAnimating = false;         // 吸附动画进行中，忽略新的翻页指令
+let lbDrag = null;               // { x0, y0, axis, dx, lastX, lastT, v }
+
+function lbStageW() {
+  const s = $('lbStage');
+  return (s && s.clientWidth) || window.innerWidth;
+}
+
+// 按偏移取索引（首尾环绕）
+function lbIndexAt(offset) {
+  const n = previewFiles.length;
+  return ((lbIndex + offset) % n + n) % n;
+}
+
+// 把 track 摆到「居中 + dx」；animate 决定走不走过渡
+// base：有前后邻居时中间那块才是当前项（-1 屏）；只有一张时它本身就是第一块（0）
+function lbSetTrack(dx, animate) {
+  const track = $('lbTrack');
+  if (!track) return;
+  const base = track.children.length > 1 ? -lbStageW() : 0;
+  track.style.transition = animate ? 'transform ' + LB_SETTLE_MS + 'ms cubic-bezier(.22, .61, .36, 1)' : 'none';
+  track.style.transform = 'translate3d(' + (base + dx) + 'px, 0, 0)';
+}
+
+// 取（或创建）某个索引对应的滑块。图片加载完淡入；只有当前这块给视频控件。
+function lbSlideFor(idx, active) {
+  let el = lbSlideCache.get(idx);
+  if (!el) {
+    const f = previewFiles[idx];
+    el = document.createElement('div');
+    el.className = 'lb-slide';
+    if (isVideoExt(f.ext)) {
+      const v = document.createElement('video');
+      v.src = f.previewUrl;
+      v.setAttribute('playsinline', '');
+      v.preload = 'metadata';
+      el.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.decoding = 'async';
+      img.addEventListener('load', () => img.classList.add('loaded'));
+      img.src = f.previewUrl;
+      if (img.complete) img.classList.add('loaded');
+      el.appendChild(img);
+    }
+    lbSlideCache.set(idx, el);
+  }
+  const v = el.querySelector('video');
+  if (v) {
+    v.controls = !!active;                          // 只有当前这屏给控件，避免误触别的视频
+    v.preload = active ? 'auto' : 'metadata';
+    if (!active) v.pause();
+  }
+  return el;
+}
+
+// 重排三块滑块（复用已有元素）并把 track 归位到中间
+function showLbImage() {
+  const track = $('lbTrack');
+  if (!track || !previewFiles.length) return;
+  const slots = previewFiles.length > 1 ? [-1, 0, 1] : [0];
+  const keep = new Set();
+  const used = new Set();
+  slots.forEach((off, i) => {
+    const idx = lbIndexAt(off);
+    keep.add(idx);
+    let el = lbSlideFor(idx, off === 0);
+    // 只有 2 个文件时，前后邻居是同一个索引：克隆一份，否则同一个节点会被来回搬运、
+    // 三块格子凑不齐（track 也就对不齐一屏）
+    if (used.has(el)) el = el.cloneNode(true);
+    used.add(el);
+    if (track.children[i] !== el) track.insertBefore(el, track.children[i] || null);
+  });
+  while (track.children.length > slots.length) track.removeChild(track.lastChild);
+  // 只留这三块在缓存里：翻得再多也不会把整目录的元素都攒进内存
+  lbSlideCache.forEach((el, idx) => {
+    if (!keep.has(idx)) { el.remove(); lbSlideCache.delete(idx); }
+  });
+  lbAnimating = false;
+  lbDrag = null;
+  lbSetTrack(0, false);
+  // 仅 1 个文件时隐藏左右箭头
+  const showNav = previewFiles.length > 1;
+  $('lbPrev').style.display = showNav ? 'flex' : 'none';
+  $('lbNext').style.display = showNav ? 'flex' : 'none';
+  // 重置顶部下载按钮为图标态
+  const dlBtn = $('lbDownload');
+  dlBtn.classList.remove('loading');
+  dlBtn.disabled = false;
+  dlBtn.innerHTML = SVG_DOWNLOAD;
+  // 删除按钮：无管理权限（局域网设备直连）时隐藏
+  $('lbDelete').style.display = canManage ? '' : 'none';
+}
+
 function openLightbox(idx) {
   if (idx < 0 || idx >= previewFiles.length) return;
   lbIndex = idx;
+  lbSlideCache.forEach(el => el.remove());
+  lbSlideCache.clear();
+  $('lightbox').style.display = 'flex';   // 先显示，才量得到 stage 宽度
   showLbImage();
-  $('lightbox').style.display = 'flex';
   lockScroll(); // 锁 html+body，背景不可滚动（html 是实际滚动容器，只锁 body 无效）
   const lb = $('lightbox');
   lb.addEventListener('touchstart', lbTouchStart, { passive: true });
   lb.addEventListener('touchmove', lbTouchMove, { passive: false });
   lb.addEventListener('touchend', lbTouchEnd, { passive: true });
+  $('lbStage').addEventListener('mousedown', lbMouseDown);
+  document.addEventListener('mousemove', lbMouseMove);
+  document.addEventListener('mouseup', lbMouseUp);
   document.addEventListener('keydown', lbKeyHandler);
+  window.addEventListener('resize', lbOnResize);
 }
 
 // 按文件名打开灯箱：点击时实时在 previewFiles 中查找索引，
@@ -752,173 +953,124 @@ function openLightboxFromEl(el) {
 
 function closeLightbox() {
   $('lightbox').style.display = 'none';
-  $('lbVideo').pause();
   unlockScroll();
   const lb = $('lightbox');
   lb.removeEventListener('touchstart', lbTouchStart);
   lb.removeEventListener('touchmove', lbTouchMove);
   lb.removeEventListener('touchend', lbTouchEnd);
+  $('lbStage').removeEventListener('mousedown', lbMouseDown);
+  document.removeEventListener('mousemove', lbMouseMove);
+  document.removeEventListener('mouseup', lbMouseUp);
   document.removeEventListener('keydown', lbKeyHandler);
-  lbTouchStartPt = null;
-  // 清掉平移切换可能的中途残留（幽灵层 + 主图内联样式），保证下次打开是干净状态
-  document.querySelectorAll('.lb-ghost').forEach(g => g.remove());
-  const li = $('lbImg');
-  li.style.transition = ''; li.style.transform = ''; li.style.opacity = '';
+  window.removeEventListener('resize', lbOnResize);
+  lbDrag = null;
+  lbAnimating = false;
+  // 停掉并释放缓存的滑块：下次打开按需重新加载
+  lbSlideCache.forEach(el => {
+    const v = el.querySelector('video');
+    if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
+    el.remove();
+  });
+  lbSlideCache.clear();
+  lbSetTrack(0, false);
 }
 
-// ---- 灯箱触摸滑动切换（移动端；桌面端仍用左右箭头） ----
-let lbTouchStartPt = null;
+// 旋屏 / 窗口尺寸变化：按新的一屏宽度重新归位（不打断正在进行的拖动）
+function lbOnResize() {
+  if ($('lightbox').style.display !== 'flex' || lbAnimating) return;
+  lbSetTrack(lbDrag ? lbDrag.dx : 0, false);
+}
+
+// ---- 跟手拖动：横向位移实时跟手；竖向手势直接放弃，交给浏览器 ----
+// 触摸与鼠标共用一套：lbDragTo 更新位移，lbDragEnd 决定吸附还是回弹
+function lbDragStart(x, y) {
+  if (lbAnimating) return;                 // 吸附动画没走完，先让这一下失效
+  if (previewFiles.length < 2) return;
+  lbDrag = { x0: x, y0: y, axis: null, dx: 0, lastX: x, lastT: performance.now(), v: 0 };
+}
+function lbDragTo(x, y, ev) {
+  if (!lbDrag) return;
+  const dx = x - lbDrag.x0;
+  const dy = y - lbDrag.y0;
+  if (!lbDrag.axis) {
+    if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;   // 位移太小，先不定方向
+    lbDrag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    if (lbDrag.axis === 'x') $('lbStage').classList.add('lb-dragging');
+  }
+  if (lbDrag.axis !== 'x') return;
+  if (ev && ev.cancelable) ev.preventDefault();         // 阻止下拉刷新 / 橡皮筋
+  lbSetTrack(dx, false);                                // 跟手
+  const now = performance.now();
+  const dt = now - lbDrag.lastT;
+  if (dt > 0) lbDrag.v = (x - lbDrag.lastX) / dt;
+  lbDrag.lastX = x;
+  lbDrag.lastT = now;
+  lbDrag.dx = dx;
+}
+function lbDragEnd() {
+  const stage = $('lbStage');
+  if (stage) stage.classList.remove('lb-dragging');
+  if (!lbDrag) return;
+  const d = lbDrag;
+  lbDrag = null;
+  if (d.axis !== 'x') return;
+  const W = lbStageW();
+  const far = Math.abs(d.dx) > W * LB_SNAP_RATIO;
+  const flick = Math.abs(d.v) > LB_SNAP_VELOCITY && Math.abs(d.dx) > 24;
+  if (far || flick) lbCommit(d.dx < 0 ? 1 : -1);
+  else lbSetTrack(0, true);                             // 没够格 → 回弹
+}
+
+// 触摸
 function lbTouchStart(e) {
   if (e.touches.length !== 1) return;
-  // 点到按钮（关闭/下载/删除）不触发滑动
+  // 点到按钮（关闭/下载/删除）不接管
   if (e.target.closest && e.target.closest('button')) return;
-  lbTouchStartPt = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  const t = e.touches[0];
+  // 视频底部 ~72px 是原生进度条，这块留给控件
+  const v = e.target.closest && e.target.closest('video');
+  if (v && t.clientY > window.innerHeight - 72) return;
+  lbDragStart(t.clientX, t.clientY);
 }
 function lbTouchMove(e) {
-  if (!lbTouchStartPt || e.touches.length !== 1) return;
-  const dx = e.touches[0].clientX - lbTouchStartPt.x;
-  const dy = e.touches[0].clientY - lbTouchStartPt.y;
-  // 横向主导时阻止浏览器默认手势（下拉刷新/橡皮筋），视频控件区域除外（避免破坏进度条拖动）
-  if (Math.abs(dx) > Math.abs(dy) && !(e.target.closest && e.target.closest('video'))) {
-    e.preventDefault();
-  }
+  if (!lbDrag || e.touches.length !== 1) return;
+  const t = e.touches[0];
+  lbDragTo(t.clientX, t.clientY, e);
 }
-function lbTouchEnd(e) {
-  if (!lbTouchStartPt || e.changedTouches.length !== 1) return;
-  const t = e.changedTouches[0];
-  const dx = t.clientX - lbTouchStartPt.x;
-  const dy = t.clientY - lbTouchStartPt.y;
-  const startY = lbTouchStartPt.y;
-  lbTouchStartPt = null;
-  if (previewFiles.length < 2) return;              // 仅 1 个文件不切换
-  if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return; // 位移不够或竖向手势
-  // 视频：触摸起点在底部进度条区域（~72px）不触发，避免拖动进度条误切
-  if ($('lbVideo').style.display !== 'none' && startY > window.innerHeight - 72) return;
-  lbNav(dx < 0 ? 1 : -1);
+function lbTouchEnd() { lbDragEnd(); }
+
+// 鼠标：桌面端也能拖着看，不接管按钮 / 视频控件
+function lbMouseDown(e) {
+  if (e.button !== 0) return;
+  if (e.target.closest && e.target.closest('button, video, a')) return;
+  lbDragStart(e.clientX, e.clientY);
+  if (lbDrag) e.preventDefault();                       // 别拖出选区 / 拖拽图片幽灵
+}
+function lbMouseMove(e) { lbDragTo(e.clientX, e.clientY, e); }
+function lbMouseUp() { lbDragEnd(); }
+
+// 吸附到相邻一屏，结束后重排三块内容
+function lbCommit(delta) {
+  if (lbAnimating) return;
+  if (previewFiles.length < 2 || !delta) { lbSetTrack(0, true); return; }
+  lbAnimating = true;
+  const track = $('lbTrack');
+  lbSetTrack(-delta * lbStageW(), true);
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    track.removeEventListener('transitionend', onEnd);
+    lbIndex = lbIndexAt(delta);
+    showLbImage();
+  };
+  const onEnd = (ev) => { if (ev.target === track && ev.propertyName === 'transform') finish(); };
+  track.addEventListener('transitionend', onEnd);
+  setTimeout(finish, LB_SETTLE_MS + 120);   // 兜底：过渡被打断时也能落位
 }
 
 function lbNav(delta) {
-  lbIndex = (lbIndex + delta + previewFiles.length) % previewFiles.length;
-  showLbImage(delta);
-}
-
-// 预加载相邻图片（仅图片），翻页时直接走浏览器缓存，消除加载闪烁
-function preloadNeighbors() {
-  if (previewFiles.length < 2) return;
-  [lbIndex - 1, lbIndex + 1].forEach(i => {
-    const p = previewFiles[(i + previewFiles.length) % previewFiles.length];
-    if (p && !isVideoExt(p.ext)) {
-      const im = new Image();
-      im.src = p.previewUrl;
-    }
-  });
-}
-
-// dir：切换方向（+1 下一张 / -1 上一张；不传 = 无方向：首开、删除补位等直接淡入）。
-// 前后都是图片且带方向时走「平移切换」（旧图滑出 + 新图滑入），其余场景保持淡入。
-function showLbImage(dir) {
-  const f = previewFiles[lbIndex];
-  const isVid = isVideoExt(f.ext);
-  const lbImg = $('lbImg');
-  const lbVideo = $('lbVideo');
-  const wasImgShown = lbImg.style.display !== 'none' && !!lbImg.getAttribute('src');
-  lbImg.style.display = isVid ? 'none' : 'block';
-  lbVideo.style.display = isVid ? 'block' : 'none';
-  if (isVid) {
-    lbVideo.src = f.previewUrl;
-  } else {
-    // 防御：上一次平移若被打断（如滑入中途关闭灯箱），内联样式可能残留
-    //（内联优先级高于 .loaded，残留会让图偏移/透明）→ 先清掉再走各分支。
-    lbImg.style.transition = '';
-    lbImg.style.transform = '';
-    lbImg.style.opacity = '';
-    const newSrc = f.previewUrl;
-    if (dir && wasImgShown && lbImg.getAttribute('src') !== newSrc) {
-      slideToImage(dir, newSrc);                 // 平移切换：旧图滑出 + 新图滑入
-      preloadNeighbors();
-    } else if (lbImg.getAttribute('src') === newSrc) {
-      lbImg.classList.add('loaded');             // 同一张（如重新打开），直接显示，避免卡在透明态
-    } else {
-      lbImg.classList.remove('loaded');         // 先淡出，加载完成再淡入（消除翻页闪动）
-      lbImg.onload = () => { lbImg.classList.add('loaded'); };
-      lbImg.src = newSrc;
-      preloadNeighbors();                        // 预加载相邻图片，左右翻页秒出
-    }
-  }
-  // 仅 1 个文件时隐藏左右箭头
-  const showNav = previewFiles.length > 1;
-  $('lbPrev').style.display = showNav ? 'flex' : 'none';
-  $('lbNext').style.display = showNav ? 'flex' : 'none';
-  // 重置顶部下载按钮为图标态（飞牛客户端里保持隐藏）
-  const dlBtn = $('lbDownload');
-  dlBtn.classList.remove('loading');
-  dlBtn.disabled = false;
-  dlBtn.style.display = hideDownload ? 'none' : '';
-  dlBtn.innerHTML = SVG_DOWNLOAD;
-  // 删除按钮：无管理权限（局域网设备直连）时隐藏（切换图片时同步显隐）
-  $('lbDelete').style.display = canManage ? '' : 'none';
-}
-
-// ---- 灯箱「平移切换」 ----
-// 时长；CSS 里 .lb-ghost 的过渡参数与此保持一致（LB_SLIDE_MS）。
-const LB_SLIDE_MS = 260;
-// 位移 = 图片宽度的 12%，clamp 在 48~120px：小图不过冲、大图也有明显的平移感。
-const LB_SLIDE_RATIO = 0.12;
-const LB_SLIDE_MIN = 48;
-const LB_SLIDE_MAX = 120;
-
-// 把当前图定格为幽灵层（.lb-ghost）向反方向滑出并淡出，新图从 dir 方向滑入
-//（+1 = 新图从右侧进入，-1 = 从左侧）。灯箱大图居中且四周留黑，整屏滑动会有
-// 空档感，小幅平移（按图宽比例）+ 渐隐更接近相册翻页的手感。
-let lbSlideSeq = 0;                            // 平移切换代次：仅最新一次动画的收尾逻辑生效
-function slideToImage(dir, newSrc) {
-  const seq = ++lbSlideSeq;
-  const lbImg = $('lbImg');
-  const lb = $('lightbox');
-  // 1) 定格当前图：按实际显示位置/尺寸复制一份（fixed 矩形），随后滑出
-  const r = lbImg.getBoundingClientRect();
-  const shift = Math.max(LB_SLIDE_MIN, Math.min(LB_SLIDE_MAX, Math.round(r.width * LB_SLIDE_RATIO)));
-  const ghost = document.createElement('img');
-  ghost.className = 'lb-ghost';
-  ghost.src = lbImg.getAttribute('src');
-  ghost.style.left = r.left + 'px';
-  ghost.style.top = r.top + 'px';
-  ghost.style.width = r.width + 'px';
-  ghost.style.height = r.height + 'px';
-  lb.appendChild(ghost);
-  // 2) 主图瞬时置于滑入起点（不可见），下一帧起动画（双 rAF 保证起点已上屏）
-  lbImg.onload = null;                           // 滑入期间不需要 onload 兜底（结束统一补 loaded）
-  lbImg.classList.remove('loaded');
-  lbImg.style.transition = 'none';
-  lbImg.style.transform = 'translateX(' + (dir * shift) + 'px)';
-  lbImg.style.opacity = '0';
-  lbImg.src = newSrc;
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    ghost.style.transform = 'translateX(' + (-dir * shift) + 'px)';
-    ghost.style.opacity = '0';
-    lbImg.style.transition = 'transform ' + LB_SLIDE_MS + 'ms ease, opacity ' + LB_SLIDE_MS + 'ms ease';
-    lbImg.style.transform = 'translateX(0)';
-    lbImg.style.opacity = '1';
-  }));
-  // 3) 幽灵层移除（transitionend + 超时双保险）
-  const dropGhost = () => ghost.remove();
-  ghost.addEventListener('transitionend', dropGhost, { once: true });
-  setTimeout(dropGhost, LB_SLIDE_MS + 120);
-  // 4) 主图收尾：清内联、回 .loaded 淡入态。用代次（seq）保证只有最新一次动画的
-  //    收尾生效；transitionend 在动画被打断（如滑入中途关闭灯箱）时不触发，
-  //    故再加一道超时兜底，避免内联样式残留导致下次打开时图偏移/透明。
-  const finishSlide = () => {
-    lbImg.style.transition = '';
-    lbImg.style.transform = '';
-    lbImg.style.opacity = '';
-    lbImg.classList.add('loaded');
-  };
-  lbImg.addEventListener('transitionend', function onSlideEnd(ev) {
-    if (ev.target !== lbImg || ev.propertyName !== 'transform') return;
-    lbImg.removeEventListener('transitionend', onSlideEnd);
-    if (seq === lbSlideSeq) finishSlide();
-  });
-  setTimeout(() => { if (seq === lbSlideSeq) finishSlide(); }, LB_SLIDE_MS + 150);
+  lbCommit(delta);
 }
 
 // 灯箱内下载当前文件：与列表单文件下载同一套逻辑（HEAD 探活 + 直接导航），
@@ -963,6 +1115,9 @@ async function lbDelete() {
   const idx = nextName ? previewFiles.findIndex(p => p.name === nextName) : -1;
   if (idx < 0) { closeLightbox(); return; }
   lbIndex = idx;
+  // previewFiles 已被重建、索引全变了：缓存按索引存的滑块必须整体丢弃再重排
+  lbSlideCache.forEach(el => el.remove());
+  lbSlideCache.clear();
   showLbImage();
 }
 
@@ -1068,7 +1223,7 @@ async function apiDelete(dir, name) {
 }
 
 // 启动：加载目录列表。原先此处会先「探测是否飞牛客户端」再决定是否隐藏下载入口，
-// 该探测已随直连下载方案一并移除（hideDownload 恒为 false）。
+// 该探测已随直连下载方案一并移除（见文件开头关于下载入口的说明）。
 (async function () {
   loadDirs();
 })();

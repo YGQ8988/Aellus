@@ -4,20 +4,20 @@
 #   dist/Aellus-<version>-fnos-x64.fpk / -fnos-arm64.fpk，直接上传飞牛应用中心安装。
 # 原理：x86 包 manifest platform=x86、仅含 amd64 二进制；arm 包 manifest platform=arm、仅含 arm64 二进制。
 #       cmd/main 已兼容两种包：按 uname -m 找 aellus-x86_64 / aellus-aarch64，找不到回退 aellus。
-# 前置：本机有 Go（交叉编译纯标准库，无需 cgo）与 fnpack（tools/fnpack 或 PATH 中）
+# 前置：本机有 Go（交叉编译纯标准库，无需 cgo）与 fnpack（buildtools/fnpack 或 PATH 中）
 set -e
 cd "$(dirname "$0")"
 
-# 定位 fnpack（macOS/Linux: tools/fnpack；Windows: tools/fnpack.exe；或 PATH 中）
+# 定位 fnpack（macOS/Linux: buildtools/fnpack；Windows: buildtools/fnpack.exe；或 PATH 中）
 FN_PACK=""
 if command -v fnpack >/dev/null 2>&1; then
   FN_PACK="fnpack"
-elif [ -f "tools/fnpack" ]; then
-  FN_PACK="$(pwd)/tools/fnpack"
-elif [ -f "tools/fnpack.exe" ]; then
-  FN_PACK="$(pwd)/tools/fnpack.exe"
+elif [ -f "buildtools/fnpack" ]; then
+  FN_PACK="$(pwd)/buildtools/fnpack"
+elif [ -f "buildtools/fnpack.exe" ]; then
+  FN_PACK="$(pwd)/buildtools/fnpack.exe"
 else
-  echo "[错误] 未找到 fnpack，请放入 tools/fnpack（或 tools/fnpack.exe）或加入 PATH"
+  echo "[错误] 未找到 fnpack，请放入 buildtools/fnpack（或 buildtools/fnpack.exe）或加入 PATH"
   exit 1
 fi
 
@@ -33,25 +33,27 @@ mkdir -p dist
 BUILD_TMP=".build"
 mkdir -p "${BUILD_TMP}"
 
-# 版本号：优先命令行参数；不传则读 fnos/manifest（与 build-mac.sh 一致）；兜底 1.0.1。
+# 版本号：优先命令行参数；不传则读 fnos/manifest（与 build-mac.sh 一致）；兜底 1.0.6。
 VERSION="${1:-}"
 if [ -z "${VERSION}" ]; then
   VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 fi
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.6}"
 # 记录 manifest 原版本（打包结束后还原，保持 git 干净）
 ORIG_VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 echo "构建版本：${VERSION}"
 # 注入版本信息：设置页展示版本号与构建时间（BuildTime 取每次实际打包时刻）
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
+# 前端内容指纹：编译时写进二进制，发布前的 embed_check.py 靠它核对源码一致性
+STATIC_HASH="$(bash tools/static_hash.sh)"
 # 把版本号同步进 manifest：保证「产物文件名 = 包内 manifest 版本」，避免两者不一致
 sed -i.bak "s/^version *= .*/version               = ${VERSION}/" fnos/manifest && rm -f fnos/manifest.bak
 
 echo ">> [1/3] 交叉编译 amd64 / arm64"
 # -tags fpk：飞牛 NAS 后台服务构建，排除所有桌面代码（托盘/通知/目录选择器/mac 开机项），
 # 由 platform_fpks.go 提供 headless 等价实现，不带 systray 等桌面依赖。
-GOOS=linux GOARCH=amd64 go build -tags fpk -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}'" -o "${BUILD_TMP}/aellus-amd64" .
-GOOS=linux GOARCH=arm64 go build -tags fpk -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}'" -o "${BUILD_TMP}/aellus-arm64" .
+GOOS=linux GOARCH=amd64 go build -tags fpk -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}' -X 'aellus/internal/app.BuildStaticHash=${STATIC_HASH}'" -o "${BUILD_TMP}/aellus-amd64" .
+GOOS=linux GOARCH=arm64 go build -tags fpk -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}' -X 'aellus/internal/app.BuildStaticHash=${STATIC_HASH}'" -o "${BUILD_TMP}/aellus-arm64" .
 echo "   amd64/arm64 编译完成"
 
 echo ">> [2/3] 打包 x64（platform=x86）"

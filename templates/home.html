@@ -14,6 +14,10 @@
   <button class="settings-btn" title="设置" onclick="openSettings()">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
+  <!-- 首次进入引导气泡：尖角指向左上角的设置按钮，整条可点，点开设置即消失（见 hideAuthTip） -->
+  <button type="button" class="auth-tip" id="authTip" hidden onclick="openSettings()">
+    <span class="auth-tip-text" id="authTipText">首次使用请授权文件保存路径 👉</span>
+  </button>
   <div class="settings-overlay modal-overlay" id="settingsOverlay">
     <div class="settings-panel modal-card">
       <div class="settings-head">
@@ -39,6 +43,12 @@
             </div>
             <button class="btn-outline btn-set-text" id="resetDirBtn" onclick="resetSaveDir()">恢复默认</button>
           </div>
+          <!-- 飞牛端：直接调官方授权选择器申请新目录（等同于在飞牛「应用设置 → 授权目录」
+               手动添加，但不必离开应用）；桌面端走系统原生选择器，故此行不显示。 -->
+          <div class="dir-auth-row" id="dirAuthRow" hidden>
+            <button type="button" class="btn-outline btn-set-text" id="addAuthDirBtn" onclick="pickSharedSaveDir()">＋ 添加授权目录</button>
+            <span class="dir-auth-hint">弹出官方选择器选择目录，授权后即可作为保存位置（需管理员权限）</span>
+          </div>
           <div class="settings-msg" id="saveDirMsg"></div>
         </section>
         <div class="separator"></div>
@@ -48,7 +58,7 @@
           <p class="settings-reward-tip">这是完全自愿的个人赠与，不是购买软件，也不是购买服务。无论是否打赏，工具的功能和使用权限都不会有任何变化，也不会因此获得额外的技术支持或商用授权。</p>
           <div class="qr-list">
             <div class="qr-card">
-              <img src="static/img/qr-dev-ygq.png" alt="开发者 染洛凉 支付宝二维码" class="qr-img">
+              <img src="static/img/qr-dev-ygq.jpg" alt="开发者 染洛凉 支付宝二维码" class="qr-img">
               <span class="qr-label">开发者 染洛凉</span>
             </div>
             <div class="qr-card">
@@ -77,13 +87,19 @@
       </button>
     </div>
     <div class="home-grid">
-      <a class="entry" href="upload">
-        <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <a class="entry entry--upload" href="upload">
+        <div class="entry-head">
+          <span class="entry-eyebrow">Upload</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span>
+        </div>
         <div class="title">上传文件</div>
         <div class="desc">截图 / 录屏 / 拍照，发送到电脑</div>
       </a>
-      <a class="entry" href="browse">
-        <svg class="icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <a class="entry entry--browse" href="browse">
+        <div class="entry-head">
+          <span class="entry-eyebrow">Browse</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+        </div>
         <div class="title">读取文件</div>
         <div class="desc">浏览已上传的文件，支持下载</div>
       </a>
@@ -102,6 +118,7 @@
       <p class="qr-tip">手机扫描二维码，即可在浏览器打开本工具</p>
     </div>
   </div>
+  <script type="module" src="static/js/trim-auth.js"></script>
   <script src="static/js/qrcode.js"></script>
   <script src="static/js/ui.js"></script>
   <script>
@@ -140,7 +157,34 @@
       fallback();
     }
   }
+  // —— 首次进入引导（提示去设置里授权 / 选择保存路径）——
+  // 显示条件：服务端还没记过「点过设置」，且本次访问者有权修改保存路径
+  // （飞牛门户内 / 桌面端本机）。局域网访客点开设置只能看到「关于 Aellus」，
+  // 给他们提示授权没有意义，故 canManage 为 false 时不展示。
+  //
+  // 「已读」标记存在服务端配置文件（飞牛端在 TRIM_PKGVAR 持久卷），不用 localStorage：
+  // 后者跟着浏览器的「协议+主机+端口」走，卸载重装应用并不会清掉它，用户会看到
+  // 「第一次见过引导、再装却不出现」的错觉。
+  function hideAuthTip(){
+    var tip=document.getElementById('authTip');
+    if(tip){ tip.hidden=true; }
+    // 静默上报即可：失败时引导条下次还会出现，不打扰用户
+    fetch('api/tip-seen',{method:'POST'}).catch(function(){});
+  }
+  function maybeShowAuthTip(){
+    var tip=document.getElementById('authTip');
+    if(!tip) return;
+    fetch('api/settings').then(function(r){ return r.json(); }).then(function(d){
+      if(d && d.canManage && !d.tipSeen){
+        // 飞牛端由管理员授权共享目录，桌面端是本机自选目录，文案区分
+        var txt=document.getElementById('authTipText');
+        if(txt){ txt.textContent = d.hasTrim ? '首次使用请授权文件保存路径 👉' : '首次使用请选择文件保存路径 👉'; }
+        tip.hidden=false;
+      }
+    }).catch(function(){});   // 接口失败不展示，不阻塞页面
+  }
   function openSettings(){
+    hideAuthTip();   // 看过设置即认为完成引导，此后不再出现
     document.getElementById('settingsOverlay').classList.add('active');
     // 弹窗打开期间锁定背景滚动：html/body 双锁（html 才是实际滚动容器），
     // 于是滚轮 / 触摸只会滚动弹窗内容，背景保持不动。
@@ -168,9 +212,9 @@
         // 提示文案：飞牛端保存目录由授权目录决定；桌面端用户自主决定，修改后重启保留。
         var tip=document.getElementById('saveDirTip');
         if(tip){
-          if(d.hasTrim){
-            tip.textContent='保存路径由飞牛授权目录决定（可在已授权目录及其子目录中选择），修改后重启保留。添加 / 移除授权请在飞牛「应用设置 → 授权目录」操作。';
-          } else {
+          // 飞牛端不再显示「去飞牛应用设置增删授权」的旧提示：现在应用内即可
+          // 添加 / 移除授权目录。飞牛端保持 HTML 里的默认文案即可。
+          if(!d.hasTrim){
             tip.textContent='接收到的文件将保存到该目录（点击「选择目录」可修改，修改后立即生效，重启后保留）。';
           }
         }
@@ -237,7 +281,8 @@
   }
   // 在 popup 里渲染一组路径选项；每一项点击 -> 选中、收 popup、触发保存。
   // labels 为内部路径 -> 语义化展示路径映射（飞牛端 /vol1/... 转换结果），仅用于展示。
-  function renderDirOptions(paths, currentPath, labels){
+  // unwritable 为实测不可写的目录，这些项置灰不可选（见 dirWritable 一侧的注释）。
+  function renderDirOptions(paths, currentPath, labels, removable, unwritable){
     var popup=document.getElementById('dirPopup');
     popup.innerHTML='';
     if(!paths.length){
@@ -255,8 +300,38 @@
       opt.className='dir-option';
       opt.setAttribute('role','option');
       opt.dataset.path=val;
-      opt.textContent=labels[val]||val;
+      var txt=document.createElement('span');
+      txt.className='dir-option-text';
+      txt.textContent=labels[val]||val;
+      opt.appendChild(txt);
       if(val===currentPath){ opt.classList.add('selected'); }
+      // 实测不可写：置灰、不可选，比让用户选中后才发现存不进去更直观。
+      if(unwritable && unwritable.indexOf(val)!==-1){
+        opt.classList.add('disabled');
+        opt.title='该目录当前不可写入，请在飞牛「应用设置 → 授权目录」中重新授权';
+        opt.setAttribute('aria-disabled','true');
+        var note=document.createElement('span');
+        note.className='dir-option-note';
+        note.textContent='无写入权限';
+        opt.appendChild(note);
+        popup.appendChild(opt);
+        known[val]=true;
+        return;                       // 不绑定 click、不显示 ✕
+      }
+      // removable 中的项（授权根目录，不含出厂默认目录）右侧显示「移除授权」✕
+      if(removable && removable.indexOf(val)!==-1){
+        var del=document.createElement('button');
+        del.type='button';
+        del.className='dir-option-del';
+        del.title='移除该授权目录';
+        del.setAttribute('aria-label','移除该授权目录');
+        del.textContent='✕';
+        del.addEventListener('click', function(ev){
+          ev.stopPropagation();          // 不要触发「选中该项」
+          removeAuthDir(val, labels[val]||val);
+        });
+        opt.appendChild(del);
+      }
       opt.addEventListener('click', function(){
         var hidden=document.getElementById('saveDirDisplay');
         hidden.value=val; hidden.dataset.path=val; hidden.dataset.display=labels[val]||val;
@@ -271,6 +346,20 @@
       known[val]=true;
     };
     paths.forEach(makeOpt);
+  }
+  // 「恢复默认」按钮显隐：当前保存目录已经是默认目录时隐藏（没有可恢复的余地）。
+  // 不单依赖后端 isDefault（它与 AELLUS_SAVE_DIR 做字符串比较，路径写法有差异时会
+  // 误判成「非默认」），再拿 defaultPath 兜底比一次（先去掉尾部斜杠）。
+  // def 可由调用方传入；不传时用 renderAuthPaths 缓存下来的 defaultPath。
+  function syncResetBtn(s, def){
+    var rb=document.getElementById('resetDirBtn');
+    if(!rb || !s) return;
+    if(def){ window.__aellusDefaultSavePath = def; }
+    var d = def || window.__aellusDefaultSavePath || '';
+    var norm=function(p){ return String(p||'').replace(/\/+$/,''); };
+    var cur=(s&&s.saveDir)||'';
+    var isDef = !!s.isDefault || (!!d && !!cur && norm(cur)===norm(d));
+    rb.style.display = isDef ? 'none' : '';
   }
   // 保存路径：POST /api/set-savedir（输入框 / 下拉选项 / 选择目录 / 恢复默认共用）
   function saveSaveDir(path){
@@ -289,7 +378,11 @@
           if(popup){ Array.prototype.forEach.call(popup.querySelectorAll('.dir-option'), function(o){
             o.classList.toggle('selected', o.dataset.path===d.saveDir);
           }); }
-          document.getElementById('resetDirBtn').style.display='';
+          // 是否显示「恢复默认」取决于当前是否已是默认目录——选了默认目录就隐藏，
+          // 不再无条件显示（否则选中默认目录后也会冒出「恢复默认」）。
+          fetch('api/settings').then(function(x){ return x.json(); }).then(function(s){
+            syncResetBtn(s);
+          }).catch(function(){});
           try{ sessionStorage.removeItem('aellus_currentDir'); }catch(e){}
         }
         else { msg.className='settings-msg show err'; msg.textContent=d.error||'保存失败'; }
@@ -323,6 +416,67 @@
         msg.className='settings-msg show err'; msg.textContent='网络错误';
       }).finally(function(){ if(btn){ btn.disabled=false; } });
   }
+  // 飞牛端「＋ 添加授权目录」：调官方授权选择器（与首页首次引导同一套逻辑，
+  // 由 static/js/trim-auth.js 通过 window.aellusAuthorizeSaveDir 暴露）。
+  // 选中目录后由系统自动授予 ACL，并直接设为当前保存目录，随后刷新下拉列表。
+  async function pickSharedSaveDir(){
+    var msg=document.getElementById('saveDirMsg');
+    if(!window.aellusAuthorizeSaveDir){
+      msg.className='settings-msg show err'; msg.textContent='授权组件尚未加载完成，请稍候重试';
+      return;
+    }
+    var btn=document.getElementById('addAuthDirBtn');
+    if(btn){ btn.disabled=true; }
+    msg.className='settings-msg show'; msg.textContent='请在弹出的窗口中选择要授权的目录…';
+    try{
+      var ret=await window.aellusAuthorizeSaveDir();
+      if(ret.ok){
+        msg.className='settings-msg show ok'; msg.textContent='已授权并设为保存目录：'+(ret.display||ret.dir);
+        try{ sessionStorage.removeItem('aellus_currentDir'); }catch(e){}
+        fetch('api/settings').then(function(r){ return r.json(); }).then(function(s){
+          renderAuthPaths(s);
+        }).catch(function(){});
+      } else if(ret.cancelled){
+        msg.className='settings-msg'; msg.textContent='';   // 用户取消：静默复原
+      } else {
+        msg.className='settings-msg show err'; msg.textContent=ret.msg||'授权失败';
+      }
+    }catch(e){
+      msg.className='settings-msg show err'; msg.textContent='调用失败：'+((e&&e.message)||e);
+    }finally{
+      if(btn){ btn.disabled=false; }
+    }
+  }
+  // 移除一个飞牛授权目录（POST /api/del-authdir）。
+  // 若被移除的正是当前保存目录所在的授权根，服务端会自动把保存目录回退到默认目录，
+  // 并把回退结果一并返回（resetSaveDir=true），前端据此提示。
+  async function removeAuthDir(path, display){
+    var label=display||path;
+    if(!window.confirm('确定移除授权目录「'+label+'」吗？\n移除后 Aellus 将无法再访问该目录；若它正是当前保存目录，会自动回退到默认目录。')){
+      return;
+    }
+    var msg=document.getElementById('saveDirMsg');
+    msg.className='settings-msg show'; msg.textContent='移除中…';
+    try{
+      var r=await fetch('api/del-authdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:path})});
+      var d=await r.json().catch(function(){ return {}; });
+      if(d && d.ok){
+        msg.className='settings-msg show ok';
+        msg.textContent = d.resetSaveDir
+          ? ('已移除授权，保存目录已回退默认：'+(d.saveDirDisplay||d.saveDir))
+          : ('已移除授权：'+label);
+        if(d.resetSaveDir){ try{ sessionStorage.removeItem('aellus_currentDir'); }catch(e){} }
+        // 重拉 settings 刷新下拉（含「恢复默认」按钮状态，见 renderAuthPaths）
+        fetch('api/settings').then(function(x){ return x.json(); }).then(function(s){
+          renderAuthPaths(s);
+        }).catch(function(){});
+      } else {
+        msg.className='settings-msg show err'; msg.textContent=(d&&d.error)||'移除失败';
+      }
+    }catch(e){
+      msg.className='settings-msg show err'; msg.textContent='网络错误';
+    }
+  }
   function resetSaveDir(){
     var msg=document.getElementById('saveDirMsg');
     var hidden=document.getElementById('saveDirDisplay');
@@ -354,6 +508,10 @@
     var inputWrap=document.getElementById('dirInputWrap');
     var dirInput=document.getElementById('dirInput');
     if(!hidden) return;
+    // 同步「恢复默认」按钮可见性（与 openSettings 一致：改过路径才展示）。
+    // 之前只在打开设置时同步一次，导致「添加授权目录」后按钮不出现，必须重开设置才恢复。
+    var resetBtn=document.getElementById('resetDirBtn');
+    if(resetBtn && s){ resetBtn.style.display = s.isDefault ? 'none' : ''; }
     var cur=(s&&s.saveDir)||'';
     hidden.value=cur; hidden.dataset.path=cur;
     hidden.dataset.display=(s&&s.saveDirDisplay)||cur;
@@ -370,20 +528,31 @@
         if(trigger){ trigger.style.display='none'; }
         if(popup){ popup.hidden=true; }
         if(inputWrap){ inputWrap.hidden=false; }
+        // 桌面端由系统原生文件夹选择器负责改路径，不需要官方授权入口
+        var ar=document.getElementById('dirAuthRow');
+        if(ar){ ar.hidden=true; }
         if(dirInput){ dirInput.value=cur; dirInput.scrollLeft=dirInput.scrollWidth; }
         fitDirInputWidth();
         renderDirTrigger(cur);
         return;
       }
-      // 飞牛环境：下拉选择模式
+      // 飞牛环境：下拉选择模式（保存目录受限于已授权目录，故提供官方授权入口）
       if(trigger){ trigger.style.display=''; }
       if(inputWrap){ inputWrap.hidden=true; }
+      var arFly=document.getElementById('dirAuthRow');
+      if(arFly){ arFly.hidden=false; }
       var labels=Object.assign({}, (d&&d.pathLabels)||{});
+      // editable：飞牛明确给出的「管理员能否移除该授权」标志（isEditable），只含飞牛确实返回的项。
+      // unwritable：服务端实测不可写的授权目录（见 dirWritable）。
+      var editable=(d&&d.editable)||{};
+      var unwritable=(d&&d.unwritable)||[];
       // 出厂默认目录（应用私有数据目录，如 存储空间1/应用文件/aellus/drops）不在授权
       // 列表里，但服务端允许随时切回，故始终并入选项——避免"改到其它目录后，再想切回
       // 默认目录却报『保存目录必须位于飞牛已授权目录内』"。
       var def=(d&&d.defaultPath)||'';
       if(def && !labels[def]){ labels[def]=(d&&d.defaultLabel)||def; }
+      // 「恢复默认」按钮：当前保存目录已是默认目录时隐藏（见 syncResetBtn）
+      syncResetBtn(s, def);
       var all=roots.slice();
       if(def && all.indexOf(def)===-1){ all.push(def); }
       // 当前保存目录若不在上述列表中（历史遗留路径），追加为合成项，保证能显示当前值。
@@ -400,7 +569,16 @@
       }
       renderDirTrigger(cur, labels[cur]||(s&&s.saveDirDisplay)||cur);
       // 选项 = 授权根目录 + 出厂默认目录（+ 当前目录兜底）；只展示根目录，不展开子目录
-      renderDirOptions(all, cur, labels);
+      // 可移除的只有「授权根目录」——出厂默认目录是应用私有目录，不允许移除。
+      var removable=roots.filter(function(p){
+        if(def && p===def) return false;   // 出厂默认目录：应用私有，不允许移除
+        // 是否可移除以飞牛的官方标志为准（应用设置里那条授权能不能删由飞牛决定）。
+        // 飞牛明确返回 isEditable=false 时不显示 ✕——点了必然失败。
+        // 只有飞牛没返回该字段的版本才回退到「非默认目录即可移除」的本地推断。
+        if(Object.prototype.hasOwnProperty.call(editable,p) && editable[p]===false) return false;
+        return true;
+      });
+      renderDirOptions(all, cur, labels, removable, unwritable);
     }).catch(function(){
       if(popup){ popup.innerHTML='<div class="dir-empty">授权目录获取失败</div>'; }
     });
@@ -433,6 +611,7 @@
   }
   // 自定义下拉的全局事件：点 popup 外收起 / ESC 收起，popup 本身阻止冒泡避免误关 settings
   document.addEventListener('DOMContentLoaded', function(){
+    maybeShowAuthTip();
     // 版本徽标：设置页标题旁展示版本号与构建时间（/api/info 的值由打包脚本在编译时注入，
     // BuildTime 即每次实际打包时刻；接口失败静默，不影响页面）
     fetch('api/info').then(function(r){ return r.json(); }).then(function(d){

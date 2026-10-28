@@ -71,6 +71,21 @@
               "size": 5256291
             }
           }
+        },
+        "1.0.6": {
+          "changelog": "1.首次安装主页增加保存目录设置引导\\n2.全平台保存目录方式调整为选择系统目录方式\\n3.主页样式优化\\n4.大目录统计与批量打包增加预算兜底",
+          "packages": {
+            "x86": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.6/Aellus-1.0.6-fnos-x64.fpk",
+              "sha256": "2726032f7f9d60bcbeaf74d5d3059be877407ed31314500436cc2eceab6e8f06",
+              "size": 5219041
+            },
+            "arm": {
+              "download_url": "https://github.com/YGQ8988/Aellus/releases/download/1.0.6/Aellus-1.0.6-fnos-arm64.fpk",
+              "sha256": "b891a2744f4aa32d77667393c9c1866d845df7ce4150798df320ed8857a81030",
+              "size": 4849782
+            }
+          }
         }
       },
       "preview_urls": [

@@ -1,20 +1,34 @@
 #!/bin/bash
 
-### This script is called before the application is uninstalled.
+### 该脚本在用户卸载应用程序前被调用。
 
-### 卸载确认页「保留应用配置」开关以环境变量 keep_config 注入本脚本
-### （field 名直传，无 wizard_ 前缀）。
-###   true（默认）→ 保留：fnOS 卸载本就保留 var 持久卷（TRIM_PKGVAR），
-###                  Aellus 配置随 var 保留，重新安装后继续生效。
-###   false / 0    → 清除 Aellus 应用配置：aellus-settings.json、devices.json、
-###                  info.log、app.pid、logs/。
-### 说明：应用此时已停止（ctl_stop=true），var 目录不在系统删除清单中，
-###       此处是清理配置唯一且正确的时机（卸载回调拿不到向导值）。
+### 卸载确认页「保留或删除应用配置」开关以环境变量注入本脚本。
+### 字段名用飞牛惯例的 wizard_delete_data（"true" = 删除数据，"false" = 保留），
+### 同时兼容本项目早期使用的 keep_config（"false" = 删除）——两者含义相反，别写错。
+###   "false" / 未设置（默认）→ 保留：fnOS 卸载本就保留应用数据目录，配置随之保留，
+###                              重新安装后继续生效。
+###   "true"               → ① 立刻删掉应用自己写的配置 / 日志 / pid；
+###                           ② 留下一个标记文件，交给 uninstall_callback 收尾。
+###
+### 为什么目录树的删除要放到回调阶段（uninstall_callback）而不是这里：
+### 飞牛的 cmd/* 脚本与 @appmeta/<App>、@appcenter/<App> 关系紧密，
+### 在「系统还没删完」的 init 阶段把这些目录删掉，后续钩子（含回调脚本自身）
+### 可能就读不到了。回调是最后一步，在那里删最安全。
+###
+### 说明：卸载向导值只在 init 阶段注入，回调阶段拿不到，故用标记文件传递；
+###       标记内容 = 当前保存目录（回调阶段 aellus-settings.json 已删除，读不到了）。
 
-KEEP="${keep_config:-}"
-if [ "$KEEP" != "false" ] && [ "$KEEP" != "0" ]; then
-  exit 0
+# 解析「是否删除应用配置」：新字段优先，旧字段兜底
+DELETE_DATA=""
+case "${wizard_delete_data:-}" in
+  true|1|True|TRUE) DELETE_DATA=1 ;;
+esac
+if [ -z "$DELETE_DATA" ]; then
+  case "${keep_config:-}" in
+    false|0|False|FALSE) DELETE_DATA=1 ;;
+  esac
 fi
+[ -n "$DELETE_DATA" ] || exit 0
 
 # 防御式校验：仅当 TRIM_PKGVAR 符合飞牛应用数据目录结构
 # （/volN/@appdata/<AppName>，如 /vol1/@appdata/Aellus）时才执行删除。
@@ -24,8 +38,27 @@ case "$VAR_DIR" in
   *) exit 0 ;;
 esac
 
-# 删除 var 目录内容：目录项本身无父目录写权限，rm -rf 整个目录会失败，
-# 故删目录内已知文件 + rmdir 清空后的空目录（失败忽略）。
-rm -rf "${VAR_DIR}/aellus-settings.json" "${VAR_DIR}/devices.json" "${VAR_DIR}/info.log" "${VAR_DIR}/app.pid" "${VAR_DIR}/logs"
-rmdir "${VAR_DIR}" 2>/dev/null
+# 先读出「当前保存目录」——它是唯一可能有用户文件的位置，任何时候都不能整目录删。
+# 优先级与运行时一致（见 cmd/main）：aellus-settings.json 的 saveDir > TRIM_DATA_SHARE_PATHS 第一项。
+SAVE_DIR=""
+if [ -f "${VAR_DIR}/aellus-settings.json" ]; then
+  SAVE_DIR=$(sed -n 's/.*"saveDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+             "${VAR_DIR}/aellus-settings.json" 2>/dev/null | head -n 1)
+fi
+if [ -z "${SAVE_DIR}" ]; then
+  SAVE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+fi
+
+# 标记：让 uninstall_callback 知道「用户选了删除配置」以及保存目录在哪。
+# 文件名固定，内容一行（保存目录，可能为空行）。
+printf '%s\n' "${SAVE_DIR}" > "${VAR_DIR}/.aellus-uninstalling" 2>/dev/null
+
+# 应用自己写的文件：配置 / 日志 / pid，以及保存目录里的上传中转目录
+# <保存目录>/.aellus-tmp（应用临时产物，不是用户文件）。
+rm -rf "${VAR_DIR}/aellus-settings.json" "${VAR_DIR}/devices.json" \
+       "${VAR_DIR}/info.log" "${VAR_DIR}/app.pid" "${VAR_DIR}/logs" 2>/dev/null
+if [ -n "${SAVE_DIR}" ]; then
+  rm -rf "${SAVE_DIR}/.aellus-tmp" 2>/dev/null
+fi
+
 exit 0

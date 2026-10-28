@@ -94,8 +94,8 @@
             (opts.desc ? '<div class="alert-dialog-desc">' + escapeHtml(opts.desc) + '</div>' : '') +
           '</div>' +
           '<div class="alert-dialog-footer">' +
-            '<button class="btn btn-outline" data-act="cancel">' + escapeHtml(opts.cancelText || '取消') + '</button>' +
-            '<button class="btn ' + (destructive ? 'btn-destructive' : 'btn-primary') + '" data-act="ok">' + escapeHtml(opts.confirmText || '确定') + '</button>' +
+            '<button class="btn-outline" data-act="cancel">' + escapeHtml(opts.cancelText || '取消') + '</button>' +
+            '<button class="' + (destructive ? 'btn-destructive' : 'btn-primary') + '" data-act="ok">' + escapeHtml(opts.confirmText || '确定') + '</button>' +
           '</div>' +
         '</div>';
       root.appendChild(overlay);
@@ -289,11 +289,8 @@
     }
   } catch (e) {}
 
-  // 暴露到全局：同时挂到 window.ui 命名空间与顶层全局，
-  // 兼容以裸名（toast() / confirmDialog()）调用的业务代码。
-  window.ui = { toast, confirmDialog, escapeHtml, lockScroll, unlockScroll, getDeviceID, $, formatSize, formatDay, formatTime,
-                PREVIEW_IMG_EXTS, PREVIEW_VID_EXTS, EXT_MIME, extOf, isPreviewImage, isPreviewVideo,
-                TS_PREFIX_RE, displayName };
+  // 暴露到全局：业务代码全部以裸名调用（toast() / confirmDialog() / formatSize() 等）。
+  // 早先还额外挂了一份 window.ui 命名空间对象，全仓库零引用，已删除。
   window.toast = toast;
   window.confirmDialog = confirmDialog;
   window.escapeHtml = escapeHtml;

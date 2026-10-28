@@ -23,10 +23,12 @@ VERSION="${1:-}"
 if [ -z "${VERSION}" ]; then
   VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 fi
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.6}"
 echo "构建版本：${VERSION}"
 # 注入版本信息：设置页展示版本号与构建时间（BuildTime 取每次实际打包时刻）
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
+# 前端内容指纹：编译时写进二进制，发布前的 embed_check.py 靠它核对源码一致性
+STATIC_HASH="$(bash tools/static_hash.sh)"
 
 # cgo 编译目标固定 macOS 11.0（兼容 macOS 11+，并保证通知框架 strong link）
 export MACOSX_DEPLOYMENT_TARGET=11.0
@@ -54,7 +56,7 @@ build_app() {
   echo ""
   echo ">> 编译 ${goarch}（本机 ${HOST_ARCH} → ${zip_name}）"
   GOOS=darwin GOARCH="${goarch}" CGO_ENABLED=1 \
-    go build -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}'" -o ".build/aellus-${goarch}" .
+    go build -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}' -X 'aellus/internal/app.BuildStaticHash=${STATIC_HASH}'" -o ".build/aellus-${goarch}" .
 
   rm -rf "${app_dir}"
   mkdir -p "${app_dir}/Contents/MacOS" "${app_dir}/Contents/Resources"

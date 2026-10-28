@@ -20,7 +20,7 @@ Aellus 是一个轻量的局域网文件互传服务。在电脑（macOS / Windo
 
 - **上传 / 读取 / 下载**：手机或 PC 浏览器一键发送文件到主机，或浏览已上传文件并下载
 - **按设备分目录**：上传时填设备名（自动记忆，下次无需重复输入），文件自动归档到保存目录下的 `<设备名>/` 子目录
-- **自动加时间戳**：文件名带精确到毫秒的时间戳，永不覆盖（下载时自动还原成原始文件名）
+- **自动加时间戳**：文件名带精确到微秒的时间戳（形如 `20260914_143022.123456_原文件名`），永不重名覆盖（下载时自动还原成原始文件名）
 - **删除保护**：删除文件、修改保存路径只对「管理入口」开放——飞牛端为门户内（经统一网关校验飞牛登录态），桌面端为运行应用的本机（容器 / 网桥 / VPN 地址不算本机）；局域网其它设备只能浏览、上传与下载
 - **图片 / 视频预览**：上传后即时预览，读取页缩略图可在线播放，全屏灯箱浏览。两页共用同一份可预览格式清单（`static/js/ui.js`），支持 `png / jpg / jpeg / jfif / gif / webp / bmp / ico / heic / heif / avif / tif / tiff / svg` 与 `mp4 / m4v / mov / webm / avi / mkv`；`.icns` 两页各自解析容器（上传页前端解、读取页服务端转 PNG），`.svg` 由读取页取回字节后以 `image/svg+xml` 建 blob 渲染（服务端对可携带脚本的类型一律不内联，防存储型 XSS）；浏览器解不了的格式自动回退为扩展名标识
 - **分享下载二维码**：读取页每个文件可弹出下载直链二维码，手机扫码即可下载该文件
@@ -57,16 +57,16 @@ https://github.com/YGQ8988/Aellus
 
 **macOS：**
 ```bash
-chmod +x Aellus-1.0.5-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
-# 或 chmod +x Aellus-1.0.5-darwin-x64  # Intel
-./Aellus-1.0.5-darwin-arm64
+chmod +x Aellus-1.0.6-darwin-arm64    # Apple Silicon（M1/M2/M3），版本号以实际为准
+# 或 chmod +x Aellus-1.0.6-darwin-x64  # Intel
+./Aellus-1.0.6-darwin-arm64
 ```
 或双击 `Aellus.app`，顶部菜单栏出现 Aellus 图标。
 
 **Linux：**
 ```bash
-chmod +x Aellus-1.0.5-linux-x64
-./Aellus-1.0.5-linux-x64
+chmod +x Aellus-1.0.6-linux-x64
+./Aellus-1.0.6-linux-x64
 ```
 
 启动成功会输出访问地址，例如（macOS / Windows 中文，Linux 默认英文）：
@@ -114,7 +114,24 @@ uci set aellus.main.port=5115 && uci commit aellus && /etc/init.d/aellus restart
 
 > 从 24.10 **sysupgrade 到 25.12 后，opkg 装的包不会被自动迁移成 apk**，需要用上面的 `apk add` 重新安装一次（配置 `uci` 与已上传的文件都在，不会丢）。24.10 系列已于 2026 年 9 月停止安全更新，建议升到 25.12。
 
+> **固件升级（sysupgrade）后配置还在吗？** 在。包里带了一份官方标准的保留清单
+> `/lib/upgrade/keep.d/aellus`，固件升级时会保留：
+>
+> | 保留路径 | 内容 |
+> |---|---|
+> | `/etc/aellus/` | 设备名映射 `devices.json` 等持久化数据（`XDG_CONFIG_HOME` 指向此处） |
+> | `/etc/config/aellus` | 你在 LuCI 里设的端口 / 保存目录 / 是否启用 |
+>
+> 之所以需要显式声明：本包刻意不把配置文件装成 conffile（否则每次升级都要比对、还可能
+> 抛 `-opkg` 副本），而 sysupgrade 默认只保留「包声明的 conffile + `/etc/sysupgrade.conf`
+> + `keep.d`」三类，上面两处都不在其中，不声明就会随固件升级丢失。
+> 注意用 `-n`（不保留配置）升级时这些依然会被清掉，那是明确的预期行为。
+>
 > ⚠️ **保存目录请指向外挂硬盘 / U 盘**（如 `/mnt/sda1/aellus`）。不要指向 `/root`、`/overlay` 等闪存路径：路由器闪存只有百来 MB 且写入寿命有限。留空时自动探测 `/mnt`、`/media` 下第一个容量 ≥64MB 的可写挂载点。
+>
+> 上面那条「保存目录在闪存上」的做法除了伤闪存，还有个副作用：升级时 sysupgrade 会把
+> `/etc/aellus/` 整个打进备份（含里面存的文件），传了一堆文件到闪存的话备份会很大、
+> 甚至挤爆内存导致升级中止。把 `save_dir` 指到 `/mnt` 下就没这个问题。
 >
 > 25.12 用 **apk**、24.10 用 **opkg**，两种包都提供（见上）。
 >
@@ -135,7 +152,7 @@ uci set aellus.main.port=5115 && uci commit aellus && /etc/init.d/aellus restart
 |------|------|---------|------|
 | macOS `.app` | `build-mac.sh` | Mac 本机（需 Xcode CLT） | arm64 / x64 独立打成 zip，已签名 |
 | 全平台 | `build-all.sh` | 任意平台 | macOS / Linux 裸二进制 + Windows `Aellus.exe`（打成 zip） |
-| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需 `fnpack` 工具 | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
+| 飞牛 fnOS `.fpk` | `build-fnos.sh` | 需自行准备 `fnpack`（放入 `buildtools/fnpack` 或加入 PATH） | 分架构直接产出 `.fpk`（不套 zip），纯后台服务、无托盘 |
 | OpenWrt `.ipk` / `.apk` | `build-openwrt.sh` | 任意平台（交叉编译） | x86_64 / arm64 / MIPS（大端 + 小端），含 LuCI 配置页 |
 
 ```bash
@@ -239,10 +256,11 @@ aellus/
 │   ├── middleware.go             # 中间件（日志/安全响应头/no-cache）
 │   ├── logx.go                   # 日志写入（含轮转与注入清洗）
 │   ├── fileout.go                # 文件输出统一出口（下载 / 缩略图的类型白名单与附件判定）
+│   ├── version.go                # 版本号 / 构建时间 / 前端内容指纹（打包脚本 ldflags 注入，/api/info 返回）
 │   ├── types.go                  # 数据结构定义
-│   ├── paging.go                 # 分页计算（总页数/偏移/页码纠正）
-│   ├── paging_test.go            # 分页单元测试
-│   └── security_test.go          # 安全回归测试（`go test ./...` 即可运行）
+│   ├── available_unix.go         # 保存目录所在卷的剩余空间探测（syscall.Statfs）
+│   ├── available_windows.go      # 同上，Windows 桩实现（拿不到剩余空间时不限制）
+│   └── paging.go                 # 分页计算（总页数/偏移/页码纠正）
 ├── internal/platform/            # 平台层（build-tag 选择编译；实现 Platform 接口）
 │   ├── platform_impl.go          # 桌面端实现（!fpk；托盘/通知/单实例/文件夹选择）
 │   ├── platform_fpks.go          # fpk 端实现（//go:build fpk；headless 桩）
@@ -266,17 +284,22 @@ aellus/
 │   └── browse.html               # 读取页
 ├── static/                       # 前端静态资源（已编译进二进制）
 │   ├── css/                      # 样式：common / components / home / upload / browse
-│   ├── js/                       # 脚本：base.js（页面 <base> 基准路径）/ ui.js（通用 UI + 设备 ID + 客户端标识头）/ upload.js / browse.js / qrcode.js
+│   ├── js/                       # 脚本：base.js（页面 <base> 基准路径）/ ui.js（通用 UI + 设备 ID + 客户端标识头）/ upload.js / browse.js / qrcode.js / trim-auth.js（飞牛授权目录 SDK 封装，ESM）
+│   │   └── vendor/               # trim-app.js（飞牛官方 @trimjs/web-app SDK）
 │   └── img/                      # 图标与图片：logo-icon.png / icon.png / favicon.svg / 打赏二维码 / QQ 群二维码
 ├── build-mac.sh                  # macOS .app 构建脚本
 ├── build-all.sh                  # 全平台构建脚本（macOS/Linux 裸二进制 + Windows exe 打成 zip）
 ├── build-fnos.sh                 # 飞牛 fnOS .fpk 构建脚本（分架构，直接产出 .fpk）
 ├── build-openwrt.sh              # OpenWrt 构建脚本（交叉编译，按官方包格式产出 ipk / apk）
-├── tools/                        # 构建辅助工具
-│   ├── fnpack                    # 飞牛应用打包工具
+├── tools/                        # 构建辅助脚本（全部提交进仓库，均为源码）
 │   ├── ipk_check.py              # 校验 ipk 能否被 opkg 解包（有无 pax 头 / AppleDouble）
 │   ├── mkapk.py                  # 打包 apk（25.12+，apk-tools v2：控制段 + 数据段两个 gzip 流）
-│   └── apk_check.py              # 校验 apk 结构（分段 / .PKGINFO / datahash / 坏成员）
+│   ├── apk_check.py              # 校验 apk 结构（分段 / .PKGINFO / datahash / 坏成员）
+│   ├── static_hash.sh            # 计算 templates/ + static/ 全树内容指纹（构建时经 ldflags 注入二进制）
+│   ├── mips_fpu_check.py         # 校验 MIPS 二进制不含硬浮点指令（防 OpenWrt 上 SIGILL crash loop）
+│   └── embed_check.py            # 发布体检：模板引用完整性 + 二进制里的静态资源清单与内容指纹是否与当前源码一致
+├── buildtools/                   # 需自行下载的构建二进制（整目录被 .gitignore 忽略）
+│   └── fnpack                    # 飞牛打包工具，仅 build-fnos.sh 使用
 ├── changeLog.md                  # 版本更新记录
 ├── fnpack.json                   # FnDepot 第三方应用源描述文件
 ├── aellus.icns                   # macOS 应用图标
@@ -310,7 +333,9 @@ aellus/
 
 > 目录内还有一个隐藏的中转目录 `.aellus-tmp`（上传与打包的临时文件；正常使用可忽略，也可整目录删除）。
 
-飞牛 NAS 端保存目录由飞牛「应用设置 → 授权目录」注入，落在授权目录树内。
+飞牛 NAS 端默认落在应用声明的共享目录（`fnos/config/resource` 里的 `data-share`，路径由 `TRIM_DATA_SHARE_PATHS` 注入），也可在首页设置里改到任意**已授权目录**，落盘范围受授权目录树限制（越界拒绝）。
+
+> 卸载时选「删除应用配置」只会清掉 Aellus 自己的配置与日志（`TRIM_PKGVAR`），**已上传的文件会保留**。飞牛会在系统里留下 `@appconf/Aellus` 等几个空目录，那是系统给应用建的脚手架、应用无权删除，重装会复用——详见「常见问题」。
 
 ---
 
@@ -322,18 +347,18 @@ aellus/
 
 | 维度 | 非飞牛（桌面端） | 飞牛（fnOS） |
 |------|----------------|-------------|
-| 默认目录 | 桌面 `~/Desktop/file-drops` | 飞牛「应用设置 → 授权目录」注入 |
-| 修改方式 | 首页设置：输入绝对路径 / 系统目录选择器 | 首页设置：从已授权目录下拉选择 |
+| 默认目录 | 桌面 `~/Desktop/file-drops` | 应用声明的共享目录（`data-share`，由 `TRIM_DATA_SHARE_PATHS` 注入） |
+| 修改方式 | 首页设置：点「选择目录」调起系统原生文件夹选择器（路径框只读，不支持手输） | 首页设置：从已授权目录下拉选择；也可点「＋添加授权目录」调官方选择器授权新目录 |
 | 可修改来源 | 仅本机（`127.0.0.1` 或本机物理网卡地址；容器 / 网桥 / VPN 地址不算本机） | 飞牛门户内（经统一网关，先校验飞牛登录态） |
 | 边界限制 | 无（用户自主决定落盘位置） | 强制落在授权目录树内，越界返回 403 |
 | 持久化 | 写入 `aellus-settings.json`，重启生效 | 写入 `TRIM_PKGVAR/aellus-settings.json`，重启生效 |
 
-- **非飞牛（桌面端）**：默认保存在桌面 `file-drops/`，可在首页「设置 → 文件保存路径」改成任意绝对路径或用系统目录选择器选取；修改仅本机可操作，持久化到系统配置目录的 `aellus-settings.json`，重启后仍生效。
-- **飞牛（fnOS）**：保存目录完全由飞牛授权接管——管理员在飞牛「应用设置 → 授权目录」中授权目录，应用通过官方 `trim.file.getSharedAccessibleFolders` 接口（环境变量兜底合并）读取授权列表，前端以下拉方式选择并展示语义化路径（`/vol1/...` 自动转为「存储空间…」），且强制落盘目录位于授权目录树内（越界拒绝）。修改同样只能在飞牛门户内操作，持久化到 `TRIM_PKGVAR` 持久卷、重启后仍生效；若授权被移除，重启时回退到飞牛注入的默认目录。
+- **非飞牛（桌面端）**：默认保存在桌面 `file-drops/`，在首页「设置 → 文件保存路径」点「选择目录」调起系统原生文件夹选择器更换（路径框是只读展示，**不支持手输**）；修改仅本机可操作，持久化到系统配置目录的 `aellus-settings.json`，重启后仍生效。
+- **飞牛（fnOS）**：保存目录受飞牛授权目录约束——默认是应用声明的共享目录（`fnos/config/resource` 的 `data-share`），其余可选位置来自管理员授权。应用合并官方 `trim.file.getSharedAccessibleFolders` 接口（失败时由环境变量兜底）得到授权列表，前端以下拉方式选择并展示语义化路径（`/vol1/...` 自动转为「存储空间…」），且强制落盘目录位于授权目录树内（越界拒绝）。**授权目录本身可在应用内增删**：设置面板的「＋添加授权目录」调官方选择器（经 `@trimjs/web-app` SDK）申请新目录，下拉项右侧的 ✕ 调 `trim.file.delSharedAccessibleFolder` 移除授权（被移除的若正是当前保存目录，会自动回退到默认目录）。修改只能在飞牛门户内操作，持久化到 `TRIM_PKGVAR` 持久卷、重启后仍生效。
 
 ### 数据持久化
 
-桌面端用户数据统一存放在**系统配置目录**下，飞牛端存放在飞牛私有运行时数据目录（`TRIM_PKGVAR`，位于 `/vol` 持久卷），删除 / 重装程序不丢失：
+桌面端用户数据统一存放在**系统配置目录**下，飞牛端存放在飞牛私有运行时数据目录（`TRIM_PKGVAR`，位于 `/vol` 持久卷）——桌面端删除 / 重装程序不会丢；飞牛端重装、或卸载时选「保留应用配置」也不会丢（选「删除应用配置」则按上表清理）：
 
 | 平台 | 配置目录 |
 |------|---------|
@@ -344,7 +369,7 @@ aellus/
 
 | 文件 / 目录 | 作用 |
 |------------|------|
-| `aellus-settings.json` | 保存目录配置，重启自动生效 |
+| `aellus-settings.json` | 保存目录配置（重启自动生效）+ 首页首次引导是否已读的标记 |
 | `devices.json` | 设备名映射（记住每个设备填过的名字） |
 | `logs/` | 访问日志 `access.log` + 操作日志 `operation.log` |
 
@@ -357,7 +382,7 @@ aellus/
 | `AELLUS_LANG` | 控制台输出语言：`en` / `zh` | Linux=`en`，其余=`zh` |
 | `AELLUS_HEADLESS` | `1` 时跳过托盘 GUI，仅常驻 HTTP（CI / 调试） | 未设置 |
 | `AELLUS_STRICT_PORT` | `1` 时端口被占用直接退出（不自动 +1），飞牛端由启动脚本注入 | 未设置 |
-| `AELLUS_LOGS_DIR` | 日志目录（飞牛启动脚本注入，默认 `TRIM_PKGVAR/logs`） | 平台默认 |
+| `AELLUS_LOGS_DIR` | 日志目录（仅 OpenWrt 的 init 脚本注入，用于把日志指到 tmpfs；飞牛端固定 `TRIM_PKGVAR/logs`） | 平台默认 |
 
 > 另有一组由飞牛启动脚本注入、无需手工设置的变量：`TRIM_*`（打包 / 数据 / 共享目录）、`FNNAS_GATEWAY_SOCKET` 与 `FNNAS_GATEWAY_PREFIX`（统一网关 Socket 与门户路径前缀）。
 
@@ -431,8 +456,20 @@ const (
   curl -s -X POST "$NAS/api/set-savedir" -H "$H" -H "Content-Type: application/json" -d '{"dir":"/vol1/1000/photo"}'
   ```
 
-- 只读接口（`/api/dirs`、`/api/files`、`/api/thumb`、`/api/download`、`/api/settings`、`/api/addr`）不需要该头；`/api/authpaths`、`/api/listdir` 同样不需要，但要求管理权限（无权限返回 `403 无权限`）
-- **上传**：局域网内任何设备都能调；**删除 / 改保存目录**还需要「管理入口」——桌面端在本机执行，飞牛端只能在门户内（脚本直连 `IP:5115` 会返回 `403 无删除权限`，可直接在 NAS 上操作文件系统）
+- 只读接口（`/api/dirs`、`/api/files`、`/api/thumb`、`/api/download`、`/api/settings`、`/api/addr`、`/api/info`）不需要该头；`/api/authpaths`、`/api/listdir` 同样不需要，但要求管理权限（无权限返回 `403 无权限`）。`/api/info` 任何设备都能读，只是版本号与构建时间仅对管理者返回，其余情况为空
+- **上传**：局域网内任何设备都能调；**删除 / 改保存目录 / 增减授权目录 / 标记首页引导已读（`/api/tip-seen`）**还需要「管理入口」——桌面端在本机执行，飞牛端只能在门户内（脚本直连 `IP:5115` 会返回 `403 无删除权限`，可直接在 NAS 上操作文件系统）
+
+**Q：卸载 Aellus 后，`/vol1/@appconf/Aellus` 这类空目录还在？**
+- 这不是 Aellus 的残留垃圾，而是 **fnOS 自身的行为**：`@appcenter` / `@appconf` / `@appdata` / `@apphome` / `@appmeta` / `@apptemp` 是系统给每个应用建的目录树，卸载时只清理内容、不删除目录本身；且 `<AppName>` 这一层的父目录归 `root`，**应用进程无权删除**（无论卸载前还是卸载后）。
+- 上传的文件不受影响（默认落在 `@appshare/aellus/…`，属于应用的共享目录）。残留的空目录不占空间，重新安装时会被系统复用，放着不用管即可。
+- 确认不再安装 Aellus，并确认这些目录里没有需要保留的文件后，可手动清理：
+
+  ```bash
+  sudo find /vol1/@app*/Aellus -type f   # 先看一眼还有没有文件
+  sudo rm -rf /vol1/@app*/Aellus         # 确认后再删
+  ```
+
+  Aellus **仍在安装 / 运行状态时不要执行**（`@appmeta` / `@appconf` 是系统在用的）。
 
 ---
 
@@ -468,7 +505,7 @@ const (
 <table>
   <tr>
     <td align="center">
-      <img src="static/img/qr-dev-ygq.png" width="180" alt="开发者 染洛凉 支付宝二维码"><br>
+      <img src="static/img/qr-dev-ygq.jpg" width="180" alt="开发者 染洛凉 支付宝二维码"><br>
       <sub>开发者 染洛凉</sub>
     </td>
     <td align="center">

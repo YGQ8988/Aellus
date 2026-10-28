@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // === 缩略图 ===
@@ -96,16 +97,42 @@ func resizeBox(src image.Image, dw, dh int) *image.RGBA {
 //   - maxThumbHeight ：输出高度上限，超过则不做缩略、直接返回原文件。
 //
 // 配合 handleThumb 里「只缩小、不放大」的规则，输出像素数一定不超过源图像素数
-// （源图已由 maxPixels 限制在 4000 万像素内），内存因此有界。
+// （源图已由 maxPixels 限制在 1600 万像素内；icns 分支另有 icnsMaxPixels = 400 万），
+// 内存因此有界。
 const (
 	maxThumbWidth  = 800
 	maxThumbHeight = 8000
 )
 
+// thumbSem 限制缩略图解码的并发数。
+// /api/thumb 是免登录接口，而一次解码的内存开销可达数十 MB（见 maxPixels 注释），
+// 不限并发时几条并发就能把进程内存打满（OpenWrt 上 GOMEMLIMIT 仅 96MiB，会直接 OOM
+// 并被 procd respawn 拉进重启循环）。这里只允许 2 路同时解码，其余排队等一小会儿。
+var thumbSem = make(chan struct{}, 2)
+
+// thumbWaitTimeout 是拿不到解码槽位时的等待上限，超过才返回 503。
+//
+// 以前是「拿不到槽位就立刻 503」，而浏览页一次会并发拉几十张缩略图（每张 240px）、
+// 槽位只有 2 个，结果绝大多数请求直接失败、列表页一片裂图——用户看到的现象是
+// 「有的图片预览失败」，实际上与文件本身能不能解码无关，纯粹是限流。
+// 改成排队等待后，并发请求会自然平滑成串行解码；仍等不到槽位（真被压满）才 503，
+// 前端此时还会自动重试（见 static/js/browse.js 的 onThumbError）。
+const thumbWaitTimeout = 5 * time.Second
+
 // handleThumb GET /api/thumb?dir=xxx&file=xxx[&w=240]
 // 列表缩略图：仅对 jpeg/png/gif 做服务端缩放（标准库），其它格式原样返回原文件。
 // 用 Last-Modified + 304 缓存，文件不变时重复访问秒开、零流量。
 func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
+	// 拿槽位：排队等 thumbWaitTimeout，客户端断开则立即放弃（不白占 CPU）
+	select {
+	case thumbSem <- struct{}{}:
+		defer func() { <-thumbSem }()
+	case <-time.After(thumbWaitTimeout):
+		http.Error(w, "缩略图服务繁忙，请稍后重试", http.StatusServiceUnavailable)
+		return
+	case <-r.Context().Done():
+		return
+	}
 	dir := r.URL.Query().Get("dir")
 	file := r.URL.Query().Get("file")
 	dirAbs, err := a.resolveDir(dir)
@@ -151,7 +178,19 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ext := strings.ToLower(filepath.Ext(full))
-	const maxPixels = 40_000_000 // 4000 万像素，约 160MB RGBA：超大图回退原文件，避免全图解码 OOM
+	// 像素预算：既受绝对上限约束，也按源文件大小动态收紧。
+	//
+	// 只看绝对上限不够：攻击者可以先上传一张「高度压缩的大画布 PNG」
+	// （40000×1000 纯色，压缩后不到 1MB），反复请求缩略图 —— 像素数刚好卡在上限内，
+	// 但 image.Decode 会按 像素数×4B 分配整幅位图（约 64MB），加逐像素缩放与重编码，
+	// 单请求峰值上百 MB、数秒 CPU；而本接口免登录，曾无并发限制，几条并发即可打满内存。
+	//
+	// 动态收紧的依据是「每像素字节数」：正常照片约 0.25B/px（4000×3000 的 JPEG 约 3~5MB），
+	// 高度压缩的纯色画布约 0.025B/px。系数取 8 可区分二者：前者 3MB×8=24M 预算够用，
+	// 后者 1MB×8=8M 远小于其 4000 万像素，直接回退原文件、不进入解码。
+	const maxPixels = 16_000_000 // 1600 万像素（约 64MB RGBA）：够覆盖 4000×3000 照片
+	// thumbPixelFloor 预算下限：文件很小时仍允许其正常解码，避免小图被误伤回退。
+	const thumbPixelFloor = 2_000_000 // 200 万像素（约 8MB 内存）
 	// icns 专用像素预算：远小于通用图片。icns 分支要先整幅解码、再做两遍逐像素
 	// 扫描（透明边 / 纯色背景）、再整幅 PNG 重编码，最后还要再解码一次——
 	// 4000 万像素下单请求峰值可达数百 MB。缩略图目标宽度仅 ≤800，400 万像素足够。
@@ -219,7 +258,18 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 		serveOriginal()
 		return
 	}
-	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > maxPixels {
+	// 像素预算 = min(绝对上限, max(文件大小 × 8, 下限))
+	pixelBudget := int64(maxPixels)
+	if info.Size() > 0 {
+		bySize := info.Size() * 8
+		if bySize < thumbPixelFloor {
+			bySize = thumbPixelFloor
+		}
+		if bySize < pixelBudget {
+			pixelBudget = bySize
+		}
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > pixelBudget {
 		serveOriginal()
 		return
 	}

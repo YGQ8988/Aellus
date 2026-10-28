@@ -15,8 +15,8 @@
 #     但包内容、维护脚本的意图一致（分别放在 control/ 与 apk/ 两个目录）。
 #   - 构建脚本与其它构建脚本共用 .build/ 中间目录（各自结束时会清理），
 #     因此 build-all.sh / build-mac.sh / build-fnos.sh / 本脚本必须串行执行。
-#   - 小版本号自动递增：ipk 的 Version 是 <主版本>-r<N>，每构建一次 N + 1（如这次 1.0.5-r1，
-#     下一次就是 1.0.5-r2，路由器才能按 opkg 的版本比较把它识别为更新版本）。N 记在
+#   - 小版本号自动递增：ipk 的 Version 是 <主版本>-r<N>，每构建一次 N + 1（如这次 1.0.6-r1，
+#     下一次就是 1.0.6-r2，路由器才能按 opkg 的版本比较把它识别为更新版本）。N 记在
 #     openwrt/aellus/Makefile 的 PKG_RELEASE 里，构建成功后回写；主版本号变化时自动重置为 1。
 #   - ipk 格式按 OpenWrt 官方约定：debian-binary + control.tar.gz + data.tar.gz 打包成一个 tar.gz。
 #     postinst / prerm 用的是 buildroot 的默认实现（default_postinst / default_prerm），
@@ -61,7 +61,7 @@ VERSION="${1:-}"
 if [ -z "${VERSION}" ]; then
   VERSION="$(grep -m1 '^version' fnos/manifest 2>/dev/null | awk '{print $3}')"
 fi
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.6}"
 
 # —— 小版本号（PKG_RELEASE）——
 # OpenWrt 包版本写成 <主版本>-r<PKG_RELEASE>（control 的 Version 字段），N 就是小版本号。
@@ -70,7 +70,7 @@ VERSION="${VERSION:-1.0.1}"
 #
 # 规则：每次构建自动 +1；主版本号（默认取 fnos/manifest 的 version）变化时自动重置为 1。
 # 手动指定（不参与递增）：
-#   bash build-openwrt.sh 1.0.5 7                  # 直接用 -r7
+#   bash build-openwrt.sh 1.0.6 7                  # 直接用 -r7
 #   AELLUS_RELEASE=1 bash build-openwrt.sh         # 强制回到 -r1
 # 回写放在构建全部成功之后（见文末），中途失败不会白白吃掉一个版本号。
 PKG_MK="${PKG_DIR}/Makefile"
@@ -94,6 +94,8 @@ else
 fi
 
 BUILD_TIME="$(date '+%Y-%m-%d %H:%M:%S')"
+# 前端内容指纹：编译时写进二进制，发布前的 embed_check.py 靠它核对源码一致性
+STATIC_HASH="$(bash tools/static_hash.sh)"
 # 产物文件名带上小版本号（-r<N>）：否则 r9 / r10 的文件名完全一样，传到路由器后
 # 分不清新旧，很容易装上旧包还以为是新包没修好。
 FULL="${VERSION}-r${RELEASE}"
@@ -122,16 +124,34 @@ fi
 #   arm_cortex-a9|arm|GOARM=7
 #   i386_pentium4|386|GO386=sse2
 #   riscv64|riscv64|
+#
+# —— MIPS 一律 GOMIPS=softfloat，不要改成 hardfloat ——
+# Go 的 mips/mipsle 默认是 hardfloat（真正去执行 FPU 指令），而 OpenWrt 这两类
+# 目标（mips_24kc：ath79/ar71xx 等；mipsel_24kc：ramips/mt7621 等）的 CPU 都没有
+# FPU，OpenWrt 内核也默认不编译浮点模拟器（官方 bug FS#1929「ramips mt7621 target
+# does not enable FPU emulation by default」）。硬浮点二进制一旦跑到浮点指令就会
+# SIGILL（Illegal instruction），进程秒退 —— procd 只会报
+#     Instance aellus::aellus s in a crash loop 6 crashes, 0 seconds since last crash
+# 现象是「包装得上、服务起不来」，而且日志里没有任何业务输出，非常难查。
+# softfloat 让 Go 用整数指令模拟浮点，在有 FPU 的机器上同样能跑，故无需按机型分叉。
+# 发布前有 tools/mips_fpu_check.py 兜底，改回 hardfloat 会被拦下。
 TARGETS="
 x86_64|amd64|GOAMD64=v1
 aarch64_cortex-a53|arm64|
 aarch64_generic|arm64|
-mips_24kc|mips|GOMIPS=hardfloat
-mipsel_24kc|mipsle|GOMIPS=hardfloat
+mips_24kc|mips|GOMIPS=softfloat
+mipsel_24kc|mipsle|GOMIPS=softfloat
 "
 
 # —— 1) 交叉编译（同一 GOARCH 只编译一次，多个架构名复用同一份二进制）——
-echo ">> [1/5] 交叉编译 Go 二进制"
+# 必须先清掉上一次留下来的二进制：下面的 `同一 GOARCH 已编译过` 判断只看文件在不在，
+# 而 .build 并不总能删干净（删的时候会被「批量删除确认」拦下、或者上一次构建被中断），
+# 一旦留下旧文件，本次就会直接复用它 —— 现象是版本号涨到了 r17，包里装的却还是
+# 改代码之前那份旧程序（连 go:embed 的静态资源列表都还是旧的），装到路由器上当然是
+# 「明明修了却没生效」。这里每次开局强制重编译，宁可多花一分钟，也不发错包。
+rm -rf "${BUILD_TMP}/bin" || true
+mkdir -p "${BUILD_TMP}/bin"
+echo ">> [1/5] 交叉编译 Go 二进制（先清空上次残留）"
 while IFS='|' read -r arch goarch govars; do
   [ -z "$arch" ] && continue
   case "$arch" in \#*) continue ;; esac
@@ -140,11 +160,30 @@ while IFS='|' read -r arch goarch govars; do
   echo "   ${goarch} ${govars}"
   # 纯静态：CGO_ENABLED=0，不依赖路由器的 libc；-s -w 去掉符号表，减小体积
   env CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" ${govars} \
-    go build -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}'" \
+    go build -trimpath -ldflags="-s -w -X 'aellus/internal/app.Version=${VERSION}' -X 'aellus/internal/app.BuildTime=${BUILD_TIME}' -X 'aellus/internal/app.BuildStaticHash=${STATIC_HASH}'" \
     -o "$BIN" .
 done <<EOF
 ${TARGETS}
 EOF
+
+# 编译完立刻体检一次：确认这批二进制是用【当前源码】编出来的，而不是复用了旧产物。
+# 光看版本号递增是看不出问题的 —— 包照样能装，只是里面装的还是旧程序，
+# 表现就是「改了没生效」。详见 tools/embed_check.py 头部注释。
+if command -v python3 >/dev/null 2>&1; then
+  python3 tools/embed_check.py "${BUILD_TMP}"/bin/aellus-* || {
+    echo "[错误] 二进制与当前源码不一致（疑似复用了旧编译产物），已中止"; exit 1; }
+else
+  echo "   [警告] 未找到 python3，跳过「源码与二进制一致性」校验"
+fi
+
+# 再体检一次：MIPS 二进制不许带硬浮点指令。
+# 硬浮点在无 FPU 的 MIPS 路由器（mips_24kc / mipsel_24kc 全覆盖）上一跑就 SIGILL，
+# 而它只表现为 procd 的 "crash loop"，主程序自己的日志一行都没有，极难定位。
+# 详见 tools/mips_fpu_check.py 头部注释与 build-openwrt.sh TARGETS 处的说明。
+if command -v python3 >/dev/null 2>&1; then
+  python3 tools/mips_fpu_check.py "${BUILD_TMP}"/bin/aellus-mips "${BUILD_TMP}"/bin/aellus-mipsle || {
+    echo "[错误] MIPS 二进制含硬浮点指令（应为 GOMIPS=softfloat），已中止"; exit 1; }
+fi
 
 # —— 2) 组装每个架构的包内容 ——
 echo ">> [2/5] 组装包内容"
@@ -160,6 +199,7 @@ while IFS='|' read -r arch goarch govars; do
            "$ROOT/usr/share/aellus" \
            "$ROOT/www/luci-static/resources/view/aellus" \
            "$ROOT/usr/share/luci/menu.d" "$ROOT/usr/share/rpcd/acl.d" \
+           "$ROOT/lib/upgrade/keep.d" \
            "$CTRL"
 
   # 主程序与服务脚本：0755
@@ -178,6 +218,16 @@ while IFS='|' read -r arch goarch govars; do
                   "$ROOT/usr/share/luci/menu.d/luci-app-aellus.json"
   install -m 0644 "$PKG_DIR/files/usr/share/rpcd/acl.d/luci-app-aellus.json" \
                   "$ROOT/usr/share/rpcd/acl.d/luci-app-aellus.json"
+  # sysupgrade 保留清单：告诉固件升级流程「这两处要留着」。
+  # 为什么非加不可：本包刻意不把 /etc/config/aellus 装成 conffile（否则每次升级都要
+  # 比对，见上面模板的注释），而 sysupgrade 默认只保留「包声明过的 conffile +
+  # /etc/sysupgrade.conf + keep.d」这三类。这两份数据都不在其中，固件一升级就会丢：
+  #   /etc/aellus/      XDG_CONFIG_HOME，设备名映射 devices.json 等持久化数据
+  #                     （init.d 注入 XDG_CONFIG_HOME=/etc/aellus，程序不写用户目录）
+  #   /etc/config/aellus  用户在 LuCI 里设的端口 / 保存目录 / 是否启用
+  # 这是 OpenWrt 官方给 ipk 维护者的标准做法（见 docs: sysupgrade → keep.d）。
+  install -m 0644 "$PKG_DIR/files/lib/upgrade/keep.d/aellus" \
+                  "$ROOT/lib/upgrade/keep.d/aellus"
 
   # 维护脚本（control.tar.gz 内，不进文件系统）
   install -m 0755 "$PKG_DIR/control/postinst" "$CTRL/postinst"
@@ -251,12 +301,21 @@ while IFS='|' read -r arch goarch govars; do
   case "$arch" in \#*) continue ;; esac
   STAGE="${BUILD_TMP}/${arch}"
   OUT="dist/Aellus-${FULL}-openwrt-${arch}.ipk"
-  # 不用 rm -f：后面的重定向会直接截断重写；少一次删除就少一处可能被
-  # 「批量删除确认」策略拦停的地方（那样的拦截会把构建流程整个打断）。
-  tar_archive "${STAGE}/control" "${STAGE}/control.tar.gz"
-  tar_archive "${STAGE}/root"    "${STAGE}/data.tar.gz"
+  # 注意：直接让 tar 读磁盘权限，在「不保留 Unix 权限位」的文件系统（外接 exFAT /
+  # FAT 卷、部分网络挂载）上会把文件打成 0700，装到路由器后 uhttpd 以非 root 用户
+  # 读不了 settings.js → LuCI 设置页加载该 JS 报 HTTP 403。故改用 pack_root.py
+  # 强制权限（目录 0755、脚本与二进制 0755、其余 0644），不依赖构建盘的文件系统。
+  python3 tools/pack_root.py --root "${STAGE}/control" --out "${STAGE}/control.tar.gz" \
+    || { echo "[错误] control.tar.gz 打包失败：${arch}"; exit 1; }
+  python3 tools/pack_root.py --root "${STAGE}/root"    --out "${STAGE}/data.tar.gz" \
+    || { echo "[错误] data.tar.gz 打包失败：${arch}"; exit 1; }
   echo "2.0" > "${STAGE}/debian-binary"
-  ( cd "$STAGE" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - ./debian-binary ./control.tar.gz ./data.tar.gz ) | gzip -n -9 > "$OUT"
+  # 外层 ipk 归档同样走强制权限，避免 .tar.gz / debian-binary 在 exFAT 上变 0700
+  mkdir -p "${STAGE}/bundle"
+  cp "${STAGE}/debian-binary" "${STAGE}/control.tar.gz" "${STAGE}/data.tar.gz" "${STAGE}/bundle/"
+  python3 tools/pack_root.py --root "${STAGE}/bundle" --out "${STAGE}/ipk.tar.gz" \
+    || { echo "[错误] ipk 外层归档失败：${arch}"; exit 1; }
+  mv "${STAGE}/ipk.tar.gz" "$OUT"
   echo "   ${OUT}"
   # 本架构用完即清理（还要打 apk 的话留给 apk 那一步）：整个 .build 累积起来上百个
   # 文件，留到最后一次性删的话，在开了「批量删除确认」的终端里会被拦下，
