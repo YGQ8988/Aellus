@@ -68,6 +68,35 @@ const callServiceList = rpc.declare({
 	params: [ 'name', 'verbose' ]
 });
 
+// 网络接口清单：经 rpcd 调 ubus 的 network.interface dump 查询
+// （对应 ACL 里的 read.ubus.network.interface = ["dump"]），用来取出路由器
+// 真正的 LAN 口 IPv4——访问地址应当用「局域网设备能连到的那个 IP」，而不是
+// 「打开本 LuCI 页面时用的主机名」：当用户从 WAN / 公网 / DDNS 进入管理页时，
+// window.location.hostname 会是 WAN 地址，局域网里的手机 / 电脑反而连不上。
+const callNetDump = rpc.declare({
+	object: 'network.interface',
+	method: 'dump'
+});
+
+// 从 network.interface dump 的结果里挑出「局域网访问地址」用的 IPv4：
+// 优先 lan 接口；否则挑第一个 up、非 loopback / wan 的私网口；都没有返回 null。
+function pickLanIP(dump) {
+	try {
+		let ifaces = dump && dump.interface ? dump.interface : {};
+		if (ifaces.lan && ifaces.lan['ipv4-address'] && ifaces.lan['ipv4-address'].length) {
+			return ifaces.lan['ipv4-address'][0].address;
+		}
+		for (let k in ifaces) {
+			let i = ifaces[k];
+			if (!i.up) continue;
+			if (/^(loopback|wan|wan6|wan_|wan6_)/.test(k)) continue;
+			let addrs = i['ipv4-address'];
+			if (addrs && addrs.length) return addrs[0].address;
+		}
+	} catch (e) { /* 忽略：拿不到就用回退地址 */ }
+	return null;
+}
+
 // serviceRunning 判断 procd 里是否已有在运行的实例。
 // 查不到（服务从未启动 / rpcd 未授权）时按「未运行」处理，不影响配置功能。
 function serviceRunning(data) {
@@ -86,7 +115,8 @@ return view.extend({
 	load: function () {
 		return Promise.all([
 			uci.load('aellus'),
-			callServiceList('aellus', true).catch(function () { return null; })
+			callServiceList('aellus', true).catch(function () { return null; }),
+			callNetDump().catch(function () { return null; })
 		]);
 	},
 
@@ -94,8 +124,11 @@ return view.extend({
 		let m, s, o;
 		let running = serviceRunning(data[1]);
 		let port = uci.get('aellus', 'main', 'port') || '5115';
-		// 访问地址：用当前 LuCI 页面所在的主机名（即路由器 LAN 地址）拼端口
-		let url = 'http://' + window.location.hostname + ':' + port;
+		// 访问地址：优先用路由器 LAN 口 IP（局域网设备能直连的那个），
+		// 取不到再回退到「打开本 LuCI 页面时用的主机名」。
+		let lanIP = pickLanIP(data[2]);
+		let host = lanIP || window.location.hostname;
+		let url = 'http://' + host + ':' + port;
 
 		m = new form.Map('aellus', _('Aellus局域网传输'),
 			_('局域网文件互传：手机 / 电脑在同一局域网内用浏览器访问路由器端口，即可上传、浏览、下载文件。' +

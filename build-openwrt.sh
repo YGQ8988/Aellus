@@ -301,12 +301,21 @@ while IFS='|' read -r arch goarch govars; do
   case "$arch" in \#*) continue ;; esac
   STAGE="${BUILD_TMP}/${arch}"
   OUT="dist/Aellus-${FULL}-openwrt-${arch}.ipk"
-  # 不用 rm -f：后面的重定向会直接截断重写；少一次删除就少一处可能被
-  # 「批量删除确认」策略拦停的地方（那样的拦截会把构建流程整个打断）。
-  tar_archive "${STAGE}/control" "${STAGE}/control.tar.gz"
-  tar_archive "${STAGE}/root"    "${STAGE}/data.tar.gz"
+  # 注意：直接让 tar 读磁盘权限，在「不保留 Unix 权限位」的文件系统（外接 exFAT /
+  # FAT 卷、部分网络挂载）上会把文件打成 0700，装到路由器后 uhttpd 以非 root 用户
+  # 读不了 settings.js → LuCI 设置页加载该 JS 报 HTTP 403。故改用 pack_root.py
+  # 强制权限（目录 0755、脚本与二进制 0755、其余 0644），不依赖构建盘的文件系统。
+  python3 tools/pack_root.py --root "${STAGE}/control" --out "${STAGE}/control.tar.gz" \
+    || { echo "[错误] control.tar.gz 打包失败：${arch}"; exit 1; }
+  python3 tools/pack_root.py --root "${STAGE}/root"    --out "${STAGE}/data.tar.gz" \
+    || { echo "[错误] data.tar.gz 打包失败：${arch}"; exit 1; }
   echo "2.0" > "${STAGE}/debian-binary"
-  ( cd "$STAGE" && tar ${TAR_FMT} ${OWNER_ARGS} -cf - ./debian-binary ./control.tar.gz ./data.tar.gz ) | gzip -n -9 > "$OUT"
+  # 外层 ipk 归档同样走强制权限，避免 .tar.gz / debian-binary 在 exFAT 上变 0700
+  mkdir -p "${STAGE}/bundle"
+  cp "${STAGE}/debian-binary" "${STAGE}/control.tar.gz" "${STAGE}/data.tar.gz" "${STAGE}/bundle/"
+  python3 tools/pack_root.py --root "${STAGE}/bundle" --out "${STAGE}/ipk.tar.gz" \
+    || { echo "[错误] ipk 外层归档失败：${arch}"; exit 1; }
+  mv "${STAGE}/ipk.tar.gz" "$OUT"
   echo "   ${OUT}"
   # 本架构用完即清理（还要打 apk 的话留给 apk 那一步）：整个 .build 累积起来上百个
   # 文件，留到最后一次性删的话，在开了「批量删除确认」的终端里会被拦下，

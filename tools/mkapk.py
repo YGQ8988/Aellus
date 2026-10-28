@@ -53,6 +53,23 @@ import time
 CHECKSUM_PAX_KEY = "APK-TOOLS.checksum.SHA1"
 
 
+# 需要 0755 的维护脚本基名（出现在 control/ 下时按目录前缀已覆盖，这里兜底）。
+_APK_EXEC_NAMES = {
+    "postinst", "preinst", "postrm", "prerm",
+    "post-upgrade", "pre-upgrade", "pre-deinstall", "post-deinstall",
+}
+
+
+def apk_file_mode(rel: str) -> int:
+    """普通文件在包里应使用的权限位（不读磁盘，规避 exFAT 等不保留权限位的文件系统）。"""
+    base = rel.rsplit("/", 1)[-1]
+    if rel.startswith(("etc/init.d/", "usr/bin/", "etc/uci-defaults/", "control/")):
+        return 0o755
+    if base in _APK_EXEC_NAMES or rel.endswith(".sh"):
+        return 0o755
+    return 0o644
+
+
 def die(msg: str) -> "None":
     sys.stderr.write("[错误] %s\n" % msg)
     sys.exit(1)
@@ -93,6 +110,12 @@ def make_tarinfo(tar, abs_path: str, arcname: str, with_checksums: bool, mtime: 
     ti.gid = 0
     ti.uname = "root"
     ti.gname = "root"
+    # 权限位强制给定（不读磁盘）：在 exFAT / FAT / 网络挂载等不保留 Unix 权限位的
+    # 文件系统上，install -m 与 chmod 都是空操作，文件会落到卷的默认权限（常 0700）。
+    # 若把 0700 打进包，装到路由器后 uhttpd（非 root）读不了 settings.js → 设置页 403。
+    # 目录成员由 build_data_tar 单独写 0755；这里只处理普通文件。
+    if ti.isreg():
+        ti.mode = apk_file_mode(arcname)
     # mtime 统一成同一个整数：既保证可复现构建，也避免 tarfile 因为「亚秒级时间戳」
     # 往 pax 扩展头里额外塞一个 mtime 键（那是噪音，apk 不认）
     ti.mtime = mtime

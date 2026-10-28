@@ -4,7 +4,8 @@
 		"read": {
 			"uci": [ "aellus" ],
 			"ubus": {
-				"service": [ "list" ]
+				"service": [ "list" ],
+				"network.interface": [ "dump" ]
 			}
 		},
 		"write": {
