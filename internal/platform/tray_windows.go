@@ -10,9 +10,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
+	"aellus/internal/qrpop"
 )
 
 //go:embed favicon.ico
@@ -39,6 +41,7 @@ var (
 	procCreateIconFromRes   = user32.NewProc("CreateIconFromResourceEx")
 	procGetCursorPos        = user32.NewProc("GetCursorPos")
 	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	procPostMessage         = user32.NewProc("PostMessageW")
 	procLoadIcon            = user32.NewProc("LoadIconW")
 	procGetModuleFileName   = kernel32.NewProc("GetModuleFileNameW")
 	shellNotifyIcon         = shell32.NewProc("Shell_NotifyIconW")
@@ -50,9 +53,11 @@ const (
 	WM_TRAYICON       = 0x8000 + 1 // 自定义：托盘图标回调消息
 	WM_AELLUS_ALREADY = 0x8000 + 2 // 自定义：另一实例被重复启动（single_windows.go 发来）
 	WM_RBUTTONUP      = 0x0205
+	WM_LBUTTONUP      = 0x0202
 	WM_LBUTTONDBLCLK  = 0x0203
 	WM_DESTROY        = 0x0002
 	WM_COMMAND        = 0x0111
+	WM_MENUSELECT     = 0x011F // 菜单项被高亮（hover）选择：真实值 0x011F（之前误写成 0x012F 导致匹配不到）
 
 	NIM_ADD     = 0x00000000
 	NIM_DELETE  = 0x00000002
@@ -61,6 +66,7 @@ const (
 	NIF_TIP     = 0x4
 
 	MF_STRING       = 0x0000
+	MF_SEPARATOR    = 0x0800
 	TPM_RIGHTBUTTON = 0x0002
 
 	IDI_APPLICATION = 0x7F00 // 系统默认应用图标（兜底用）
@@ -73,10 +79,12 @@ const (
 	trayIconID = 1
 	menuOpenID = 1001
 	menuQuitID = 1002
+	menuQRID   = 1003 // 访问二维码
 )
 
 var (
 	gURL     string
+	gLanURL  string // 局域网访问地址（手机扫码用），来自首页中间 lanUrl
 	gIcoData []byte
 )
 
@@ -264,12 +272,18 @@ func removeTrayIcon(hwnd uintptr) {
 func showMenu(hwnd uintptr) {
 	hMenu, _, _ := procCreatePopupMenu.Call()
 	procAppendMenu.Call(hMenu, MF_STRING, menuOpenID, uintptr(unsafe.Pointer(utf16Ptr("打开浏览器"))))
+	procAppendMenu.Call(hMenu, MF_STRING, menuQRID, uintptr(unsafe.Pointer(utf16Ptr("访问二维码"))))
+	procAppendMenu.Call(hMenu, MF_SEPARATOR, 0, 0)
 	procAppendMenu.Call(hMenu, MF_STRING, menuQuitID, uintptr(unsafe.Pointer(utf16Ptr("退出"))))
 	var pt POINT
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	// 标准托盘菜单显示流程：先置前台窗口（消息专用窗口可能失败，但 TrackPopupMenuEx
+	// 自带模态循环仍能显示）；菜单关闭后发 WM_NULL 把前台交还，避免菜单闪退/不出现。
 	procSetForegroundWindow.Call(hwnd)
-	// 在鼠标位置弹出菜单，等待用户选择（选择后触发 WM_COMMAND）
 	procTrackPopupMenuEx.Call(hMenu, TPM_RIGHTBUTTON, uintptr(pt.x), uintptr(pt.y), hwnd, 0)
+	procPostMessage.Call(hwnd, 0, 0, 0) // WM_NULL
+	// 菜单收起后收起二维码浮窗（hover 到别处或菜单关闭都会触发，这里再兜底一次）
+	qrpop.Hide()
 	procDestroyMenu.Call(hMenu)
 }
 
@@ -283,20 +297,38 @@ func wndProc(hwnd uintptr, msg uintptr, wparam, lparam uintptr) uintptr {
 		procPostQuitMessage.Call(0)
 		return 0
 	case WM_TRAYICON:
-		evt := uint32(lparam & 0xffff)
-		switch evt {
-		case WM_RBUTTONUP:
-			showMenu(hwnd) // 右键 -> 弹出菜单
-		case WM_LBUTTONDBLCLK:
-			openBrowser(gURL) // 双击 -> 打开浏览器
-		case NIN_BALLOONUSERCLICK:
-			onBalloonClick() // 点击系统通知 -> 打开浏览器
-		}
+	evt := uint32(lparam & 0xffff)
+	switch evt {
+	case WM_RBUTTONUP, WM_LBUTTONUP:
+		showMenu(hwnd) // 右键/左键抬起 -> 弹出菜单
+	case WM_LBUTTONDBLCLK:
+		openBrowser(gURL) // 双击 -> 打开浏览器
+	case NIN_BALLOONUSERCLICK:
+		onBalloonClick() // 点击系统通知 -> 打开浏览器
+	}
 		return 0
 	case WM_AELLUS_ALREADY:
 		// 另一个实例被重复启动：由本实例弹「已在运行」通知（点击可打开浏览器）
 		trayDebug("收到重复启动消息，弹出已在运行通知")
 		postOpenNotification("Aellus 已在运行", "点击打开文件传输页", gURL)
+		return 0
+	case WM_MENUSELECT:
+		// 菜单项被 hover 选中时，systray 会向 owner 窗口发 WM_MENUSELECT：高字是
+		// 选中标志、低字是菜单项 id。与 LanCoClip fork 同款逻辑——
+		// 菜单关闭时 wParam==0xFFFFFFFF、lParam==0；悬停到「访问二维码」(menuQRID)
+		// 即弹二维码浮窗，移到别处或悬停分隔线/子菜单头则收起。浮窗由 qrpop 在
+		// 自己的 UI 线程绘制，这里只 PostMessage，不会卡住 TrackPopupMenu 的模态循环。
+		flags := uint32(wparam >> 16)
+		sel := uint32(wparam & 0xffff)
+		if lparam == 0 && flags == 0xffff {
+			qrpop.Hide() // 菜单关闭
+			return 0
+		}
+		if sel == uint32(menuQRID) {
+			_ = qrpop.Show(gLanURL)
+		} else {
+			qrpop.Hide()
+		}
 		return 0
 	case WM_COMMAND:
 		id := uint32(wparam & 0xffff)
@@ -306,6 +338,10 @@ func wndProc(hwnd uintptr, msg uintptr, wparam, lparam uintptr) uintptr {
 			procDestroyWindow.Call(hwnd) // 触发 WM_DESTROY -> 退出消息循环
 		case menuOpenID:
 			openBrowser(gURL)
+		case menuQRID:
+			// 点击「访问二维码」：打开本机页面并带 ?qr=1，页面会自动弹出二维码
+			// 悬浮二维码仍是 hover 专属，点击不再弹赖着不消失的浮窗。
+			openBrowser(withQRParam(gURL))
 		}
 		return 0
 	}
@@ -315,8 +351,20 @@ func wndProc(hwnd uintptr, msg uintptr, wparam, lparam uintptr) uintptr {
 
 // runTray 注册并创建一个"消息专用窗口"，挂上托盘图标，然后进入消息循环阻塞。
 // 用户点"退出"时窗口被销毁 -> WM_DESTROY -> PostQuitMessage -> 循环结束 -> 进程退出。
-func runTray(url string) {
+// withQRParam 追加 ?qr=1 查询参数（若 URL 已带查询则用 &），让首页打开后自动弹出二维码。
+func withQRParam(u string) string {
+	if u == "" {
+		return u
+	}
+	if strings.Contains(u, "?") {
+		return u + "&qr=1"
+	}
+	return u + "?qr=1"
+}
+
+func runTray(url, lanURL string) {
 	gURL = url
+	gLanURL = lanURL
 	gIcoData = faviconICO
 	trayDebug("runTray: gIcoLen=%d", len(gIcoData))
 

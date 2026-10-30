@@ -28,7 +28,7 @@ func NewPlatform() app.Platform { return fpkPlatform{} }
 
 // RunTray 在 fpk（无桌面）下仅阻塞进程，保持 HTTP 服务常驻。
 // 等价于「无托盘」：不创建任何 GUI 元素，等待 SIGINT/SIGTERM 后退出。
-func (fpkPlatform) RunTray(url string) {
+func (fpkPlatform) RunTray(url, lanURL string) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c

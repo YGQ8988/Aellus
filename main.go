@@ -15,7 +15,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-
 	"aellus/internal/app"
 	"aellus/internal/platform"
 )
@@ -153,5 +152,7 @@ func main() {
 	}
 	// 启动后弹系统通知（macOS/Windows）；点击通知才打开浏览器，不点击不跳转。
 	p.PostOpenNotification("Aellus 已就绪", "点击打开文件传输页", desktopURL)
-	p.RunTray(desktopURL)
+	// lanURL 是局域网访问地址（手机扫码用），与首页中间 lanUrl 一致
+	lanURL := "http://" + ip + ":" + strconv.Itoa(port)
+	p.RunTray(desktopURL, lanURL)
 }

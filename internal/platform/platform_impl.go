@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
 	"aellus/internal/app"
 )
 
@@ -41,7 +40,7 @@ func openBrowser(u string) {
 	_ = cmd.Start()
 }
 
-func (platformImpl) RunTray(url string)                  { runTray(url) }
+func (platformImpl) RunTray(url, lanURL string)         { runTray(url, lanURL) }
 func (platformImpl) PostOpenNotification(t, b, u string) { postOpenNotification(t, b, u) }
 func (platformImpl) EnforceSingleInstance() bool         { return enforceSingleInstance() }
 func (platformImpl) EnforceAuthBoundary() bool           { return false }

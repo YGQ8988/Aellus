@@ -7,8 +7,10 @@ package app
 // 这样避免了「build-tag 替换的符号与业务符号互相调用」导致的循环依赖。
 type Platform interface {
 	// RunTray 进入托盘/菜单栏消息循环（阻塞，直到用户退出）。
+	// url 是本机访问地址（localhost，用于「打开浏览器」/双击）；lanURL 是局域网访问
+	// 地址（IP:端口，用于「访问二维码」——手机扫码，与首页中间 lanUrl 一致）。
 	// fpk 端无桌面，等价于「等待 SIGINT/SIGTERM」。
-	RunTray(url string)
+	RunTray(url, lanURL string)
 
 	// PostOpenNotification 弹一条系统通知（macOS/Windows）。
 	// fpk 端无桌面通知，空实现。
