@@ -325,7 +325,7 @@ func wndProc(hwnd uintptr, msg uintptr, wparam, lparam uintptr) uintptr {
 			return 0
 		}
 		if sel == uint32(menuQRID) {
-			_ = qrpop.Show(gLanURL)
+			_ = qrpop.Show(lanURLFor(gLanURL))
 		} else {
 			qrpop.Hide()
 		}
@@ -365,6 +365,7 @@ func withQRParam(u string) string {
 func runTray(url, lanURL string) {
 	gURL = url
 	gLanURL = lanURL
+	setLANPortFromURL(lanURL)
 	gIcoData = faviconICO
 	trayDebug("runTray: gIcoLen=%d", len(gIcoData))
 

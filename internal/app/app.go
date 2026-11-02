@@ -171,7 +171,7 @@ func (a *App) buildMux(port int) *http.ServeMux {
 		a.writeJSON(w, http.StatusOK, map[string]string{
 			"ip":       curIP,
 			"port":     strconv.Itoa(port),
-			"url":      "http://" + curIP + ":" + strconv.Itoa(port),
+			"url":      LANURL(curIP, port),
 			"clientIP": clientIP,
 			"platform": platform,
 		})

@@ -32,7 +32,7 @@ var gLanURL string
 // 此函数被 ObjC 在主线程调用；qrpop.Show 内部会再 dispatch 到主线程，安全。
 func goQRHover(hovered C.int) {
 	if hovered == 1 {
-		_ = qrpop.Show(gLanURL)
+		_ = qrpop.Show(lanURLFor(gLanURL))
 	} else {
 		qrpop.Hide()
 	}
@@ -53,6 +53,7 @@ func withQRParam(u string) string {
 
 func runTray(url, lanURL string) {
 	gLanURL = lanURL
+	setLANPortFromURL(lanURL)
 	setAgentMode()
 	systray.Run(func() {
 		systray.SetTemplateIcon(menuIconPNG, menuIconPNG)

@@ -24,6 +24,12 @@ func GetLANIP() string {
 	return "127.0.0.1"
 }
 
+// LANURL 拼出局域网访问地址，是首页 /api/addr 与托盘二维码的**唯一**拼装入口。
+// 两处都调它 + GetLANIP，就不会再出现「二维码是 172.16.x、首页是 10.102.x」的错位。
+func LANURL(ip string, port int) string {
+	return "http://" + ip + ":" + strconv.Itoa(port)
+}
+
 // udpEgressIP 兜底：UDP "连接" 公网地址（不会真的发包）读本地绑定 IP。
 func udpEgressIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")

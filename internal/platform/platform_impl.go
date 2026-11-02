@@ -7,7 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
+
 	"aellus/internal/app"
 )
 
@@ -38,6 +42,52 @@ func openBrowser(u string) {
 		cmd = exec.Command("xdg-open", u)
 	}
 	_ = cmd.Start()
+}
+
+// ---- 局域网访问地址：二维码与首页共用同一数据源 ----
+
+var (
+	lanPort   int // 服务端口：运行期不变，启动时由各平台 runTray 解析一次
+	lanMu     sync.Mutex
+	lanCached string
+	lanAt     time.Time
+)
+
+// setLANPortFromURL 由各平台 runTray 启动时调用：从 "http://host:port" 解析出端口。
+// 只解析端口——IP 必须实时取，不能在这里定死。
+func setLANPortFromURL(u string) {
+	i := strings.LastIndex(u, ":")
+	if i < 0 || i == len(u)-1 {
+		return
+	}
+	if n, err := strconv.Atoi(u[i+1:]); err == nil {
+		lanPort = n
+	}
+}
+
+// lanURLFor 返回当前的局域网访问地址，用于二维码。
+//
+// 与首页中间的 lanUrl 同源：都调 app.GetLANIP() + app.LANURL()，保证两者始终一致。
+// 不能用启动时的 lanURL 快照——开机后连 VPN / 切换网络，快照会停在旧 IP，
+// 出现「扫出来是 172.16.x、页面是 10.102.x」。
+// 结果带 5 秒缓存：hover 会连续触发，避免每次都枚举网卡把菜单卡住。
+func lanURLFor(fallback string) string {
+	lanMu.Lock()
+	defer lanMu.Unlock()
+	if lanPort == 0 {
+		return fallback
+	}
+	if lanCached != "" && time.Since(lanAt) < 5*time.Second {
+		return lanCached
+	}
+	if ip := app.GetLANIP(); ip != "" {
+		lanCached = app.LANURL(ip, lanPort)
+		lanAt = time.Now()
+	}
+	if lanCached == "" {
+		return fallback
+	}
+	return lanCached
 }
 
 func (platformImpl) RunTray(url, lanURL string)         { runTray(url, lanURL) }
