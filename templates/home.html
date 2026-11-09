@@ -608,9 +608,20 @@
   function closeQR(){
     document.getElementById('qrModal').classList.remove('active');
     if(window.unlockScroll){ unlockScroll(); }
+    // 消费掉 ?qr=1 标记：关闭后地址栏不再带该参数，刷新页面就不会又自动弹二维码
+    if(location.search.indexOf('qr=1')!==-1){
+      var p=new URLSearchParams(location.search);
+      p.delete('qr');
+      var ns=p.toString();
+      var nu=location.pathname+(ns?('?'+ns):'')+location.hash;
+      history.replaceState(null,'',nu);
+    }
   }
   // 自定义下拉的全局事件：点 popup 外收起 / ESC 收起，popup 本身阻止冒泡避免误关 settings
   document.addEventListener('DOMContentLoaded', function(){
+    // 通过托盘「访问二维码」带 ?qr=1 打开页面时，自动弹出二维码（与 LanCoClip 一致）；
+    // openQR 在 lanUrl 尚未取到时会自行 fetch，所以这里直接调用即可。
+    if (location.search.indexOf('qr=1') !== -1) { openQR(); }
     maybeShowAuthTip();
     // 版本徽标：设置页标题旁展示版本号与构建时间（/api/info 的值由打包脚本在编译时注入，
     // BuildTime 即每次实际打包时刻；接口失败静默，不影响页面）
